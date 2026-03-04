@@ -162,4 +162,4 @@ pytest tests/ -v
 
 ## License
 
-[MIT](LICENSE)
+This project is licensed under the MIT License. See the LICENSE file for more details.
