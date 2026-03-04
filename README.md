@@ -1,227 +1,165 @@
-# cyberm4fia-scanner 🔴
+# cyberm4fia-scanner
 
-<p align="center">
-  <b>Red Team Vulnerability Scanner</b><br>
-  <i>Advanced web application, network, and infrastructure security testing platform</i>
-</p>
+> Modular red team security scanner for web applications, APIs, networks, and cloud infrastructure.
 
 ---
 
-## 🚀 Features
+## Features
 
-### Web Application Attacks
+### Web Application Scanning
 | Module | Flag | Description |
 |---|---|---|
-| **XSS** | `--xss` | Reflected + Stored XSS with smart context-aware payload engine |
-| **SQLi** | `--sqli` | Union-based + Blind (time-based) SQL injection with auto exploit |
-| **LFI/RFI** | `--lfi` `--rfi` | Local & Remote File Inclusion with PHP wrapper detection |
-| **CMDi** | `--cmdi` | OS Command Injection + Interactive Shell |
-| **SSRF** | `--ssrf` | Server-Side Request Forgery (AWS/GCP/Azure metadata) |
-| **SSTI** | `--ssti` | Server-Side Template Injection (Jinja2, Twig, Mako, Smarty) |
-| **XXE** | `--xxe` | XML External Entity injection (/etc/passwd, SSRF, XInclude) |
-| **Open Redirect** | `--redirect` | URL redirect abuse (20+ payloads) |
-| **CORS** | `--cors` | Cross-Origin Resource Sharing misconfiguration |
-| **Header Inject** | `--header-inject` | HTTP Header Injection / CRLF |
-| **DOM XSS** | `--dom-xss` | Client-side JavaScript DOM-based XSS |
-| **CSRF** | *(auto)* | Cross-Site Request Forgery token check |
+| XSS | `--xss` | Reflected + Stored XSS with context-aware payload engine |
+| SQLi | `--sqli` | Union-based + Blind (time-based) SQL injection with auto exploit |
+| LFI / RFI | `--lfi` `--rfi` | Local & Remote File Inclusion |
+| CMDi | `--cmdi` | OS Command Injection + Interactive Shell |
+| SSRF | `--ssrf` | Server-Side Request Forgery (AWS/GCP/Azure metadata) |
+| SSTI | `--ssti` | Template Injection (Jinja2, Twig, Mako, Smarty) |
+| XXE | `--xxe` | XML External Entity Injection |
+| Open Redirect | `--redirect` | URL redirect abuse (20+ payloads) |
+| CORS | `--cors` | Cross-Origin Resource Sharing misconfiguration |
+| Header Inject | `--header-inject` | HTTP Header Injection / CRLF |
+| DOM XSS | `--dom-xss` | DOM-based XSS (Selenium) |
+| CSRF | *(auto)* | Cross-Site Request Forgery token check |
 
-### API Security (OWASP API Top 10)
+### API Security
 | Module | Flag | Description |
 |---|---|---|
-| **API Scanner** | `--api-scan` | BOLA/IDOR, Rate Limiting, Mass Assignment, Verb Tampering, GraphQL Introspection, JWT Analysis |
+| API Scanner | `--api-scan` | BOLA/IDOR, Rate Limiting, Mass Assignment, Verb Tampering, GraphQL Introspection, JWT |
 
 ### Network & Infrastructure
 | Module | Flag | Description |
 |---|---|---|
-| **Recon** | `--recon` | Port scanning (asyncio + banner grabbing), DNS, SSL, headers |
-| **Subdomain** | `--subdomain` | Subdomain enumeration |
-| **Fuzzer** | `--fuzz` | Directory/file bruteforce with smart 404 calibration |
-| **Crawler** | `--crawl` | Recursive site crawler with JS endpoint extraction |
-| **Port Scan** | *(in recon)* | 60+ ports, banner grabbing, dangerous port warnings |
-| **Credential Spray** | `--spray` | Default credentials for FTP, SSH, MySQL, Redis, MongoDB |
-| **Cloud Buckets** | `--cloud` | Open S3/Azure/GCP bucket detection |
-| **Subdomain Takeover** | `--takeover` | CNAME dangling detection |
+| Recon | `--recon` | Async port scan + banner grabbing, DNS, SSL, headers |
+| Subdomain | `--subdomain` | Subdomain enumeration |
+| Fuzzer | `--fuzz` | Directory/file bruteforce with smart 404 calibration |
+| Crawler | `--crawl` | Recursive crawler with JS endpoint extraction |
+| Credential Spray | `--spray` | Default credentials for FTP, SSH, MySQL, Redis, MongoDB |
+| Cloud Buckets | `--cloud` | Open S3 / Azure Blob / GCP bucket detection |
+| Subdomain Takeover | `--takeover` | CNAME dangling detection |
 
 ### OSINT
 | Module | Flag | Description |
 |---|---|---|
-| **Tech Fingerprint** | `--tech` | Wappalyzer-style technology detection |
-| **Shodan/Whois/ASN** | `--osint` | IP enrichment via Shodan InternetDB (free), WHOIS, ASN |
-| **Email Harvester** | `--email` | Google, GitHub, PGP key server email discovery |
+| Tech Fingerprint | `--tech` | Wappalyzer-style technology detection (50+ technologies) |
+| Shodan / WHOIS / ASN | `--osint` | IP enrichment via Shodan InternetDB, WHOIS, ASN |
+| Email Harvester | `--email` | Google, GitHub, PGP key server email discovery |
 
-### Smart Automation
+### Automation
 | Module | Flag | Description |
 |---|---|---|
-| **Vuln Chaining** | `--chain` | Attack path analysis (SSRF→Metadata→IAM, SQLi→RCE, etc.) |
-| **Wordlist Gen** | `--wordlist` | CeWL-style site-specific password wordlist generator |
-| **Reverse Shell** | *(in CLI)* | Payload generator (Bash, Python, PowerShell, PHP, etc.) |
-| **WAF Bypass** | *(auto)* | Automatic WAF fingerprinting + adaptive evasion |
-| **Template Engine** | *(auto)* | Nuclei-style YAML scan templates |
+| Vuln Chaining | `--chain` | Attack path analysis (SSRF→Metadata, SQLi→RCE, etc.) |
+| Wordlist Gen | `--wordlist` | CeWL-style site-specific password wordlist generator |
+| Reverse Shell | *(in CLI)* | Payload generator (Bash, Python, PowerShell, PHP, etc.) |
+| WAF Bypass | *(auto)* | WAF fingerprinting (22 vendors) + adaptive evasion |
+| Race Condition | `--race` | TOCTOU / race condition scanner |
+| Template Engine | *(auto)* | Nuclei-style YAML scan templates |
 
 ---
 
-## ⚡ Quick Start
+## Quick Start
 
 ```bash
-# Clone
-git clone https://github.com/yourusername/cyberm4fia-scanner.git
+git clone https://github.com/erkanrzgc/cyberm4fia-scanner.git
 cd cyberm4fia-scanner
-
-# Install dependencies
 pip install -r requirements.txt
 
 # Interactive mode
 python3 scanner.py
 
-# CLI mode — full scan
+# Full scan
 python3 scanner.py -u https://target.com --all
 
-# Quick XSS + SQLi only
+# Specific modules
 python3 scanner.py -u https://target.com --xss --sqli
 
-# Multi-target from file
+# Multi-target
 python3 scanner.py -l targets.txt --all
 
-# Through Tor/SOCKS5 proxy
+# Through proxy
 python3 scanner.py -u https://target.com --all --proxy socks5://127.0.0.1:9050
 ```
 
 ---
 
-## 🎯 Scan Modes
+## Scan Modes
 
 | Mode | Flag | Delay | Threads | Use Case |
 |---|---|---|---|---|
 | Quick | `-m 1` | 0.05s | 10 | Fast general scan |
-| Normal | `-m 2` | 0.3s | 10 | Default, balanced |
-| Aggressive | `-m 3` | 0.05s | 30 | Full power (may trigger WAF) |
-| Stealth | `-m 4` | 2.0s | 1 | Slow & stealthy, evade IDS |
+| Normal | `-m 2` | 0.3s | 10 | Balanced (default) |
+| Aggressive | `-m 3` | 0.05s | 30 | Full power — may trigger WAF |
+| Stealth | `-m 4` | 2.0s | 1 | Slow, IDS/WAF evasion |
 
 ---
 
-## 📁 Project Structure
+## REST API
+
+The scanner includes a FastAPI-based REST API with auto-generated documentation.
+
+```bash
+python3 scanner.py --api --port 8080
+```
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/scan` | POST | Start a new scan |
+| `/api/scan/{id}` | GET | Get scan results |
+| `/api/scans` | GET | List all scans |
+| `/api/report/{id}` | GET | Download HTML report |
+| `/api/scan/{id}` | DELETE | Cancel a scan |
+| `/docs` | GET | Swagger UI |
+| `/redoc` | GET | ReDoc |
+
+---
+
+## Project Structure
 
 ```
 cyberm4fia-scanner/
-├── scanner.py                  ← Main orchestrator
-├── modules/
-│   ├── recon.py                ← Port scan, DNS, SSL, headers
-│   ├── xss.py                  ← XSS scanner (smart payload engine)
-│   ├── sqli.py                 ← SQL Injection (Union + Blind)
-│   ├── lfi.py / rfi.py         ← File Inclusion
-│   ├── cmdi.py                 ← Command Injection
-│   ├── ssrf.py                 ← Server-Side Request Forgery
-│   ├── ssti.py                 ← Template Injection
-│   ├── xxe.py                  ← XML External Entity
-│   ├── open_redirect.py        ← Open Redirect
-│   ├── spray.py                ← Credential Sprayer
-│   ├── api_scanner.py          ← API Security (OWASP Top 10)
-│   ├── cloud_enum.py           ← Cloud bucket enumeration
-│   ├── subdomain_takeover.py   ← Subdomain takeover
-│   ├── tech_detect.py          ← Technology fingerprinting
-│   ├── email_harvest.py        ← Email harvester
-│   ├── crawler.py              ← Site crawler
-│   ├── fuzzer.py               ← Directory fuzzer
-│   ├── dom_xss.py              ← DOM-based XSS
-│   ├── cors.py / csrf.py       ← CORS / CSRF checks
-│   ├── header_inject.py        ← Header injection
-│   ├── report.py               ← HTML/JSON/TXT reports
-│   └── template_engine.py      ← YAML template runner
-├── utils/
-│   ├── request.py              ← HTTP session manager (proxy, WAF, auth)
-│   ├── revshell.py             ← Reverse shell payload generator
-│   ├── vuln_chain.py           ← Vulnerability chaining engine
-│   ├── wordlist_gen.py         ← CeWL-style wordlist generator
-│   ├── shodan_lookup.py        ← Shodan/WHOIS/ASN OSINT
-│   ├── waf.py                  ← WAF fingerprinting
-│   ├── auth.py                 ← AuthChain (token/cookie auth)
-│   ├── colors.py               ← Terminal colors & logging
-│   └── oob.py                  ← Out-of-Band callback client
-├── .github/workflows/
-│   └── security-scan.yml       ← GitHub Actions CI/CD pipeline
-├── wordlists/                  ← Fuzzer wordlists
-├── plugins/                    ← Custom user plugins
-├── scans/                      ← Scan output directory
-├── usagewithai.md              ← AI assistant guide (🇹🇷)
-└── README.md                   ← This file
+├── scanner.py              # main orchestrator
+├── api_server.py           # FastAPI REST API
+├── modules/                # 40+ scanning modules
+├── utils/                  # HTTP client, WAF detection, auth, etc.
+├── payloads/               # XSS, SQLi, LFI, SSRF, CMDi payload files
+├── wordlists/              # fuzzer wordlists
+├── tests/                  # pytest test suite (38 tests)
+├── .github/workflows/      # CI/CD pipelines
+├── .env.example            # environment variable template
+└── requirements.txt        # dependencies
 ```
 
 ---
 
-## 🔧 CLI Reference
+## Configuration
 
+Copy `.env.example` to `.env` and set your values:
+
+```bash
+cp .env.example .env
 ```
-Usage: python3 scanner.py [options]
 
-Target:
-  -u, --url URL           Target URL
-  -l, --list FILE         File with list of target URLs
+Available settings: `SHODAN_API_KEY`, `DEFAULT_THREADS`, `DEFAULT_DELAY`, `VERIFY_SSL`, `HTTP_PROXY`
 
-Scan Modules:
-  --recon                 Network reconnaissance
-  --subdomain             Subdomain enumeration
-  --fuzz                  Directory fuzzer
-  --crawl                 Site crawler
-  --xss                   XSS scanner
-  --sqli                  SQL Injection
-  --lfi                   Local File Inclusion
-  --rfi                   Remote File Inclusion
-  --cmdi                  Command Injection
-  --ssrf                  SSRF scanner
-  --ssti                  Template Injection
-  --xxe                   XML External Entity
-  --redirect              Open Redirect
-  --cors                  CORS misconfiguration
-  --header-inject         Header Injection
-  --dom-xss               DOM-based XSS
-  --api-scan              API security (OWASP)
-  --cloud                 Cloud bucket scan
-  --takeover              Subdomain takeover
-  --tech                  Technology fingerprint
-  --spray                 Credential sprayer
-  --email                 Email harvester
-  --osint                 Shodan/WHOIS/ASN
-  --chain                 Vulnerability chaining
-  --wordlist              Wordlist generator
-  --all                   Enable ALL modules
+---
 
-Config:
-  -m, --mode {1,2,3,4}    Scan mode (1=Quick, 2=Normal, 3=Aggressive, 4=Stealth)
-  -t, --threads N         Number of threads (default: 10)
-  --cookie COOKIE         Session cookie
-  --proxy URL             Proxy (http/socks5)
-  --html                  Generate HTML report
-  --json                  Save JSON report
-  --compare SCAN1 SCAN2   Compare two scans
-  --api                   Start REST API server mode
+## Testing
+
+```bash
+pip install pytest
+pytest tests/ -v
 ```
 
 ---
 
-## 🔐 CI/CD Integration
-
-Add automated security scanning to your GitHub Actions:
-
-```yaml
-# .github/workflows/security-scan.yml is included in the repo!
-# Set TARGET_URL as a GitHub secret, then:
-# Every push/PR triggers automatic security scanning
-```
-
----
-
-## ⚠️ Legal Disclaimer
+## Legal Disclaimer
 
 > **This tool is for authorized security testing and educational purposes only.**
-> Unauthorized scanning of systems you do not own or have explicit permission to test is illegal.
-> The developers are not responsible for misuse of this tool.
+> Unauthorized scanning of systems you do not own or have permission to test is illegal.
+> The developers assume no liability for misuse.
 
 ---
 
-## 📝 License
+## License
 
-Educational use only. Built by **Erkan** 🇹🇷
-
----
-
-*cyberm4fia-scanner v5.0 — Full Arsenal Red Team Platform*
+[MIT](LICENSE)
