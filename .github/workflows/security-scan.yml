@@ -1,0 +1,147 @@
+# cyberm4fia-scanner Security Scan — GitHub Actions CI/CD Pipeline
+# Place this file at: .github/workflows/security-scan.yml
+#
+# Triggers:
+#   - On every push to main/master
+#   - On every pull request
+#   - Manual trigger via workflow_dispatch
+#
+# Usage:
+#   1. Copy this file to your project's .github/workflows/ directory
+#   2. Set the TARGET_URL secret in your GitHub repo settings
+#   3. Push to trigger the scan
+
+name: cyberm4fia-scanner Security Scan
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: 'Target URL to scan'
+        required: true
+        type: string
+      scan_mode:
+        description: 'Scan mode (1-Quick, 2-Normal, 3-Aggressive)'
+        required: false
+        default: '2'
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - '3'
+
+env:
+  SCANNER_DIR: cyberm4fia-scanner
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout Scanner
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          path: ${{ env.SCANNER_DIR }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          cd ${{ env.SCANNER_DIR }}
+          pip install -r requirements.txt || pip install requests beautifulsoup4 rich
+
+      - name: Run Security Scan
+        id: scan
+        run: |
+          cd ${{ env.SCANNER_DIR }}
+
+          # Determine target URL
+          TARGET="${{ github.event.inputs.target_url || secrets.TARGET_URL }}"
+          MODE="${{ github.event.inputs.scan_mode || '2' }}"
+
+          if [ -z "$TARGET" ]; then
+            echo "::error::No target URL provided. Set TARGET_URL secret or use workflow_dispatch."
+            exit 1
+          fi
+
+          echo "🔍 Scanning: $TARGET (Mode: $MODE)"
+
+          # Run scanner with JSON output
+          python3 scanner.py -u "$TARGET" -m "$MODE" \
+            --xss --sqli --lfi --ssrf --tech \
+            --json --html --quiet \
+            || true
+
+          # Check for findings
+          SCAN_DIR=$(ls -td scans/*/ 2>/dev/null | head -1)
+          if [ -d "$SCAN_DIR" ]; then
+            echo "scan_dir=$SCAN_DIR" >> $GITHUB_OUTPUT
+
+            # Count vulnerabilities from JSON
+            if [ -f "$SCAN_DIR/scan_results.json" ]; then
+              VULN_COUNT=$(python3 -c "
+          import json
+          with open('$SCAN_DIR/scan_results.json') as f:
+              data = json.load(f)
+          vulns = data.get('vulnerabilities', [])
+          print(len(vulns))
+          " 2>/dev/null || echo "0")
+              echo "vuln_count=$VULN_COUNT" >> $GITHUB_OUTPUT
+              echo "📊 Found $VULN_COUNT vulnerability(ies)"
+            fi
+          fi
+
+      - name: Upload Scan Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyberm4fia-scan-report
+          path: |
+            ${{ env.SCANNER_DIR }}/scans/
+          retention-days: 30
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request' && steps.scan.outputs.vuln_count != '0'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const vulnCount = '${{ steps.scan.outputs.vuln_count }}';
+            const body = `## 🛡️ cyberm4fia-scanner Security Scan Results
+
+            ⚠️ **${vulnCount} vulnerability(ies) detected!**
+
+            The security scan found potential issues in this PR.
+            Please review the scan report in the Actions artifacts.
+
+            | Detail | Value |
+            |---|---|
+            | Vulnerabilities | ${vulnCount} |
+            | Scan Mode | ${{ github.event.inputs.scan_mode || '2' }} |
+            | Target | ${{ github.event.inputs.target_url || secrets.TARGET_URL }} |
+
+            📎 [Download Report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            `;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+      - name: Fail on Critical Vulns
+        if: steps.scan.outputs.vuln_count != '0' && steps.scan.outputs.vuln_count != ''
+        run: |
+          echo "::warning::Security vulnerabilities detected. Review the scan report."
+          # Uncomment the next line to block PRs with vulnerabilities:
+          # exit 1

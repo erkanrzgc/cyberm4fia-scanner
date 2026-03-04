@@ -1,0 +1,35 @@
+# cyberm4fia-scanner Dependencies
+
+# Core HTTP Client (HTTP/2 support)
+httpx[http2]>=0.27.0
+
+# HTML Parsing
+beautifulsoup4>=4.11.0
+lxml>=4.9.0
+
+# Headless Browser
+playwright>=1.40.0
+
+# CLI Dashboard
+rich>=13.0
+
+# Crypto (OOB Interactsh)
+cryptography>=41.0
+
+# YAML (Template engine, GTFOBins)
+pyyaml>=6.0
+
+# DNS
+dnspython>=2.4.0
+
+# JWT
+pyjwt>=2.8.0
+
+# Environment / Secret Management
+python-dotenv>=1.0.0
+
+# API Server (FastAPI + Uvicorn)
+fastapi[standard]>=0.110.0
+
+# SSL Warnings
+urllib3>=1.26.0
