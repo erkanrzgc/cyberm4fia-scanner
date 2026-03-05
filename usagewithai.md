@@ -4,7 +4,7 @@
 
 ---
 
-## 📌 Overview
+📌 Overview
 
 cyberm4fia-scanner is a Python-based modular Red Team security scanning platform. It covers web application, network, API, cloud, and OSINT scanning capabilities. The main entry point is `scanner.py`.
 
