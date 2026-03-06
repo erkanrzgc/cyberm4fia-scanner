@@ -297,8 +297,17 @@ def _test_blind_cmdi_sequential(url, forms, delay):
 
 def scan_cmdi(url, forms, delay, threads=None):
     """Scan for Command Injection vulnerabilities (threaded)"""
+    from utils.tamper import get_tamper_chain
+
     if threads is None:
         threads = Config.THREADS
+
+    # Apply tamper chain for WAF bypass variants
+    chain = get_tamper_chain()
+    if chain.active:
+        global CMDI_PAYLOADS
+        CMDI_PAYLOADS = chain.apply_list(list(CMDI_PAYLOADS))
+
     log_info(
         f"Testing Command Injection with {len(CMDI_PAYLOADS)} payloads ({threads} threads)..."
     )
