@@ -223,7 +223,13 @@ def scan_xss_form(form, url, payloads, delay):
 
 def scan_xss(url, forms, delay, threads=10):
     """Main XSS scanning function"""
+    from utils.tamper import get_tamper_chain
+
     payloads = XSS_FLAT_PAYLOADS
+    # Apply tamper chain for WAF bypass variants
+    chain = get_tamper_chain()
+    if chain.active:
+        payloads = chain.apply_list(payloads)
     log_info(f"Testing XSS with {len(payloads)} payloads...")
     all_vulns = []
 

@@ -237,8 +237,17 @@ def _test_lfi_form_input(inp, inputs, method, target, delay):
 
 def scan_lfi(url, forms, delay, threads=None):
     """Scan for Local File Inclusion vulnerabilities (threaded)"""
+    from utils.tamper import get_tamper_chain
+
     if threads is None:
         threads = Config.THREADS
+
+    # Apply tamper chain for WAF bypass variants
+    chain = get_tamper_chain()
+    if chain.active:
+        global LFI_PAYLOADS
+        LFI_PAYLOADS = chain.apply_list(list(LFI_PAYLOADS))
+
     log_info(f"Testing LFI with {len(LFI_PAYLOADS)} payloads ({threads} threads)...")
     vulns = []
 

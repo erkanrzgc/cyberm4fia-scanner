@@ -117,8 +117,17 @@ def _test_sqli_param(param, params, parsed, delay):
 
 def scan_sqli(url, forms, delay, threads=None):
     """Scan for SQL injection vulnerabilities (threaded)"""
+    from utils.tamper import get_tamper_chain
+
     if threads is None:
         threads = Config.THREADS
+
+    # Apply tamper chain for WAF bypass variants
+    chain = get_tamper_chain()
+    if chain.active:
+        global SQLI_PAYLOADS
+        SQLI_PAYLOADS = chain.apply_list(list(SQLI_PAYLOADS))
+
     log_info(f"Testing SQLi with {len(SQLI_PAYLOADS)} payloads ({threads} threads)...")
     vulns = []
 

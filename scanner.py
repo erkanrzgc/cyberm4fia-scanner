@@ -85,6 +85,7 @@ from modules.deserialization import scan_deserialization  # noqa: E402
 from modules.business_logic import scan_business_logic  # noqa: E402
 from modules.passive import scan_passive  # noqa: E402
 from utils.finding import normalize_all, generate_sarif  # noqa: E402
+from utils.tamper import TamperChain, set_tamper_chain  # noqa: E402
 
 from rich.console import Console
 from rich.table import Table
@@ -166,6 +167,12 @@ def parse_args():
         "--passive",
         action="store_true",
         help="Enable passive scanning (header/secret/debug checks)",
+    )
+    parser.add_argument(
+        "--tamper",
+        type=str,
+        default="",
+        help="Tamper scripts for WAF bypass (comma-separated, e.g. space2comment,randomcase)",
     )
     parser.add_argument(
         "-t", "--threads", type=int, default=10, help="Number of threads"
@@ -499,6 +506,13 @@ def main():
             "threads": threads,
         }
         Config.JSON_OUTPUT = args.json or use_all
+
+        # Initialize tamper chain
+        if args.tamper:
+            tamper_names = [t.strip() for t in args.tamper.split(",") if t.strip()]
+            chain = TamperChain(tamper_names)
+            set_tamper_chain(chain)
+            Config.TAMPER_CHAIN = chain
     else:
         try:
             url, mode, delay, options = interactive_menu()
