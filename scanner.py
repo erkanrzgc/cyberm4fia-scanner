@@ -281,8 +281,8 @@ def parse_args():
     parser.add_argument(
         "--ai-model",
         type=str,
-        default="deepseek-r1:14b",
-        help="Ollama model to use (default: deepseek-r1:14b)",
+        default="whiterabbitneo",
+        help="Ollama model to use (default: whiterabbitneo)",
     )
 
     return parser.parse_args()
