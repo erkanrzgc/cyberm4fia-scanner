@@ -5,7 +5,6 @@ Tests run without requiring Ollama to be installed.
 
 import sys
 import os
-import json
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -17,10 +16,10 @@ class TestOllamaClientInit:
 
     def test_default_model(self):
         client = OllamaClient.__new__(OllamaClient)
-        client.model = "deepseek-r1:14b"
+        client.model = "whiterabbitneo"
         client.base_url = "http://localhost:11434"
         client.available = False
-        assert client.model == "deepseek-r1:14b"
+        assert client.model == "whiterabbitneo"
 
     def test_custom_model(self):
         client = OllamaClient.__new__(OllamaClient)
@@ -29,7 +28,7 @@ class TestOllamaClientInit:
 
     def test_unavailable_client_returns_empty(self):
         client = OllamaClient.__new__(OllamaClient)
-        client.model = "deepseek-r1:14b"
+        client.model = "whiterabbitneo"
         client.base_url = "http://localhost:11434"
         client.available = False
         result = client.generate("test prompt")
@@ -47,7 +46,7 @@ class TestAIFunctions:
     def _make_mock_client(self, response: str = ""):
         client = OllamaClient.__new__(OllamaClient)
         client.available = True
-        client.model = "deepseek-r1:14b"
+        client.model = "whiterabbitneo"
         client._mock_response = response
 
         def mock_generate(prompt, system="", temperature=0.3):
@@ -142,7 +141,7 @@ class TestAIModule:
     def test_default_model_constant(self):
         from utils.ai import DEFAULT_MODEL
 
-        assert DEFAULT_MODEL == "deepseek-r1:14b"
+        assert DEFAULT_MODEL == "whiterabbitneo"
 
     def test_ollama_base_constant(self):
         from utils.ai import OLLAMA_BASE

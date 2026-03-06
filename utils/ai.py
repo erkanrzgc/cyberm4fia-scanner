@@ -2,7 +2,7 @@
 cyberm4fia-scanner — AI/LLM Integration (Ollama)
 
 Ollama-based vulnerability analysis using local LLM models.
-Default model: deepseek-r1:14b (optimized for cybersecurity reasoning)
+Default model: whiterabbitneo (purpose-built for cybersecurity & pentesting)
 
 Features:
     - Vulnerability analysis & exploit scenario generation
@@ -24,7 +24,7 @@ from utils.colors import log_info, log_success, log_warning, log_error
 # ─── Ollama Client ──────────────────────────────────────────────────────────
 
 OLLAMA_BASE = "http://localhost:11434"
-DEFAULT_MODEL = "deepseek-r1:14b"
+DEFAULT_MODEL = "whiterabbitneo"
 
 
 class OllamaClient:
