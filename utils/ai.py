@@ -17,14 +17,44 @@ Usage:
 """
 
 import json
+import re
 import httpx
 from utils.colors import log_info, log_success, log_warning, log_error
 
 
+def _extract_json(text: str, expect_array: bool = False):
+    """Extract JSON from LLM response that may contain markdown/code blocks."""
+    if not text:
+        return None
+
+    # Strip markdown code fences (```json ... ``` or ```javascript ... ```)
+    cleaned = re.sub(r"```\w*\n?", "", text).strip()
+    cleaned = cleaned.strip("`").strip()
+
+    # Try 1: Direct JSON parse
+    target = "[" if expect_array else "{"
+    end_target = "]" if expect_array else "}"
+    start = cleaned.find(target)
+    end = cleaned.rfind(end_target)
+    if start >= 0 and end > start:
+        try:
+            return json.loads(cleaned[start : end + 1])
+        except json.JSONDecodeError:
+            pass
+
+    # Try 2: Extract quoted strings from code (for arrays in JS/Python code)
+    if expect_array:
+        strings = re.findall(r'"([^"]+)"', cleaned)
+        if strings:
+            return strings
+
+    return None
+
+
 # ─── Ollama Client ──────────────────────────────────────────────────────────
 
-OLLAMA_BASE = "http://localhost:11434"
-DEFAULT_MODEL = "whiterabbitneo"
+OLLAMA_BASE = "http://192.168.6.1:11434"
+DEFAULT_MODEL = "WhiteRabbitNeo/Llama-3.1-WhiteRabbitNeo-2-8B"
 
 
 class OllamaClient:
@@ -63,35 +93,39 @@ class OllamaClient:
             )
 
     def generate(self, prompt: str, system: str = "", temperature: float = 0.3) -> str:
-        """Generate a response from the LLM."""
+        """Generate a response from the LLM using chat API."""
         if not self.available:
             return ""
 
         try:
+            messages = []
+            if system:
+                messages.append({"role": "system", "content": system})
+            messages.append({"role": "user", "content": prompt})
+
             payload = {
                 "model": self.model,
-                "prompt": prompt,
-                "system": system,
+                "messages": messages,
                 "stream": False,
                 "options": {
                     "temperature": temperature,
-                    "num_predict": 2048,
+                    "num_predict": 1024,
                 },
             }
 
             resp = httpx.post(
-                f"{self.base_url}/api/generate",
+                f"{self.base_url}/api/chat",
                 json=payload,
-                timeout=120,
+                timeout=300,
             )
 
             if resp.status_code == 200:
-                return resp.json().get("response", "").strip()
+                return resp.json().get("message", {}).get("content", "").strip()
             else:
                 log_error(f"Ollama error: {resp.status_code}")
                 return ""
         except httpx.TimeoutException:
-            log_warning("AI response timed out (120s)")
+            log_warning("AI response timed out (300s)")
             return ""
         except Exception as e:
             log_warning(f"AI error: {e}")
@@ -135,14 +169,9 @@ Respond in JSON format:
 
     response = client.generate(prompt, system=SECURITY_SYSTEM_PROMPT)
 
-    try:
-        # Try to extract JSON from response
-        json_start = response.find("{")
-        json_end = response.rfind("}") + 1
-        if json_start >= 0 and json_end > json_start:
-            return json.loads(response[json_start:json_end])
-    except json.JSONDecodeError:
-        pass
+    result = _extract_json(response, expect_array=False)
+    if result and isinstance(result, dict):
+        return result
 
     return {"raw_analysis": response}
 
@@ -172,26 +201,21 @@ Answer ONLY with a JSON: {{"real": true/false, "confidence": 0-100, "reason": ".
             prompt, system=SECURITY_SYSTEM_PROMPT, temperature=0.1
         )
 
-        try:
-            json_start = response.find("{")
-            json_end = response.rfind("}") + 1
-            if json_start >= 0 and json_end > json_start:
-                result = json.loads(response[json_start:json_end])
-                vuln["ai_verified"] = result.get("real", True)
-                vuln["ai_confidence"] = result.get("confidence", 50)
-                vuln["ai_reason"] = result.get("reason", "")
+        result = _extract_json(response, expect_array=False)
+        if result and isinstance(result, dict):
+            vuln["ai_verified"] = result.get("real", True)
+            vuln["ai_confidence"] = result.get("confidence", 50)
+            vuln["ai_reason"] = result.get("reason", "")
 
-                if result.get("real", True):
-                    verified.append(vuln)
-                else:
-                    log_info(
-                        f"  ⚠ Filtered: {vuln_type} "
-                        f"(confidence: {result.get('confidence', '?')}% — "
-                        f"{result.get('reason', 'N/A')})"
-                    )
-                continue
-        except json.JSONDecodeError:
-            pass
+            if result.get("real", True):
+                verified.append(vuln)
+            else:
+                log_info(
+                    f"  ⚠ Filtered: {vuln_type} "
+                    f"(confidence: {result.get('confidence', '?')}% — "
+                    f"{result.get('reason', 'N/A')})"
+                )
+            continue
 
         # If AI can't decide, keep the finding
         verified.append(vuln)
@@ -262,15 +286,9 @@ Example format: ["payload1", "payload2", "payload3"]"""
 
     response = client.generate(prompt, system=SECURITY_SYSTEM_PROMPT, temperature=0.7)
 
-    try:
-        json_start = response.find("[")
-        json_end = response.rfind("]") + 1
-        if json_start >= 0 and json_end > json_start:
-            payloads = json.loads(response[json_start:json_end])
-            if isinstance(payloads, list):
-                return [str(p) for p in payloads[:10]]
-    except json.JSONDecodeError:
-        pass
+    result = _extract_json(response, expect_array=True)
+    if result and isinstance(result, list):
+        return [str(p) for p in result[:10]]
 
     return []
 

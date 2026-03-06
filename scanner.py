@@ -281,8 +281,8 @@ def parse_args():
     parser.add_argument(
         "--ai-model",
         type=str,
-        default="whiterabbitneo",
-        help="Ollama model to use (default: whiterabbitneo)",
+        default="WhiteRabbitNeo/Llama-3.1-WhiteRabbitNeo-2-8B",
+        help="Ollama model (default: WhiteRabbitNeo-Llama-3.1-8B)",
     )
 
     return parser.parse_args()
