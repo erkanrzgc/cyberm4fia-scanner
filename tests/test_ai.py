@@ -141,13 +141,13 @@ class TestAIModule:
     def test_default_model_constant(self):
         from utils.ai import DEFAULT_MODEL
 
-        assert DEFAULT_MODEL == "whiterabbitneo"
+        assert DEFAULT_MODEL == "WhiteRabbitNeo/Llama-3.1-WhiteRabbitNeo-2-8B"
 
     def test_ollama_base_constant(self):
         from utils.ai import OLLAMA_BASE
 
         assert "11434" in OLLAMA_BASE
-        assert "localhost" in OLLAMA_BASE
+        assert "192.168.6.1" in OLLAMA_BASE
 
     def test_init_ai_returns_client(self):
         # Should not crash even without Ollama running
