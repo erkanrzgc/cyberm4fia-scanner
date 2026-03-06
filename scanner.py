@@ -84,8 +84,11 @@ from modules.proto_pollution import scan_proto_pollution  # noqa: E402
 from modules.deserialization import scan_deserialization  # noqa: E402
 from modules.business_logic import scan_business_logic  # noqa: E402
 from modules.passive import scan_passive  # noqa: E402
-from utils.finding import normalize_all, generate_sarif  # noqa: E402
+from utils.finding import normalize_all  # noqa: E402
 from utils.tamper import TamperChain, set_tamper_chain  # noqa: E402
+from core.scope import ScopeFilter, set_scope, get_scope  # noqa: E402
+from core.session import ScanSession  # noqa: E402
+from core.output import save_findings_json, save_sarif, print_severity_summary  # noqa: E402
 
 from rich.console import Console
 from rich.table import Table
@@ -253,6 +256,30 @@ def parse_args():
         "--bizlogic",
         action="store_true",
         help="Business logic flaw scanner",
+    )
+    parser.add_argument(
+        "--scope",
+        type=str,
+        default="",
+        help="Scope include patterns (comma-separated, e.g. '*.target.com')",
+    )
+    parser.add_argument(
+        "--exclude",
+        type=str,
+        default="",
+        help="Scope exclude patterns (comma-separated, e.g. '/logout,*.pdf')",
+    )
+    parser.add_argument(
+        "--session",
+        type=str,
+        default="",
+        help="Session file for save/resume (e.g. scan1.json)",
+    )
+    parser.add_argument(
+        "--resume",
+        type=str,
+        default="",
+        help="Resume scan from session file",
     )
 
     return parser.parse_args()
@@ -513,12 +540,39 @@ def main():
             chain = TamperChain(tamper_names)
             set_tamper_chain(chain)
             Config.TAMPER_CHAIN = chain
+
+        # Initialize scope filter
+        if args.scope or args.exclude:
+            include = (
+                [p.strip() for p in args.scope.split(",") if p.strip()]
+                if args.scope
+                else []
+            )
+            exclude = (
+                [p.strip() for p in args.exclude.split(",") if p.strip()]
+                if args.exclude
+                else []
+            )
+            scope = ScopeFilter(include=include, exclude=exclude)
+            set_scope(scope)
+
+        # Initialize session (resume or new)
+        session = None
+        if args.resume:
+            session = ScanSession.load(args.resume)
+            if session.data.get("target"):
+                url = session.data["target"]
+                log_info(f"Resuming scan on {url}")
+        elif args.session:
+            session = ScanSession(args.session)
+
     else:
         try:
             url, mode, delay, options = interactive_menu()
         except KeyboardInterrupt:
             print(f"\n{Colors.YELLOW}[!] Cancelled{Colors.END}")
             sys.exit(0)
+        session = None
 
     # Setup
     Stats.reset()
@@ -662,6 +716,19 @@ def main():
 
         # Scan each URL
         all_vulns = cors_vulns + header_vulns + cloud_vulns + takeover_vulns + api_vulns
+
+        # Apply scope filter to crawled URLs
+        scope = get_scope()
+        if scope.active:
+            urls_to_scan = scope.filter_urls(urls_to_scan)
+
+        # Session: save target info and filter already-scanned URLs
+        if session and session.active:
+            session.set_target(url, mode, options)
+            session.add_pending_urls(urls_to_scan)
+            if session.is_resume:
+                urls_to_scan = [u for u in urls_to_scan if not session.is_url_done(u)]
+                log_info(f"Session resume: {len(urls_to_scan)} URLs remaining")
 
         for scan_url in urls_to_scan:
             console.print(f"[bold cyan]Scanning:[/bold cyan] {scan_url}")
@@ -988,13 +1055,35 @@ def main():
 
         # SARIF output (for GitHub Security tab)
         if options.get("sarif"):
-            import json as json_mod
+            save_sarif(all_vulns, scan_dir)
 
-            sarif_data = generate_sarif(findings)
-            sarif_file = f"{scan_dir}/results.sarif"
-            with open(sarif_file, "w") as sf:
-                json_mod.dump(sarif_data, sf, indent=2)
-            log_success(f"SARIF report saved: {sarif_file}")
+        # Enhanced JSON with CVSS/CWE severity breakdown
+        if Config.JSON_OUTPUT:
+            save_findings_json(
+                findings,
+                scan_dir,
+                url,
+                mode,
+                {
+                    "requests": Stats.total_requests,
+                    "vulns": len(findings),
+                    "waf": Stats.waf_blocks,
+                },
+            )
+
+        # Severity summary
+        print_severity_summary(all_vulns)
+
+        # Session: save final state
+        if session and session.active:
+            session.add_vulnerabilities(all_vulns)
+            session.update_stats(
+                {
+                    "requests": Stats.total_requests,
+                    "vulns": len(findings),
+                }
+            )
+            session.mark_completed()
 
         log_success(f"Log saved: {log_file}")
 
