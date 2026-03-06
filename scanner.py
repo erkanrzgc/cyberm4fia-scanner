@@ -84,6 +84,14 @@ from core.output import save_findings_json, save_sarif, print_severity_summary  
 
 from rich.console import Console
 from rich.table import Table
+from utils.ai import (  # noqa: E402
+    init_ai,
+    get_ai,
+    analyze_vulnerability,
+    detect_false_positives,
+    generate_remediation,
+    generate_scan_summary,
+)
 
 console = Console()
 from modules.recon import run_recon, scan_subdomains  # noqa: E402
@@ -264,6 +272,17 @@ def parse_args():
         type=str,
         default="",
         help="Resume scan from session file",
+    )
+    parser.add_argument(
+        "--ai",
+        action="store_true",
+        help="Enable AI analysis (Ollama, local & free). Requires Ollama running.",
+    )
+    parser.add_argument(
+        "--ai-model",
+        type=str,
+        default="deepseek-r1:14b",
+        help="Ollama model to use (default: deepseek-r1:14b)",
     )
 
     return parser.parse_args()
@@ -515,6 +534,8 @@ def main():
             "passive": args.passive or use_all,
             "sarif": args.sarif,
             "threads": threads,
+            "ai": args.ai,
+            "ai_model": args.ai_model,
         }
         Config.JSON_OUTPUT = args.json or use_all
 
@@ -539,6 +560,10 @@ def main():
             )
             scope = ScopeFilter(include=include, exclude=exclude)
             set_scope(scope)
+
+        # Initialize AI client
+        if options.get("ai"):
+            init_ai(model=options.get("ai_model", "deepseek-r1:14b"))
 
         # Initialize session (resume or new)
         session = None
@@ -938,6 +963,48 @@ def main():
 
         # ──── End multi-target loop ────
         # (Note: for multi-target, summary/reports run after all targets are done)
+
+        # ─── AI Analysis Pipeline ────────────────────────────────────────
+        if options.get("ai") and all_vulns:
+            ai = get_ai()
+            if ai.available:
+                # Step 1: Filter false positives
+                all_vulns = detect_false_positives(ai, all_vulns)
+
+                # Step 2: Deep analysis of each finding
+                if all_vulns:
+                    log_info("AI analyzing vulnerabilities...")
+                    for vuln in all_vulns:
+                        analysis = analyze_vulnerability(ai, vuln)
+                        if analysis:
+                            vuln["ai_analysis"] = analysis
+
+                # Step 3: Remediation recommendations
+                remediations = generate_remediation(ai, all_vulns)
+                if remediations:
+                    log_success(
+                        f"AI generated {len(remediations)} remediation guide(s)"
+                    )
+
+                # Step 4: Executive summary
+                summary = generate_scan_summary(
+                    ai,
+                    all_vulns,
+                    url,
+                    {
+                        "requests": Stats.total_requests,
+                        "vulns": len(all_vulns),
+                        "waf": Stats.waf_blocks,
+                    },
+                )
+                if summary:
+                    console.print(
+                        "\n[bold cyan]═══ AI Executive Summary ═══[/bold cyan]"
+                    )
+                    console.print(summary)
+                    console.print(
+                        "[bold cyan]════════════════════════════[/bold cyan]\n"
+                    )
 
         # Summary
         print_summary(all_vulns, recon_data=recon_data)
