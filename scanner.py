@@ -16,7 +16,6 @@ import os
 import argparse
 from datetime import datetime
 from urllib.parse import urlparse
-from concurrent.futures import ThreadPoolExecutor
 
 # Add current directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -42,22 +41,15 @@ from utils.request import (  # noqa: E402
 )
 
 from modules.payloads import XSS_FLAT_PAYLOADS  # noqa: E402
-from modules.xss import scan_xss  # noqa: E402
 from modules.xss_exploit import (  # noqa: E402
     run_xss_exploit,
     run_xss_exploit_interactive,
 )
 from modules.sqli_exploit import run_sqli_exploit  # noqa: E402
-from modules.sqli import scan_sqli, scan_blind_sqli  # noqa: E402
+from modules.sqli import scan_blind_sqli  # noqa: E402
 from modules.cmdi_shell import InteractiveShell  # noqa: E402
-from modules.lfi import scan_lfi  # noqa: E402
-from modules.rfi import scan_rfi  # noqa: E402
-from modules.cmdi import scan_cmdi  # noqa: E402
-from modules.dom_xss import scan_dom_xss  # noqa: E402
-from modules.dom_static import scan_dom_static  # noqa: E402
 from modules.crawler import crawl_site  # noqa: E402
 from utils.oob import OOBClient  # noqa: E402
-from modules.template_engine import run_templates  # noqa: E402
 
 # Phase 4 modules
 from modules.cloud_enum import scan_cloud_storage  # noqa: E402
@@ -92,13 +84,6 @@ from core.output import save_findings_json, save_sarif, print_severity_summary  
 
 from rich.console import Console
 from rich.table import Table
-from rich.progress import (
-    Progress,
-    SpinnerColumn,
-    TextColumn,
-    BarColumn,
-    TaskProgressColumn,
-)
 
 console = Console()
 from modules.recon import run_recon, scan_subdomains  # noqa: E402
@@ -108,7 +93,6 @@ from modules.report import (  # noqa: E402
     generate_payload_report,
 )
 from modules.fuzzer import scan_fuzzer  # noqa: E402
-from modules.ssrf import scan_ssrf  # noqa: E402
 from modules.cors import scan_cors  # noqa: E402
 from modules.header_inject import scan_header_inject  # noqa: E402
 from modules.compare import (  # noqa: E402
@@ -751,102 +735,24 @@ def main():
                     passive_vulns = scan_passive(scan_url, response=resp)
                     all_vulns.extend(passive_vulns)
 
-                # Phase 1: Run error-based modules in parallel using Rich Progress
-                module_futures = {}
-                with Progress(
-                    SpinnerColumn(),
-                    TextColumn("[progress.description]{task.description}"),
-                    BarColumn(),
-                    TaskProgressColumn(),
-                    console=console,
-                ) as progress:
-                    active_tasks = []
-                    if options.get("xss"):
-                        active_tasks.append("xss")
-                    if options.get("sqli"):
-                        active_tasks.append("sqli")
-                    if options.get("lfi"):
-                        active_tasks.append("lfi")
-                    if options.get("rfi"):
-                        active_tasks.append("rfi")
-                    if options.get("cmdi"):
-                        active_tasks.append("cmdi")
-                    if options.get("ssrf"):
-                        active_tasks.append("ssrf")
-                    if options.get("templates"):
-                        active_tasks.append("templates")
+                # Phase 1: Run error-based modules concurrently (async engine)
+                from core.engine import run_modules_async
 
-                    if not active_tasks:
-                        continue
+                module_vulns = run_modules_async(scan_url, forms, delay, options)
+                all_vulns.extend(module_vulns)
 
-                    task_id = progress.add_task(
-                        "[cyan]Running Vuln Modules...", total=len(active_tasks)
-                    )
-
-                    with ThreadPoolExecutor(max_workers=5) as ex:
-                        if options.get("xss"):
-                            module_futures["xss"] = ex.submit(
-                                scan_xss, scan_url, forms, delay
-                            )
-                        if options.get("sqli"):
-                            module_futures["sqli"] = ex.submit(
-                                scan_sqli, scan_url, forms, delay
-                            )
-                        if options.get("lfi"):
-                            module_futures["lfi"] = ex.submit(
-                                scan_lfi, scan_url, forms, delay
-                            )
-                        if options.get("rfi"):
-                            module_futures["rfi"] = ex.submit(
-                                scan_rfi, scan_url, forms, delay
-                            )
-                        if options.get("cmdi"):
-                            module_futures["cmdi"] = ex.submit(
-                                scan_cmdi, scan_url, forms, delay
-                            )
-                        if options.get("ssrf"):
-                            module_futures["ssrf"] = ex.submit(
-                                scan_ssrf, scan_url, forms, delay
-                            )
-                        if options.get("templates"):
-                            module_futures["templates"] = ex.submit(
-                                run_templates, scan_url, delay
-                            )
-
-                        # Handle DOM separately as it's slow
-                        if options.get("dom_xss"):
-                            module_futures["dom_static"] = ex.submit(
-                                scan_dom_static, scan_url
-                            )
-                            module_futures["dom_xss"] = ex.submit(
-                                scan_dom_xss, scan_url
-                            )
-
-                        for name, future in module_futures.items():
-                            try:
-                                result = future.result()
-                                progress.advance(task_id)
-                                if result:
-                                    all_vulns.extend(result)
-                            except Exception as e:
-                                progress.advance(task_id)
-                                pass
-
-                sqli_vulns = []
-                xss_vulns = []
-                cmdi_vulns = []
-                for name, future in module_futures.items():
-                    try:
-                        result = future.result()
-                        if result:
-                            if name == "sqli":
-                                sqli_vulns = result
-                            elif name in ("xss", "dom_xss", "dom_static"):
-                                xss_vulns.extend(result)
-                            elif name == "cmdi":
-                                cmdi_vulns = result
-                    except Exception as e:
-                        log_error(f"Module {name} failed: {e}")
+                # Categorize results for post-processing
+                sqli_vulns = [
+                    v for v in module_vulns if v.get("type", "").startswith("SQLi")
+                ]
+                xss_vulns = [
+                    v
+                    for v in module_vulns
+                    if "XSS" in v.get("type", "") or "DOM" in v.get("type", "")
+                ]
+                cmdi_vulns = [
+                    v for v in module_vulns if v.get("type", "").startswith("CMDi")
+                ]
 
                 # Phase 2: Sequential post-processing
                 # XSS Exploitation
