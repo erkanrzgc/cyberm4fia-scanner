@@ -83,6 +83,8 @@ from modules.smuggling import scan_smuggling  # noqa: E402
 from modules.proto_pollution import scan_proto_pollution  # noqa: E402
 from modules.deserialization import scan_deserialization  # noqa: E402
 from modules.business_logic import scan_business_logic  # noqa: E402
+from modules.passive import scan_passive  # noqa: E402
+from utils.finding import normalize_all, generate_sarif  # noqa: E402
 
 from rich.console import Console
 from rich.table import Table
@@ -155,6 +157,16 @@ def parse_args():
 
     parser.add_argument("--html", action="store_true", help="Generate HTML report")
     parser.add_argument("--json", action="store_true", help="Save JSON report")
+    parser.add_argument(
+        "--sarif",
+        action="store_true",
+        help="Save SARIF report (for GitHub Security tab)",
+    )
+    parser.add_argument(
+        "--passive",
+        action="store_true",
+        help="Enable passive scanning (header/secret/debug checks)",
+    )
     parser.add_argument(
         "-t", "--threads", type=int, default=10, help="Number of threads"
     )
@@ -482,6 +494,8 @@ def main():
             "bizlogic": args.bizlogic or use_all,
             "cookie": args.cookie,
             "html": args.html or use_all,
+            "passive": args.passive or use_all,
+            "sarif": args.sarif,
             "threads": threads,
         }
         Config.JSON_OUTPUT = args.json or use_all
@@ -589,7 +603,10 @@ def main():
         # Directory Fuzzer
         if options.get("fuzz"):
             scan_fuzzer(
-                url, "wordlists/common.txt", threads=options.get("threads", 10), delay=delay
+                url,
+                "wordlists/common.txt",
+                threads=options.get("threads", 10),
+                delay=delay,
             )
 
         # CORS check (once per target, before crawl)
@@ -647,6 +664,11 @@ def main():
                             or cf.get("action") == scan_url
                         ):
                             forms.append(cf)
+
+                # Passive scanning (no extra requests — analyzes the response)
+                if options.get("passive"):
+                    passive_vulns = scan_passive(scan_url, response=resp)
+                    all_vulns.extend(passive_vulns)
 
                 # Phase 1: Run error-based modules in parallel using Rich Progress
                 module_futures = {}
@@ -715,7 +737,9 @@ def main():
                             module_futures["dom_static"] = ex.submit(
                                 scan_dom_static, scan_url
                             )
-                            module_futures["dom_xss"] = ex.submit(scan_dom_xss, scan_url)
+                            module_futures["dom_xss"] = ex.submit(
+                                scan_dom_xss, scan_url
+                            )
 
                         for name, future in module_futures.items():
                             try:
@@ -937,13 +961,26 @@ def main():
 
         generate_payload_report(scan_dir, url, all_vulns)
 
+        # Normalize all findings with CVSS/CWE data
+        findings = normalize_all(all_vulns)
+
         if Config.JSON_OUTPUT:
             stats = {
                 "requests": Stats.total_requests,
-                "vulns": len(all_vulns),
+                "vulns": len(findings),
                 "waf": Stats.waf_blocks,
             }
             generate_json_report(all_vulns, url, mode, stats, scan_dir)
+
+        # SARIF output (for GitHub Security tab)
+        if options.get("sarif"):
+            import json as json_mod
+
+            sarif_data = generate_sarif(findings)
+            sarif_file = f"{scan_dir}/results.sarif"
+            with open(sarif_file, "w") as sf:
+                json_mod.dump(sarif_data, sf, indent=2)
+            log_success(f"SARIF report saved: {sarif_file}")
 
         log_success(f"Log saved: {log_file}")
 
