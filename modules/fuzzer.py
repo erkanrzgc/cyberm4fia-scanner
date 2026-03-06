@@ -25,13 +25,15 @@ class FuzzerState:
         self.redirect_count = 0
         self.total_checked = 0
         self.blanket_redirect = False  # True if target redirects everything
+        self.blanket_403 = False  # True if WAF blocks everything (Cloudflare)
 
 
 def auto_calibrate(url, delay):
-    """Detect custom 'Soft 404' pages AND blanket-redirect behaviour."""
+    """Detect custom 'Soft 404' pages, blanket-redirect, AND WAF blanket-403."""
     log_info(f"Auto-calibrating fuzzer for {url} ...")
     soft_404_lens = []
     redirect_hits = 0
+    forbidden_hits = 0
     probe_count = 5
 
     for _ in range(probe_count):
@@ -45,19 +47,20 @@ def auto_calibrate(url, delay):
                 soft_404_lens.append(len(resp.content))
             elif resp.status_code in (301, 302, 307, 308):
                 redirect_hits += 1
+            elif resp.status_code == 403:
+                forbidden_hits += 1
         except Exception:
             pass
 
     blanket_redirect = redirect_hits >= (probe_count * 0.6)
+    blanket_403 = forbidden_hits >= (probe_count * 0.6)
 
     if soft_404_lens:
-        # Use the most common length as the soft-404 signature
         avg = sum(soft_404_lens) // len(soft_404_lens)
         log_warning(
             "Target returns 200 OK for non-existent pages (Soft 404). "
             f"Calibrating filter by length ~{avg}."
         )
-        # Accept lengths within ±50 bytes tolerance
         soft_404_lens = list(range(avg - 50, avg + 51))
 
     if blanket_redirect:
@@ -66,15 +69,30 @@ def auto_calibrate(url, delay):
             "Redirect results will be suppressed."
         )
 
-    return soft_404_lens, blanket_redirect
+    if blanket_403:
+        log_warning(
+            "WAF/Cloudflare detected: blanket 403 for all paths. "
+            "Extension fuzzing disabled, recursion limited."
+        )
+
+    return soft_404_lens, blanket_redirect, blanket_403
 
 
-def check_url(base_url, word, delay, extensions, soft_404_lens, blanket_redirect):
+def check_url(
+    base_url,
+    word,
+    delay,
+    extensions,
+    soft_404_lens,
+    blanket_redirect,
+    blanket_403=False,
+):
     """Check a base path and its extensions."""
     results = []
 
+    # If WAF blocks everything, only test base path (skip extensions)
     paths_to_test = [word]
-    if not word.endswith("/"):
+    if not blanket_403 and not word.endswith("/"):
         for ext in extensions:
             paths_to_test.append(f"{word}.{ext}")
 
@@ -95,6 +113,10 @@ def check_url(base_url, word, delay, extensions, soft_404_lens, blanket_redirect
 
             # Filter blanket redirects (SPA / Vercel / Next.js)
             if blanket_redirect and code in (301, 302, 307, 308):
+                continue
+
+            # Filter blanket 403s (WAF/Cloudflare)
+            if blanket_403 and code == 403:
                 continue
 
             results.append((full_url, code, size))
@@ -149,7 +171,7 @@ def scan_fuzzer(
     log_info(f"Starting Fuzzing on {url}")
 
     # Calibration
-    soft_404_lens, blanket_redirect = auto_calibrate(url, delay)
+    soft_404_lens, blanket_redirect, blanket_403 = auto_calibrate(url, delay)
 
     with open(wordlist_path, "r", encoding="utf-8", errors="ignore") as f:
         words = [
@@ -158,6 +180,7 @@ def scan_fuzzer(
 
     state = FuzzerState()
     state.blanket_redirect = blanket_redirect
+    state.blanket_403 = blanket_403
     if not url.endswith("/"):
         url += "/"
     state.directories_to_scan.append((url, 0))  # (dir_url, depth)
@@ -188,6 +211,7 @@ def scan_fuzzer(
                     extensions,
                     soft_404_lens,
                     blanket_redirect,
+                    blanket_403,
                 )
                 for w in words
             ]
@@ -216,9 +240,10 @@ def scan_fuzzer(
                                     log_info(f"Redirect: {path} [{code}]")
                             elif code == 403:
                                 log_warning(f"Forbidden: {path} [403]")
-                                # Only recurse into forbidden dirs (might have accessible sub-items)
+                                # Don't recurse into 403 dirs when WAF blocks everything
                                 if (
                                     recursive
+                                    and not blanket_403
                                     and not path.endswith(".php")
                                     and not path.endswith(".html")
                                     and depth < max_depth - 1
