@@ -124,11 +124,11 @@ def scan_sqli(url, forms, delay, threads=None):
 
     # Apply tamper chain for WAF bypass variants
     chain = get_tamper_chain()
+    payloads = list(SQLI_PAYLOADS)
     if chain.active:
-        global SQLI_PAYLOADS
-        SQLI_PAYLOADS = chain.apply_list(list(SQLI_PAYLOADS))
+        payloads = chain.apply_list(payloads)
 
-    log_info(f"Testing SQLi with {len(SQLI_PAYLOADS)} payloads ({threads} threads)...")
+    log_info(f"Testing SQLi with {len(payloads)} payloads ({threads} threads)...")
     vulns = []
 
     with ThreadPoolExecutor(max_workers=threads) as executor:

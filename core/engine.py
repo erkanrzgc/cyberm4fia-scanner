@@ -47,7 +47,7 @@ async def run_modules_async_impl(
     """
     # Lazy imports to avoid circular dependencies
     from modules.xss import scan_xss
-    from modules.sqli import scan_sqli, scan_blind_sqli
+    from modules.sqli import scan_sqli
     from modules.lfi import scan_lfi
     from modules.rfi import scan_rfi
     from modules.cmdi import scan_cmdi
@@ -55,7 +55,6 @@ async def run_modules_async_impl(
     from modules.ssti import scan_ssti
     from modules.xxe import scan_xxe
     from modules.dom_xss import scan_dom_xss
-    from modules.dom_static import scan_dom_static
 
     tasks = []
 
@@ -73,13 +72,12 @@ async def run_modules_async_impl(
     if options.get("ssrf"):
         tasks.append(_run_module("SSRF", scan_ssrf, scan_url, forms, delay))
     if options.get("ssti"):
-        tasks.append(_run_module("SSTI", scan_ssti, scan_url, forms, delay))
+        tasks.append(_run_module("SSTI", scan_ssti, scan_url, delay))
     if options.get("xxe"):
-        tasks.append(_run_module("XXE", scan_xxe, scan_url, forms, delay))
+        tasks.append(_run_module("XXE", scan_xxe, scan_url, delay))
 
     # DOM modules
     if options.get("dom_xss"):
-        tasks.append(_run_module("DOM-Static", scan_dom_static, scan_url))
         tasks.append(_run_module("DOM-XSS", scan_dom_xss, scan_url))
 
     # Template engine
@@ -111,17 +109,6 @@ async def run_modules_async_impl(
             log_info(f"  {name}: {len(vulns)} finding(s)")
         if progress_callback:
             progress_callback(name)
-
-    # Phase 2: Blind/timing-based modules (sequential for accuracy)
-    if options.get("sqli"):
-        try:
-            blind_vulns = await asyncio.to_thread(
-                scan_blind_sqli, scan_url, forms, delay
-            )
-            if blind_vulns:
-                all_vulns.extend(blind_vulns)
-        except Exception as e:
-            log_warning(f"Blind SQLi error: {e}")
 
     return all_vulns
 

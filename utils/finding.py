@@ -109,13 +109,6 @@ VULN_REGISTRY = {
         "title": "DOM-based XSS",
         "remediation": "Avoid using innerHTML/document.write with user-controlled data.",
     },
-    "DOM_Static": {
-        "severity": "medium",
-        "cvss": 4.3,
-        "cwe": "CWE-79",
-        "title": "DOM XSS Sink (Static Analysis)",
-        "remediation": "Review and sanitize DOM sink usage in client-side JavaScript.",
-    },
     # SQLi
     "SQLi_Param": {
         "severity": "critical",
@@ -451,6 +444,14 @@ VULN_REGISTRY = {
         "title": "Internal IP Address Disclosure",
         "remediation": "Remove internal IP addresses from HTTP responses and headers.",
     },
+    # CVE Threat Intelligence (SiberAdar Feed)
+    "CVE_Intel": {
+        "severity": "info",
+        "cvss": 0.0,
+        "cwe": "",
+        "title": "CVE Threat Intelligence (SiberAdar)",
+        "remediation": "Review CVE details and apply vendor patches.",
+    },
 }
 
 # Default for unknown types
@@ -503,6 +504,36 @@ def normalize_vuln(vuln_dict: dict) -> Finding:
         }
         or None,
     )
+
+
+def deduplicate_findings(vuln_list: list) -> list:
+    """Remove duplicate vulnerabilities (same type, payload, param) or deduplicate host-level findings."""
+    seen = set()
+    unique_vulns = []
+    
+    for vuln in vuln_list:
+        vuln_type = vuln.get("type", "")
+        url = vuln.get("url", "")
+        param = vuln.get("param", "")
+        payload = vuln.get("payload", "")
+        evidence = vuln_dict.get("evidence", "") if 'vuln_dict' in locals() else vuln.get("evidence", "")
+        
+        from urllib.parse import urlparse
+        host = urlparse(url).netloc
+        
+        # Site-wide issues only need to be reported once per host, 
+        # so we strip the path/query parameters.
+        if vuln_type in ["Missing_Security_Header", "Debug_Info", "Tech_Fingerprint", "CVE_Intel"]:
+            sig = f"{vuln_type}::{host}::{evidence}"
+        else:
+            # For injection/XSS, we need exact URL, param, and payload to match
+            sig = f"{vuln_type}::{url}::{param}::{payload}"
+            
+        if sig not in seen:
+            seen.add(sig)
+            unique_vulns.append(vuln)
+            
+    return unique_vulns
 
 
 def normalize_all(vuln_list: list) -> list:

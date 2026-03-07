@@ -7,6 +7,7 @@ import sys
 import os
 import re
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -169,16 +170,32 @@ def scan_open_redirect(url, delay=0):
     # Combine existing params with common redirect param names
     params_to_test = list(set(existing_params + REDIRECT_PARAMS))
 
-    for param in params_to_test:
-        for payload in REDIRECT_PAYLOADS:
-            result = test_redirect(url, param, payload, delay)
-            if result:
-                findings.append(result)
-                log_success(
-                    f"[REDIRECT] {result['type']} via '{param}' → "
-                    f"{result.get('redirect_to', result['payload'])}"
-                )
-                break  # One finding per param is enough
+    # Enqueue tasks for multithreaded scanning
+    tasks = []
+    
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        for param in params_to_test:
+            for payload in REDIRECT_PAYLOADS:
+                tasks.append(executor.submit(test_redirect, url, param, payload, delay))
+                
+        # Process results as they complete
+        found_params = set() # Track which params already gave a finding to stop testing them
+        
+        for future in as_completed(tasks):
+            try:
+                result = future.result()
+                if result:
+                    param_name = result["field"]
+                    # If we haven't already reported a finding for this parameter
+                    if param_name not in found_params:
+                        findings.append(result)
+                        found_params.add(param_name)
+                        log_success(
+                            f"[REDIRECT] {result['type']} via '{param_name}' → "
+                            f"{result.get('redirect_to', result['payload'])}"
+                        )
+            except Exception:
+                pass
 
     # Also test common redirect paths
     base_url = f"{parsed.scheme}://{parsed.netloc}"

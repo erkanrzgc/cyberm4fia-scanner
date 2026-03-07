@@ -209,6 +209,12 @@ def _check_secrets(url, body):
     for pattern, name in SECRET_PATTERNS:
         matches = re.finditer(pattern, body)
         for match in matches:
+            # Avoid AWS Pre-signed URL false positives
+            if name == "AWS Access Key ID":
+                start_idx = max(0, match.start() - 40)
+                if "amz-credential" in body[start_idx : match.start()].lower():
+                    continue
+
             secret_preview = match.group(0)[:60]  # Truncate for safety
             if secret_preview in seen:
                 continue

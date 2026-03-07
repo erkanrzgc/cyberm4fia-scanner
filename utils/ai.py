@@ -53,7 +53,9 @@ def _extract_json(text: str, expect_array: bool = False):
 
 # ─── Ollama Client ──────────────────────────────────────────────────────────
 
-OLLAMA_BASE = "http://192.168.6.1:11434"
+import os
+
+OLLAMA_BASE = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434")
 DEFAULT_MODEL = "WhiteRabbitNeo/Llama-3.1-WhiteRabbitNeo-2-8B"
 
 
@@ -181,13 +183,22 @@ def detect_false_positives(client: OllamaClient, vulns: list) -> list:
     if not client.available or not vulns:
         return vulns
 
-    log_info(f"AI analyzing {len(vulns)} findings for false positives...")
+    log_info(f"AI analyzing {len(vulns)} findings for false positives (filtering Low/Info issues)...")
 
     verified = []
+    
+    # We don't need AI to verify missing headers or debug info over and over
+    skip_types = ["Missing_Security_Header", "Debug_Info", "Tech_Fingerprint", "Recon"]
+
     for vuln in vulns:
         vuln_type = vuln.get("type", "")
         payload = vuln.get("payload", "")
         url = vuln.get("url", "")
+        severity = vuln.get("severity", "Info")
+
+        if vuln_type in skip_types or severity in ["Low", "Info"]:
+            verified.append(vuln)
+            continue
 
         prompt = f"""Is this a real vulnerability or likely a false positive?
 
@@ -232,10 +243,17 @@ def generate_remediation(client: OllamaClient, vulns: list) -> list:
     if not client.available or not vulns:
         return []
 
-    log_info("AI generating remediation recommendations...")
+    # We don't need AI to verify missing headers or debug info over and over
+    skip_types = ["Missing_Security_Header", "Debug_Info", "Tech_Fingerprint", "Recon"]
+    filtered_vulns = [v for v in vulns if v.get("type") not in skip_types and v.get("severity", "Info") not in ["Low", "Info"]]
+
+    if not filtered_vulns:
+        return []
+
+    log_info(f"AI generating remediation recommendations for {len(filtered_vulns)} findings...")
 
     remediations = []
-    for vuln in vulns:
+    for vuln in filtered_vulns:
         vuln_type = vuln.get("type", "Unknown")
         url = vuln.get("url", "N/A")
         payload = vuln.get("payload", "N/A")

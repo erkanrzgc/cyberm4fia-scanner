@@ -338,10 +338,6 @@ def scan_technology(url, delay=0):
                     "severity": issue["severity"],
                 }
             )
-            if issue["severity"] in ("HIGH", "CRITICAL"):
-                log_warning(f"[Security] {issue['issue']}")
-            else:
-                log_info(f"[Security] {issue['issue']}")
 
     except Exception as e:
         log_error(f"Technology fingerprinting failed: {e}")

@@ -1,6 +1,6 @@
 """
 cyberm4fia-scanner - Report Module
-HTML and JSON report generation
+HTML, JSON, and Markdown report generation with CVSS/CWE enrichment
 """
 
 import sys
@@ -12,30 +12,24 @@ import json
 import html as html_module
 from datetime import datetime
 from utils.colors import log_success, log_info, log_error
-
-
-SEVERITY_MAP = {
-    "SQLi": "critical",
-    "Blind_SQLi": "critical",
-    "CMDi": "critical",
-    "XSS": "high",
-    "LFI": "high",
-    "RFI": "high",
-    "DOM_XSS": "medium",
-    "Blind_CMDi": "medium",
-}
+from utils.finding import VULN_REGISTRY, _DEFAULT_VULN, normalize_all
+from utils.request import Stats
 
 
 def get_severity(vuln_type):
     """Get severity level for a vulnerability type"""
-    for key, level in SEVERITY_MAP.items():
+    if vuln_type in VULN_REGISTRY:
+        return VULN_REGISTRY[vuln_type]["severity"]
+
+    for key, info in VULN_REGISTRY.items():
         if key in vuln_type:
-            return level
-    return "low"
+            return info["severity"]
+
+    return _DEFAULT_VULN["severity"]
 
 
 def generate_html_report(vulns, url, mode, scan_dir):
-    """Generate HTML vulnerability report"""
+    """Generate HTML vulnerability report with CVSS & CWE enrichment"""
     try:
         os.makedirs(scan_dir, exist_ok=True)
     except Exception as e:
@@ -44,20 +38,31 @@ def generate_html_report(vulns, url, mode, scan_dir):
 
     filename = os.path.join(scan_dir, "report.html")
 
+    # Normalize vulnerabilities to Finding objects to get CVSS, CWE, Remediation
+    findings = normalize_all(vulns)
+
+    # Sort findings by severity (Critical -> High -> Medium -> Low -> Info)
+    severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+    findings.sort(key=lambda x: severity_order.get(x.severity, 5))
+
     vuln_html = ""
-    for v in vulns:
-        severity = get_severity(v.get("type", ""))
-        param = v.get("param") or v.get("field", "N/A")
-        payload = html_module.escape(str(v.get("payload", "N/A")[:100]))
+    for f in findings:
+        severity = f.severity
+        param = html_module.escape(str(f.param) if f.param else "N/A")
+        payload = html_module.escape(str(f.payload) if f.payload else "N/A")
+        cvss = f.cvss
+        cwe = html_module.escape(str(f.cwe))
+        remediation = html_module.escape(str(f.remediation))
+        title = html_module.escape(str(f.title))
+        vurl = html_module.escape(str(f.url))
 
         # Check for exploit data
         exploit_html = ""
-        if "exploit_data" in v:
-            data = v["exploit_data"]
+        if f.exploit_data:
+            data = f.exploit_data
             exploit_type = data.get("exploit_type", "")
 
             if "Cookie_Stealer" in exploit_type:
-                # XSS exploit - show payload links
                 exploit_html += """
                 <div class="exploit-data" style="margin-top: 15px; background: #16213e; padding: 10px; border-radius: 5px;">
                     <h4 style="color: #00ff88; margin-top: 0;">🔥 XSS Exploit Payloads</h4>
@@ -68,7 +73,6 @@ def generate_html_report(vulns, url, mode, scan_dir):
                         exploit_html += f"<p style='color: #c8d6e5;'>• {desc}</p>"
                 exploit_html += "</div>"
             else:
-                # SQLi exploit - show DB data
                 db_name = html_module.escape(str(data.get("database", "Unknown")))
                 exploit_html += f"""
                 <div class="exploit-data" style="margin-top: 15px; background: #16213e; padding: 10px; border-radius: 5px;">
@@ -81,7 +85,7 @@ def generate_html_report(vulns, url, mode, scan_dir):
             if "data" in data:
                 for table, content in data["data"].items():
                     exploit_html += f"<div style='margin-top: 10px; border-top: 1px solid #333; padding-top: 5px;'>"
-                    exploit_html += f"<h5 style='color: #0abde3; margin: 5px 0;'>Table: {table}</h5>"
+                    exploit_html += f"<h5 style='color: #0abde3; margin: 5px 0;'>Table: {html_module.escape(str(table))}</h5>"
                     if "columns" in content:
                         exploit_html += f"<div style='margin-bottom: 5px;'><span style='color: #888;'>Columns:</span> <code style='color: #5f27cd'>{html_module.escape(', '.join(content['columns']))}</code></div>"
 
@@ -89,7 +93,6 @@ def generate_html_report(vulns, url, mode, scan_dir):
                         exploit_html += "<div style='max-height: 200px; overflow-y: auto; background: #111; padding: 5px; border-radius: 3px;'>"
                         for row in content["rows"]:
                             if isinstance(row, dict):
-                                # Generic handler for dict rows
                                 row_str = " | ".join(
                                     [
                                         f"<b>{html_module.escape(str(k))}</b>: {html_module.escape(str(v))}"
@@ -98,40 +101,48 @@ def generate_html_report(vulns, url, mode, scan_dir):
                                 )
                             else:
                                 row_str = html_module.escape(str(row))
-                            exploit_html += f"<div style='font-family: monospace; color: #c8d6e5; border-bottom: 1px dashed #333;'>{row_str}</div>"  # row_str already escaped above
+                            exploit_html += f"<div style='font-family: monospace; color: #c8d6e5; border-bottom: 1px dashed #333;'>{row_str}</div>"
                         exploit_html += "</div>"
                     exploit_html += "</div>"
 
             exploit_html += "</div>"
 
         vuln_html += f"""
-        <div class="vuln {severity}">
+        <div class="vuln-card {severity}" data-severity="{severity}">
             <h3>
                 <span class="badge {severity}">{severity.upper()}</span>
-                {html_module.escape(str(v.get("type", "Unknown")))}
+                {title} <span style="font-size: 0.6em; color: #888; margin-left:10px;">({cwe} | CVSS: {cvss})</span>
             </h3>
             <div class="detail-row">
+                <div class="detail-label">Vulnerable URL</div>
+                <div style="word-break: break-all;"><a href="{vurl}" style="color: var(--accent); text-decoration: none;">{vurl}</a></div>
+            </div>
+            <div class="detail-row">
                 <div class="detail-label">Parameter</div>
-                <div>{html_module.escape(str(param))}</div>
+                <div><code>{param}</code></div>
             </div>
             <div class="detail-row">
                 <div class="detail-label">Payload</div>
                 <div><code>{payload}</code></div>
             </div>
-            <div class="detail-row">
-                <div class="detail-label">Target URL</div>
-                <div style="word-break: break-all;"><a href="{html_module.escape(str(v.get("url", "N/A")))}" style="color: var(--accent); text-decoration: none;">{html_module.escape(str(v.get("url", "N/A")))}</a></div>
+            <div class="detail-row" style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #333;">
+                <div class="detail-label" style="color: var(--cyber-green);">Remediation</div>
+                <div style="color: #a8b2c1;">{remediation}</div>
             </div>
             {exploit_html}
         </div>
         """
 
     # Calculate Stats
-    counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
-    for v in vulns:
-        severity = get_severity(v.get("type", ""))
-        if severity in counts:
-            counts[severity] += 1
+    counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
+    for f in findings:
+        if f.severity in counts:
+            counts[f.severity] += 1
+
+    duration = "N/A"
+    if Stats.start_time:
+        duration_delta = datetime.now() - datetime.fromtimestamp(Stats.start_time)
+        duration = str(duration_delta).split(".")[0]
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -151,6 +162,7 @@ def generate_html_report(vulns, url, mode, scan_dir):
             --high: #f97316;
             --medium: #eab308;
             --low: #22c55e;
+            --info: #3b82f6;
             --cyber-green: #00ff88;
         }}
         body {{
@@ -161,150 +173,52 @@ def generate_html_report(vulns, url, mode, scan_dir):
             padding: 20px;
             line-height: 1.6;
         }}
-        .container {{
-            max-width: 1200px;
-            margin: 0 auto;
-        }}
-        .header {{
-            text-align: center;
-            padding: 40px 0;
-            border-bottom: 1px solid var(--border-color);
-            margin-bottom: 30px;
-        }}
-        .header h1 {{
-            color: var(--cyber-green);
-            font-size: 2.5em;
-            margin: 0 0 10px 0;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            text-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
-        }}
-        .summary-grid {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 40px;
-        }}
-        .stat-card {{
-            background: var(--card-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 10px;
-            padding: 20px;
-            text-align: center;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }}
+        .container {{ max-width: 1200px; margin: 0 auto; }}
+        .header {{ text-align: center; padding: 40px 0; border-bottom: 1px solid var(--border-color); margin-bottom: 30px; }}
+        .header h1 {{ color: var(--cyber-green); font-size: 2.5em; margin: 0 0 10px 0; text-transform: uppercase; letter-spacing: 2px; text-shadow: 0 0 10px rgba(0, 255, 136, 0.3); }}
+        .summary-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 30px; }}
+        .stat-card {{ background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; padding: 20px; text-align: center; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }}
         .stat-card.total {{ border-top: 4px solid var(--accent); }}
-        .stat-card.critical {{ border-top: 4px solid var(--critical); }}
-        .stat-card.high {{ border-top: 4px solid var(--high); }}
-        .stat-card.medium {{ border-top: 4px solid var(--medium); }}
-        .stat-card.low {{ border-top: 4px solid var(--low); }}
-        .stat-value {{
-            font-size: 2.5em;
-            font-weight: 700;
-            margin-bottom: 5px;
-        }}
+        .stat-card.critical {{ border-top: 4px solid var(--critical); cursor: pointer; transition: 0.2s; }}
+        .stat-card.high {{ border-top: 4px solid var(--high); cursor: pointer; transition: 0.2s; }}
+        .stat-card.medium {{ border-top: 4px solid var(--medium); cursor: pointer; transition: 0.2s; }}
+        .stat-card.low {{ border-top: 4px solid var(--low); cursor: pointer; transition: 0.2s; }}
+        .stat-card:hover {{ transform: scale(1.02); }}
+        .stat-value {{ font-size: 2.2em; font-weight: 700; margin-bottom: 5px; }}
         .total .stat-value {{ color: var(--accent); }}
         .critical .stat-value {{ color: var(--critical); }}
         .high .stat-value {{ color: var(--high); }}
         .medium .stat-value {{ color: var(--medium); }}
         .low .stat-value {{ color: var(--low); }}
-        .stat-label {{
-            color: var(--text-muted);
-            text-transform: uppercase;
-            font-size: 0.85em;
-            letter-spacing: 1px;
-        }}
-        .target-info {{
-            background: var(--card-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 10px;
-            padding: 20px;
-            margin-bottom: 40px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-        }}
+        .stat-label {{ color: var(--text-muted); text-transform: uppercase; font-size: 0.8em; letter-spacing: 1px; }}
+        .target-info {{ background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; padding: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }}
         .target-info p {{ margin: 5px 0; }}
         .target-info strong {{ color: var(--cyber-green); }}
-        .vuln-list {{
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }}
-        .vuln {{
-            background: var(--card-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 10px;
-            padding: 25px;
-            position: relative;
-            overflow: hidden;
-        }}
-        .vuln::before {{
-            content: '';
-            position: absolute;
-            left: 0;
-            top: 0;
-            bottom: 0;
-            width: 5px;
-        }}
-        .vuln.critical::before {{ background: var(--critical); }}
-        .vuln.high::before {{ background: var(--high); }}
-        .vuln.medium::before {{ background: var(--medium); }}
-        .vuln.low::before {{ background: var(--low); }}
-        .vuln h3 {{
-            margin: 0 0 15px 0;
-            color: var(--text-main);
-            font-size: 1.4em;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }}
-        .badge {{
-            padding: 4px 10px;
-            border-radius: 4px;
-            font-size: 0.6em;
-            font-weight: bold;
-            text-transform: uppercase;
-            color: #fff;
-        }}
+        .exec-summary {{ background: #0f172a; padding: 15px; border-radius: 8px; border-left: 4px solid var(--accent); margin-bottom: 30px; font-size: 0.9em; }}
+        .exec-summary span {{ margin-right: 20px; }}
+        .vuln-list {{ display: flex; flex-direction: column; gap: 20px; }}
+        .vuln-card {{ background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; padding: 25px; position: relative; overflow: hidden; transition: opacity 0.3s; }}
+        .vuln-card::before {{ content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; }}
+        .vuln-card.critical::before {{ background: var(--critical); }}
+        .vuln-card.high::before {{ background: var(--high); }}
+        .vuln-card.medium::before {{ background: var(--medium); }}
+        .vuln-card.low::before {{ background: var(--low); }}
+        .vuln-card.info::before {{ background: var(--info); }}
+        .vuln-card h3 {{ margin: 0 0 15px 0; color: var(--text-main); font-size: 1.3em; display: flex; align-items: center; gap: 10px; }}
+        .badge {{ padding: 4px 10px; border-radius: 4px; font-size: 0.6em; font-weight: bold; text-transform: uppercase; color: #fff; }}
         .badge.critical {{ background: var(--critical); }}
         .badge.high {{ background: var(--high); }}
         .badge.medium {{ background: var(--medium); color: #000; }}
         .badge.low {{ background: var(--low); color: #000; }}
-        .detail-row {{
-            display: grid;
-            grid-template-columns: 120px 1fr;
-            gap: 10px;
-            margin-bottom: 10px;
-            align-items: baseline;
-        }}
-        .detail-label {{
-            color: var(--text-muted);
-            font-weight: 600;
-        }}
-        code {{
-            background: #090e17;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-family: 'Consolas', 'Monaco', monospace;
-            color: #ff7b72;
-            word-break: break-all;
-            border: 1px solid #1f2937;
-        }}
-        .exploit-data {{
-            margin-top: 20px;
-            background: #090e17;
-            border: 1px solid #1f2937;
-            padding: 15px;
-            border-radius: 6px;
-        }}
-        .exploit-data h4 {{
-            color: var(--cyber-green);
-            margin: 0 0 10px 0;
-            border-bottom: 1px solid #1f2937;
-            padding-bottom: 5px;
-        }}
+        .badge.info {{ background: var(--info); }}
+        .detail-row {{ display: grid; grid-template-columns: 140px 1fr; gap: 10px; margin-bottom: 8px; align-items: baseline; }}
+        .detail-label {{ color: var(--text-muted); font-weight: 600; font-size: 0.9em; }}
+        code {{ background: #090e17; padding: 4px 8px; border-radius: 4px; font-family: 'Consolas', 'Monaco', monospace; color: #ff7b72; word-break: break-all; border: 1px solid #1f2937; font-size: 0.9em; }}
+        .exploit-data {{ margin-top: 20px; background: #090e17; border: 1px solid #1f2937; padding: 15px; border-radius: 6px; }}
+        .exploit-data h4 {{ color: var(--cyber-green); margin: 0 0 10px 0; border-bottom: 1px solid #1f2937; padding-bottom: 5px; }}
+        .filter-nav {{ display: flex; gap: 10px; margin-bottom: 20px; }}
+        .filter-btn {{ background: var(--card-bg); border: 1px solid var(--border-color); color: var(--text-main); padding: 8px 16px; border-radius: 5px; cursor: pointer; }}
+        .filter-btn.active {{ background: var(--accent); border-color: var(--accent); }}
     </style>
 </head>
 <body>
@@ -325,35 +239,65 @@ def generate_html_report(vulns, url, mode, scan_dir):
             </div>
         </div>
 
+        <div class="exec-summary">
+            <span><strong>⏱️ Duration:</strong> {duration}</span>
+            <span><strong>🌐 Requests:</strong> {Stats.total_requests}</span>
+            <span><strong>🛡️ WAF Blocks:</strong> {Stats.waf_blocks}</span>
+            <span><strong>⚠️ Errors:</strong> {Stats.errors}</span>
+        </div>
+
         <div class="summary-grid">
-            <div class="stat-card total">
-                <div class="stat-value">{len(vulns)}</div>
+            <div class="stat-card total" onclick="filterVulns('all')">
+                <div class="stat-value">{len(findings)}</div>
                 <div class="stat-label">Total Findings</div>
             </div>
-            <div class="stat-card critical">
+            <div class="stat-card critical" onclick="filterVulns('critical')">
                 <div class="stat-value">{counts["critical"]}</div>
                 <div class="stat-label">Critical</div>
             </div>
-            <div class="stat-card high">
+            <div class="stat-card high" onclick="filterVulns('high')">
                 <div class="stat-value">{counts["high"]}</div>
                 <div class="stat-label">High</div>
             </div>
-            <div class="stat-card medium">
+            <div class="stat-card medium" onclick="filterVulns('medium')">
                 <div class="stat-value">{counts["medium"]}</div>
                 <div class="stat-label">Medium</div>
             </div>
-            <div class="stat-card low">
+            <div class="stat-card low" onclick="filterVulns('low')">
                 <div class="stat-value">{counts["low"]}</div>
-                <div class="stat-label">Low</div>
+                <div class="stat-label">Low / Info</div>
             </div>
         </div>
         
-        <h2 style="color: var(--cyber-green); border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 20px;">Detailed Findings</h2>
+        <div class="filter-nav">
+            <button class="filter-btn active" onclick="filterVulns('all')" id="btn-all">All Findings</button>
+            <button class="filter-btn" onclick="filterVulns('critical')" id="btn-critical">Critical</button>
+            <button class="filter-btn" onclick="filterVulns('high')" id="btn-high">High</button>
+            <button class="filter-btn" onclick="filterVulns('medium')" id="btn-medium">Medium</button>
+            <button class="filter-btn" onclick="filterVulns('low')" id="btn-low">Low</button>
+        </div>
         
-        <div class="vuln-list">
-            {vuln_html if vuln_html else "<div class='vuln' style='text-align:center;'><h3 style='color: var(--text-muted);'>No vulnerabilities detected during this scan.</h3></div>"}
+        <div class="vuln-list" id="vuln-list">
+            {vuln_html if vuln_html else "<div class='vuln-card' style='text-align:center;'><h3 style='color: var(--text-muted);'>No vulnerabilities detected during this scan.</h3></div>"}
         </div>
     </div>
+    <script>
+        function filterVulns(severity) {{
+            // Update buttons
+            document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('btn-' + severity).classList.add('active');
+            
+            // Filter cards
+            const cards = document.querySelectorAll('.vuln-card');
+            cards.forEach(card => {{
+                if (severity === 'all' || card.getAttribute('data-severity') === severity || (severity === 'low' && card.getAttribute('data-severity') === 'info')) {{
+                    card.style.display = 'block';
+                }} else {{
+                    card.style.display = 'none';
+                }}
+            }});
+        }}
+    </script>
 </body>
 </html>"""
 
@@ -396,22 +340,24 @@ def generate_payload_report(scan_dir, url, vulns):
         pass
 
     filename = os.path.join(scan_dir, "payloads.txt")
+    findings = normalize_all(vulns)
 
     with open(filename, "w") as f:
         f.write(f"# cyberm4fia-scanner Vulnerability Report\n")
         f.write(f"# Target: {url}\n")
         f.write(f"# Date: {datetime.now()}\n")
-        f.write(f"# Total Vulnerabilities: {len(vulns)}\n\n")
+        f.write(f"# Total Vulnerabilities: {len(findings)}\n\n")
 
-        for v in vulns:
+        for f_obj in findings:
             f.write(f"{'=' * 50}\n")
-            f.write(f"Type: {v.get('type', 'Unknown')}\n")
-            f.write(f"Parameter: {v.get('param') or v.get('field', 'N/A')}\n")
-            f.write(f"Payload: {v.get('payload', 'N/A')}\n")
-            f.write(f"URL: {v.get('url', 'N/A')}\n")
+            f.write(f"Type: {f_obj.title} ({f_obj.severity.upper()})\n")
+            f.write(f"CWE / CVSS: {f_obj.cwe} / {f_obj.cvss}\n")
+            f.write(f"Parameter: {f_obj.param or 'N/A'}\n")
+            f.write(f"Payload: {f_obj.payload or 'N/A'}\n")
+            f.write(f"URL: {f_obj.url or 'N/A'}\n")
 
-            if "exploit_data" in v:
-                data = v["exploit_data"]
+            if f_obj.exploit_data:
+                data = f_obj.exploit_data
                 f.write(
                     f"--- Exploit Data (DB: {data.get('database', 'Unknown')}) ---\n"
                 )
@@ -429,6 +375,9 @@ def generate_payload_report(scan_dir, url, vulns):
 
             f.write(f"\n")
 
+    log_success(f"Payload report saved: {filename}")
+    return filename
+
 
 def generate_markdown_report(vulns, url, mode, scan_dir):
     """Generate Professional Markdown Report for Bug Bounty Platforms."""
@@ -439,10 +388,21 @@ def generate_markdown_report(vulns, url, mode, scan_dir):
         return None
 
     filename = os.path.join(scan_dir, "report.md")
+    findings = normalize_all(vulns)
 
-    counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
-    for v in vulns:
-        counts[get_severity(v.get("type", ""))] += 1
+    # Sort findings by severity (Critical -> High -> Medium -> Low -> Info)
+    severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+    findings.sort(key=lambda x: severity_order.get(x.severity, 5))
+
+    counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
+    for f in findings:
+        if f.severity in counts:
+            counts[f.severity] += 1
+
+    duration = "N/A"
+    if Stats.start_time:
+        duration_delta = datetime.now() - datetime.fromtimestamp(Stats.start_time)
+        duration = str(duration_delta).split(".")[0]
 
     md = f"""# cyberm4fia-scanner Executive Vulnerability Report
 
@@ -452,39 +412,48 @@ def generate_markdown_report(vulns, url, mode, scan_dir):
 
 ---
 
-## 📊 Summary Statistics
+## 📊 Executive Summary
+
+- **Duration:** {duration}
+- **Total Requests:** {Stats.total_requests}
+- **WAF Blocks:** {Stats.waf_blocks}
+- **Network Errors:** {Stats.errors}
+
+### Severity Breakdown
 
 | Severity | Count |
 |----------|-------|
 | 🛑 **Critical** | {counts["critical"]} |
 | 🔴 **High** | {counts["high"]} |
 | 🟠 **Medium** | {counts["medium"]} |
-| 🟢 **Low** | {counts["low"]} |
-| **Total** | **{len(vulns)}** |
+| 🟢 **Low / Info** | {counts["low"] + counts["info"]} |
+| **Total** | **{len(findings)}** |
 
 ---
 
 ## 🐛 Detailed Findings
 
 """
-    if not vulns:
-        md += "> ✅ **Secure:** No vulnerabilities detected during this scan.\n"
+    if not findings:
+        md += "> ✅ **Secure:** No vulnerabilities detected during this scan.\\n"
     else:
-        for idx, v in enumerate(vulns, 1):
-            severity = get_severity(v.get("type", "")).upper()
-            vtype = v.get("type", "Unknown")
+        for idx, f in enumerate(findings, 1):
+            severity = f.severity.upper()
 
-            md += f"### {idx}. [{severity}] {vtype} Vulnerability\n\n"
-            md += f"- **Endpoint:** `{v.get('url', 'N/A')}`\n"
-            md += f"- **Method:** `{v.get('method', 'GET').upper()}`\n"
-            md += f"- **Vulnerable Parameter:** `{v.get('param') or v.get('field', 'N/A')}`\n"
+            md += f"### {idx}. [{severity}] {f.title}\n\n"
+            md += f"- **Endpoint:** `{f.url or 'N/A'}`\n"
+            md += f"- **CWE ID:** `{f.cwe}`\n"
+            md += f"- **CVSS Score:** `{f.cvss}`\n"
+            md += f"- **Vulnerable Parameter:** `{f.param or 'N/A'}`\n"
 
-            payload = v.get("payload", "N/A")
+            payload = f.payload or "N/A"
             md += f"\n**Payload Used:**\n```text\n{payload}\n```\n"
 
-            if "exploit_data" in v:
-                data = v["exploit_data"]
-                md += "\n**🧠 Exploit Proof-of-Concept:**\n```json\n"
+            md += f"\n**🛡️ Remediation:**\n> {f.remediation}\n\n"
+
+            if f.exploit_data:
+                data = f.exploit_data
+                md += "**🧠 Exploit Proof-of-Concept:**\n```json\n"
                 md += json.dumps(data, indent=2)
                 md += "\n```\n"
 
@@ -494,7 +463,4 @@ def generate_markdown_report(vulns, url, mode, scan_dir):
         f.write(md)
 
     log_success(f"Markdown Report saved: {filename}")
-    return filename
-
-    log_success(f"Payload report saved: {filename}")
     return filename
