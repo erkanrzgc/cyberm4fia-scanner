@@ -110,8 +110,8 @@ def scan_xss_param(url, param, original_params, payloads, delay):
         all_payloads = list(payloads)
 
     if Config.OOB_CLIENT and Config.OOB_CLIENT.ready:
-        url = Config.OOB_CLIENT.generate_payload("xss", param)
-        all_payloads.append(f"\"><script src='{url}'></script>")
+        oob_url = Config.OOB_CLIENT.generate_payload("xss", param)
+        all_payloads.append(f"\"><script src='{oob_url}'></script>")
 
     for payload in all_payloads:
         test_params = original_params.copy()

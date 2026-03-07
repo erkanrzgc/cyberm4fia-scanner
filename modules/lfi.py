@@ -244,11 +244,11 @@ def scan_lfi(url, forms, delay, threads=None):
 
     # Apply tamper chain for WAF bypass variants
     chain = get_tamper_chain()
+    payloads = list(LFI_PAYLOADS)
     if chain.active:
-        global LFI_PAYLOADS
-        LFI_PAYLOADS = chain.apply_list(list(LFI_PAYLOADS))
+        payloads = chain.apply_list(payloads)
 
-    log_info(f"Testing LFI with {len(LFI_PAYLOADS)} payloads ({threads} threads)...")
+    log_info(f"Testing LFI with {len(payloads)} payloads ({threads} threads)...")
     vulns = []
 
     with ThreadPoolExecutor(max_workers=threads) as executor:

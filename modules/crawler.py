@@ -228,14 +228,53 @@ def crawl_site(start_url, max_pages=50):
             seen_forms.add(key)
             unique_forms.append(form)
 
+    # Filter static assets from the final URLs list to be scanned
+    def is_static(u):
+        p = urlparse(u).path.lower()
+        static_exts = [
+            ".css",
+            ".js",
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".gif",
+            ".svg",
+            ".woff",
+            ".woff2",
+            ".ttf",
+            ".eot",
+            ".ico",
+            ".mp4",
+            ".mp3",
+            ".webp",
+        ]
+        if any(p.endswith(ext) for ext in static_exts):
+            return True
+
+        static_paths = [
+            "/_next/static/",
+            "/node_modules/",
+            "/static/css/",
+            "/static/js/",
+        ]
+        if any(path in p for path in static_paths):
+            return True
+        return False
+
+    scannable_urls = [u for u in found_urls if not is_static(u)]
+
+    # Always ensure the starting URL is scanned
+    if start_url not in scannable_urls:
+        scannable_urls.insert(0, start_url)
+
     log_success(
-        f"Crawling finished. {len(found_urls)} URLs, {len(unique_forms)} forms, {len(api_endpoints)} API endpoints"
+        f"Crawling finished. Found {len(found_urls)} URLs (Filtered to {len(scannable_urls)} scannable), {len(unique_forms)} forms, {len(api_endpoints)} API endpoints"
     )
     if all_comments:
         log_warning(f"Found {len(all_comments)} interesting HTML comments")
 
     return {
-        "urls": list(found_urls),
+        "urls": scannable_urls,
         "forms": unique_forms,
         "api_endpoints": list(api_endpoints),
         "comments": all_comments,

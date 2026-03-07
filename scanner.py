@@ -57,9 +57,7 @@ from modules.subdomain_takeover import scan_subdomain_takeover  # noqa: E402
 from modules.tech_detect import scan_technology  # noqa: E402
 from modules.api_scanner import scan_api  # noqa: E402
 
-# Phase 5 modules
-from modules.ssti import scan_ssti  # noqa: E402
-from modules.xxe import scan_xxe  # noqa: E402
+# Phase 5 modules (SSTI and XXE run via core/engine.py)
 from modules.open_redirect import scan_open_redirect  # noqa: E402
 from modules.spray import scan_spray  # noqa: E402
 from modules.email_harvest import scan_email_harvest  # noqa: E402
@@ -70,7 +68,6 @@ from utils.wordlist_gen import generate_wordlist  # noqa: E402
 # Phase 7 modules
 from modules.race_condition import scan_race_condition  # noqa: E402
 from modules.jwt_attack import scan_jwt  # noqa: E402
-from utils.headless import render_page, crawl_spa  # noqa: E402
 from modules.smuggling import scan_smuggling  # noqa: E402
 from modules.proto_pollution import scan_proto_pollution  # noqa: E402
 from modules.deserialization import scan_deserialization  # noqa: E402
@@ -81,8 +78,7 @@ from utils.tamper import TamperChain, set_tamper_chain  # noqa: E402
 from core.scope import ScopeFilter, set_scope, get_scope  # noqa: E402
 from core.session import ScanSession  # noqa: E402
 from core.output import save_findings_json, save_sarif, print_severity_summary  # noqa: E402
-
-from rich.console import Console
+from utils.colors import console, save_console_log
 from rich.table import Table
 from utils.ai import (  # noqa: E402
     init_ai,
@@ -92,17 +88,18 @@ from utils.ai import (  # noqa: E402
     generate_remediation,
     generate_scan_summary,
 )
-
-console = Console()
 from modules.recon import run_recon, scan_subdomains  # noqa: E402
 from modules.report import (  # noqa: E402
     generate_html_report,
     generate_json_report,
     generate_payload_report,
+    generate_markdown_report,
 )
-from modules.fuzzer import scan_fuzzer  # noqa: E402
+from modules.poc_generator import generate_pocs  # noqa: E402
+from modules.endpoint_fuzzer import scan_fuzzer_async  # noqa: E402
 from modules.cors import scan_cors  # noqa: E402
 from modules.header_inject import scan_header_inject  # noqa: E402
+from modules.csrf import scan_csrf  # noqa: E402
 from modules.compare import (  # noqa: E402
     compare_scans,
     print_comparison,
@@ -140,7 +137,10 @@ def parse_args():
     parser.add_argument(
         "--subdomain", action="store_true", help="Enable Subdomain scan"
     )
-    parser.add_argument("--fuzz", action="store_true", help="Enable Directory Fuzzer")
+    parser.add_argument("--fuzz", action="store_true", help="Enable High-Speed API/Directory Fuzzer")
+    parser.add_argument(
+        "--wordlist-file", default="wordlists/api_endpoints.txt", metavar="FILE", help="Custom wordlist for Fuzzer"
+    )
     parser.add_argument("--ssrf", action="store_true", help="Enable SSRF scan")
     parser.add_argument(
         "--oob", action="store_true", help="Enable Out-Of-Band (OOB) testing"
@@ -178,6 +178,13 @@ def parse_args():
     )
     parser.add_argument(
         "--compare", nargs=2, metavar=("SCAN1", "SCAN2"), help="Compare two scan dirs"
+    )
+    # Proxy / Interceptor Mode
+    parser.add_argument(
+        "--proxy-listen", type=int, metavar="PORT", help="Start local MITM proxy to automatically scan intercepted traffic (e.g., 8081)"
+    )
+    parser.add_argument(
+        "--scope-proxy", type=str, metavar="DOMAIN", help="Target domain for the proxy interceptor (e.g., wisarc.com)"
     )
     # Phase 4 flags
     parser.add_argument(
@@ -289,9 +296,9 @@ def parse_args():
 
 
 def get_input(prompt, default=""):
-    """Get user input with default value"""
+    """Get user input with default value using rich Console to record it"""
     try:
-        val = input(f"{Colors.BOLD}{prompt}{Colors.END} ").strip()
+        val = console.input(f"{Colors.BOLD}{prompt}{Colors.END} ").strip()
         return val if val else default
     except EOFError:
         return default
@@ -299,17 +306,17 @@ def get_input(prompt, default=""):
 
 def interactive_menu():
     """Interactive menu for scan options"""
-    url = get_input("[?] Target URL:", "")
-    if not url:
-        log_error("No URL provided!")
-        sys.exit(1)
+    url = get_input("\n[?] Target URL:", "")
+    while not url:
+        log_error("No URL provided! Please enter a valid URL.")
+        url = get_input("\n[?] Target URL:", "")
 
     if not url.startswith(("http://", "https://")):
         url = "http://" + url
 
     # Scan mode
-    print(f"{Colors.BOLD}[?] Scan mode:")
-    print(f"    1-Quick  2-Normal  3-Aggressive  4-Stealth{Colors.END}")
+    console.print(f"{Colors.BOLD}[?] Scan mode:")
+    console.print(f"    1-Quick  2-Normal  3-Aggressive  4-Stealth{Colors.END}")
     mode_choice = get_input("[?] Choice [2]:", "2")
 
     modes = {
@@ -320,53 +327,86 @@ def interactive_menu():
     }
     mode, delay, threads = modes.get(mode_choice, ("normal", Config.REQUEST_DELAY, 10))
 
-    # Options
-    options = {}
-    options["recon"] = get_input("[?] Run Server Recon? (Y/n)", "Y").lower() != "n"
-    options["subdomain"] = (
-        get_input("[?] Run Subdomain Scan? (y/N)", "N").lower() == "y"
-    )
-    options["fuzz"] = get_input("[?] Run Directory Fuzzer? (y/N)", "N").lower() == "y"
-    options["crawl"] = get_input("[?] Crawl site? (y/N)", "N").lower() == "y"
-    options["xss"] = get_input("[?] Test XSS? (y/N)", "N").lower() == "y"
-    options["sqli"] = get_input("[?] Test SQLi? (y/N)", "N").lower() == "y"
-    options["lfi"] = get_input("[?] Test LFI? (y/N)", "N").lower() == "y"
-    options["rfi"] = get_input("[?] Test RFI? (y/N)", "N").lower() == "y"
-    options["cmdi"] = get_input("[?] Test Command Injection? (y/N)", "N").lower() == "y"
-    options["dom_xss"] = (
-        get_input("[?] Test DOM XSS? (y/N) [Requires Selenium]", "N").lower() == "y"
-    )
-    options["secrets"] = (
-        get_input("[?] Scan for Secrets & API Keys in JS/HTML? (y/N)", "N").lower()
-        == "y"
-    )
-    options["oob"] = (
-        get_input("[?] Use Out-of-Band (OOB) Testing? (y/N)", "N").lower() == "y"
-    )
-    options["ssrf"] = get_input("[?] Test SSRF? (y/N)", "N").lower() == "y"
-    options["csrf"] = get_input("[?] Test CSRF? (y/N)", "N").lower() == "y"
-    options["cors"] = get_input("[?] Check CORS? (y/N)", "N").lower() == "y"
-    options["header_inject"] = (
-        get_input("[?] Test Header Injection? (y/N)", "N").lower() == "y"
-    )
-    # Phase 4 options
-    print(
-        f"\n{Colors.BOLD}{Colors.CYAN}── Phase 4: Infrastructure & Cloud ──{Colors.END}"
-    )
-    options["tech"] = (
-        get_input("[?] Run Technology Fingerprinting? (Y/n)", "Y").lower() != "n"
-    )
-    options["cloud"] = (
-        get_input("[?] Scan Cloud Buckets (S3/Azure/GCP)? (y/N)", "N").lower() == "y"
-    )
-    options["takeover"] = (
-        get_input("[?] Scan Subdomain Takeover? (y/N)", "N").lower() == "y"
-    )
-    options["api_scan"] = (
-        get_input("[?] Run API Security Scan? (y/N)", "N").lower() == "y"
-    )
+    # Attack Profiles
+    console.print(f"\n{Colors.BOLD}[?] Attack Profile:{Colors.END}")
+    console.print(f"    [1] 🕷️  Fast Recon (Recon, Subdomains, Fuzzer)")
+    console.print(f"    [2] 💉 Core Web Vulns (XSS, SQLi, LFI, CMDi, CSRF, CORS)")
+    console.print(f"    [3] 💥 Advanced / Modern (JWT, Deser, SSTI, Race, Proto, SSRF, BizLogic)")
+    console.print(f"    [4] 🔥 ALL-IN-ONE (Scan Everything!)")
+    console.print(f"    [5] ⚙️  Custom Choice (Ask me one by one)")
+    profile_choice = get_input(f"[?] Choice [4]:", "4")
+
+    # Options Dictionary initialization mapping
+    options = {
+        "recon": False, "subdomain": False, "fuzz": False, "crawl": False,
+        "xss": False, "sqli": False, "lfi": False, "rfi": False, "cmdi": False,
+        "dom_xss": False, "secrets": False, "oob": False, "ssrf": False, "csrf": False,
+        "cors": False, "header_inject": False, "tech": False, "cloud": False, 
+        "takeover": False, "api_scan": False, "ssti": False, "xxe": False, 
+        "redirect": False, "spray": False, "email": False, "passive": False,
+        "jwt": False, "race": False, "smuggle": False, "proto": False, "deser": False,
+        "bizlogic": False
+    }
+
+    if profile_choice == "1":
+        options["recon"] = options["subdomain"] = options["fuzz"] = options["tech"] = options["passive"] = True
+    elif profile_choice == "2":
+        options["xss"] = options["sqli"] = options["lfi"] = options["rfi"] = options["cmdi"] = True
+        options["csrf"] = options["cors"] = options["header_inject"] = options["passive"] = True
+        options["dom_xss"] = True
+    elif profile_choice == "3":
+        options["jwt"] = options["deser"] = options["ssti"] = options["race"] = options["proto"] = True
+        options["ssrf"] = options["bizlogic"] = options["redirect"] = options["smuggle"] = options["xxe"] = True
+        options["api_scan"] = options["oob"] = True
+    elif profile_choice == "4":
+        for k in options.keys():
+            options[k] = True
+    else:
+        # Profile 5: Custom Choice
+        console.print(f"\n{Colors.CYAN}--- Custom Selection ---{Colors.END}")
+        options["recon"] = get_input("[?] Run Server Recon? (Y/n)", "Y").lower() != "n"
+        options["subdomain"] = get_input("[?] Run Subdomain Scan? (y/N)", "N").lower() == "y"
+        options["fuzz"] = get_input("[?] Run Directory Fuzzer? (y/N)", "N").lower() == "y"
+        options["crawl"] = get_input("[?] Crawl site? (y/N)", "N").lower() == "y"
+        options["xss"] = get_input("[?] Test XSS? (y/N)", "N").lower() == "y"
+        options["sqli"] = get_input("[?] Test SQLi? (y/N)", "N").lower() == "y"
+        options["lfi"] = get_input("[?] Test LFI? (y/N)", "N").lower() == "y"
+        options["rfi"] = get_input("[?] Test RFI? (y/N)", "N").lower() == "y"
+        options["cmdi"] = get_input("[?] Test Command Injection? (y/N)", "N").lower() == "y"
+        options["dom_xss"] = get_input("[?] Test DOM XSS? (y/N) [Requires Selenium]", "N").lower() == "y"
+        options["secrets"] = get_input("[?] Scan for Secrets in JS/HTML? (y/N)", "N").lower() == "y"
+        options["oob"] = get_input("[?] Use Out-of-Band (OOB) Testing? (y/N)", "N").lower() == "y"
+        options["ssrf"] = get_input("[?] Test SSRF? (y/N)", "N").lower() == "y"
+        options["csrf"] = get_input("[?] Test CSRF? (y/N)", "N").lower() == "y"
+        options["cors"] = get_input("[?] Check CORS? (y/N)", "N").lower() == "y"
+        options["header_inject"] = get_input("[?] Test Header Injection? (y/N)", "N").lower() == "y"
+
+        console.print(f"\n{Colors.BOLD}{Colors.CYAN}── Phase 4: Infrastructure & Cloud ──{Colors.END}")
+        options["tech"] = get_input("[?] Run Technology Fingerprinting? (Y/n)", "Y").lower() != "n"
+        options["cloud"] = get_input("[?] Scan Cloud Buckets (S3/Azure/GCP)? (y/N)", "N").lower() == "y"
+        options["takeover"] = get_input("[?] Scan Subdomain Takeover? (y/N)", "N").lower() == "y"
+        options["api_scan"] = get_input("[?] Run API Security Scan? (y/N)", "N").lower() == "y"
+
+        console.print(f"\n{Colors.BOLD}{Colors.CYAN}── Phase 5: Advanced Injection & OSINT ──{Colors.END}")
+        options["ssti"] = get_input("[?] Test SSTI? (y/N)", "N").lower() == "y"
+        options["xxe"] = get_input("[?] Test XXE? (y/N)", "N").lower() == "y"
+        options["redirect"] = get_input("[?] Test Open Redirect? (y/N)", "N").lower() == "y"
+        options["spray"] = get_input("[?] Default Credential Spraying? (y/N)", "N").lower() == "y"
+        options["email"] = get_input("[?] Email Harvesting? (y/N)", "N").lower() == "y"
+        options["passive"] = get_input("[?] Passive Scanning? (Y/n)", "Y").lower() != "n"
+
+        console.print(f"\n{Colors.BOLD}{Colors.CYAN}── Phase 7: Advanced Attacks ──{Colors.END}")
+        options["jwt"] = get_input("[?] JWT Attack Suite? (y/N)", "N").lower() == "y"
+        options["race"] = get_input("[?] Race Condition Scanner? (y/N)", "N").lower() == "y"
+        options["smuggle"] = get_input("[?] HTTP Smuggling? (y/N)", "N").lower() == "y"
+        options["proto"] = get_input("[?] Prototype Pollution? (y/N)", "N").lower() == "y"
+        options["deser"] = get_input("[?] Insecure Deserialization? (y/N)", "N").lower() == "y"
+        options["bizlogic"] = get_input("[?] Business Logic Flaws? (y/N)", "N").lower() == "y"
 
     options["cookie"] = get_input("[?] Cookie (leave empty for none)", "")
+    options["ai"] = get_input("[?] Enable AI Vulnerability Analysis (Ollama)? (y/N)", "N").lower() == "y"
+    options["ai_model"] = "WhiteRabbitNeo/Llama-3.1-WhiteRabbitNeo-2-8B"
+    options["proxy_listen"] = get_input("[?] Start MITM Proxy Interceptor in background (Port 8081)? (y/N)", "N").lower() == "y"
     options["html"] = get_input("[?] Generate HTML report? (y/N)", "N").lower() == "y"
     options["threads"] = threads
 
@@ -439,10 +479,11 @@ def print_summary(vulns, recon_data=None):
                 f"{vtype} ({v.get('id')})", v.get("url", ""), v.get("name", "")
             )
         else:
+            details = v.get("payload") or v.get("evidence") or v.get("description") or v.get("issue") or ""
             vuln_table.add_row(
                 vtype,
                 f"{v.get('url', '')} [{v.get('field', 'URL')}]",
-                str(v.get("payload", "")),
+                str(details),
             )
 
     console.print(vuln_table)
@@ -470,6 +511,15 @@ def main():
         result = compare_scans(args.compare[0], args.compare[1])
         print_comparison(result)
         save_comparison_json(result, "comparison_report.json")
+        return
+
+    # Proxy Interceptor mode
+    if getattr(args, "proxy_listen", None):
+        if not getattr(args, "scope_proxy", None):
+            log_error("You must provide --scope-proxy <domain> when using --proxy-listen")
+            sys.exit(1)
+        from modules.proxy_interceptor import start_proxy
+        start_proxy(listen_port=args.proxy_listen, scope=args.scope_proxy)
         return
 
     if args.url:
@@ -561,9 +611,7 @@ def main():
             scope = ScopeFilter(include=include, exclude=exclude)
             set_scope(scope)
 
-        # Initialize AI client
-        if options.get("ai"):
-            init_ai(model=options.get("ai_model", "deepseek-r1:14b"))
+        # Initialize AI client (Moved to global setup so interactive mode catches it too)
 
         # Initialize session (resume or new)
         session = None
@@ -587,10 +635,28 @@ def main():
     Stats.reset()
     Stats.start_time = datetime.now().timestamp()
 
+    # Initialize AI logic globally if enabled (CLI or Interactive)
+    if options.get("ai"):
+        init_ai(model=options.get("ai_model", "WhiteRabbitNeo/Llama-3.1-WhiteRabbitNeo-2-8B"))
+
     if options.get("oob"):
         Config.OOB_CLIENT = OOBClient()
 
-    # Set proxy if provided
+    # If proxy_listen was enabled interactively, start it in the background
+    if options.get("proxy_listen"):
+        from urllib.parse import urlparse
+        import threading
+        from modules.proxy_interceptor import start_proxy
+        
+        scope = urlparse(url).netloc.split(':')[0]
+        port = 8081
+        t = threading.Thread(target=start_proxy, args=(port, scope), daemon=True)
+        t.start()
+        # Allow proxy a second to bind
+        import time
+        time.sleep(1)
+
+    # Set proxy if provided (Active Scanner Routing)
     if hasattr(args, "proxy_url") and args.proxy_url:
         Config.PROXY = args.proxy_url
         log_info(f"Proxy set: {args.proxy_url}")
@@ -652,8 +718,19 @@ def main():
             osint_data = scan_osint(url, delay=delay)  # noqa: F841
 
         # Technology Fingerprinting (run early — informs other scans)
+        tech_results = []
+        cve_intel = []
         if options.get("tech"):
-            scan_technology(url, delay=delay)
+            tech_results = scan_technology(url, delay=delay)
+
+            # SiberAdar CVE Threat Intelligence Feed
+            try:
+                from utils.cve_feed import enrich_with_cves
+
+                cve_intel = enrich_with_cves(tech_results)
+            except Exception as e:
+                log_warning(f"CVE feed unavailable: {e}")
+                cve_intel = []
 
         # Cloud Storage Enumeration
         if options.get("cloud"):
@@ -677,14 +754,24 @@ def main():
         if options.get("subdomain"):
             scan_subdomains(target_host)
 
-        # Directory Fuzzer
+        # Get URLs to scan
+        urls_to_scan = [url]
+        crawled_forms = []
+
+        # Async API/Directory Fuzzer
         if options.get("fuzz"):
-            scan_fuzzer(
+            # Use custom wordlist from CLI if provided, else use default
+            wordlist_path = getattr(args, "wordlist_file", "wordlists/api_endpoints.txt")
+            endpoints = scan_fuzzer_async(
                 url,
-                "wordlists/common.txt",
-                threads=options.get("threads", 10),
+                wordlist_path,
+                threads=options.get("threads", 50),
                 delay=delay,
             )
+            # Add discovered endpoints to the scan scope automatically
+            if endpoints:
+                urls_to_scan.extend([e["url"] for e in endpoints if e["status"] in [200, 301, 302, 307, 308]])
+                urls_to_scan = list(set(urls_to_scan))
 
         # CORS check (once per target, before crawl)
         if options.get("cors"):
@@ -698,19 +785,28 @@ def main():
         else:
             header_vulns = []
 
-        # Get URLs to scan
-        urls_to_scan = [url]
-        crawled_forms = []
         if options.get("headless"):
-            # Use headless browser for SPA rendering
-            log_info("Using headless browser for SPA crawling...")
-            crawl_result = crawl_spa(url, max_pages=20)
-            urls_to_scan = crawl_result.get("urls", [url])
+            # Use dynamic Playwright crawler for SPA rendering and API interception
+            from modules.dynamic_crawler import run_dynamic_spider
+            
+            log_info("Using dynamic Playwright crawler for SPA...")
+            crawl_result = run_dynamic_spider(url, delay=delay)
+            
+            # Extract discovered links
+            found_links = crawl_result.get("links", [])
+            urls_to_scan = list(set([url] + found_links))
             crawled_forms = crawl_result.get("forms", [])
-            # Also render the main page to extract JS variables and API calls
-            rendered = render_page(url)
-            if rendered and rendered.get("js_variables"):
-                log_info(f"Exposed JS vars: {list(rendered['js_variables'].keys())}")
+            
+            # Extract internal API endpoints and add GET requests to scan scope
+            endpoints = crawl_result.get("endpoints", [])
+            if endpoints:
+                log_success(f"Discovered {len(endpoints)} background API endpoints")
+                for method, e_url in endpoints:
+                    if method.upper() == "GET":
+                        urls_to_scan.append(e_url)
+                        
+            # Limit scope to avoid excessive scanning
+            urls_to_scan = list(set(urls_to_scan))[:30]
         elif options.get("crawl"):
             crawl_result = crawl_site(url, max_pages=30)
             # Handle both old (list) and new (dict) return formats
@@ -725,6 +821,10 @@ def main():
 
         # Scan each URL
         all_vulns = cors_vulns + header_vulns + cloud_vulns + takeover_vulns + api_vulns
+
+        # Merge CVE threat intel (collected earlier from SiberAdar)
+        if tech_results and cve_intel:
+            all_vulns.extend(cve_intel)
 
         # Apply scope filter to crawled URLs
         scope = get_scope()
@@ -746,19 +846,20 @@ def main():
                 resp = smart_request("get", scan_url)
                 soup = BeautifulSoup(resp.content, "lxml")
                 forms = soup.find_all("form")
-                # Merge crawled forms for this URL
-                if crawled_forms:
-                    for cf in crawled_forms:
-                        if (
-                            cf.get("source_page") == scan_url
-                            or cf.get("action") == scan_url
-                        ):
-                            forms.append(cf)
+                # Note: crawled_forms are dicts (not BS Tags), so we don't
+                # merge them into 'forms' to avoid AttributeError on find_all().
+                # Crawled URLs are already in urls_to_scan and will be parsed
+                # independently when visited.
 
                 # Passive scanning (no extra requests — analyzes the response)
                 if options.get("passive"):
                     passive_vulns = scan_passive(scan_url, response=resp)
                     all_vulns.extend(passive_vulns)
+
+                # CSRF scan (needs forms)
+                if options.get("csrf") and forms:
+                    csrf_vulns = scan_csrf(scan_url, forms, delay)
+                    all_vulns.extend(csrf_vulns)
 
                 # Phase 1: Run error-based modules concurrently (async engine)
                 from core.engine import run_modules_async
@@ -830,7 +931,7 @@ def main():
                             log_warning(
                                 "Union SQLi found but data extraction failed. Falling back to Blind SQLi..."
                             )
-                        print(
+                        console.print(
                             f"\n{Colors.BOLD}{Colors.CYAN}"
                             f"[?] Run Blind SQLi? "
                             f"(slow, time-based) (y/N)"
@@ -877,6 +978,11 @@ def main():
             except Exception as e:
                 log_error(f"Failed to scan {scan_url}: {e}")
 
+            # Session: mark URL as done and save incrementally
+            if session and session.active:
+                session.mark_url_done(scan_url)
+                session.save()
+
         # Process OOB callbacks
         if Config.OOB_CLIENT and Config.OOB_CLIENT.ready:
             print(
@@ -892,17 +998,8 @@ def main():
                 log_info("No OOB callbacks received.")
 
         # ──── Phase 5: Post-scan modules ────
-
-        # SSTI scan on discovered URLs
-        if options.get("ssti"):
-            for scan_url in urls_to_scan:
-                ssti_vulns = scan_ssti(scan_url, delay)
-                all_vulns.extend(ssti_vulns)
-
-        # XXE scan
-        if options.get("xxe"):
-            xxe_vulns = scan_xxe(url, delay)
-            all_vulns.extend(xxe_vulns)
+        # Note: SSTI and XXE already run via engine (core/engine.py)
+        # so they are NOT called again here to avoid duplicates.
 
         # Open Redirect scan
         if options.get("redirect"):
@@ -933,7 +1030,7 @@ def main():
         # Race Condition Scanner
         if options.get("race"):
             race_vulns = scan_race_condition(
-                url, forms=[], delay=delay, cookie=options.get("cookie")
+                url, forms=crawled_forms, delay=delay, cookie=options.get("cookie")
             )
             all_vulns.extend(race_vulns)
 
@@ -954,7 +1051,7 @@ def main():
 
         # Business Logic
         if options.get("bizlogic"):
-            bizlogic_vulns = scan_business_logic(url, forms=[], delay=delay)
+            bizlogic_vulns = scan_business_logic(url, forms=crawled_forms, delay=delay)
             all_vulns.extend(bizlogic_vulns)
 
         # Vulnerability Chaining Analysis
@@ -963,6 +1060,9 @@ def main():
 
         # ──── End multi-target loop ────
         # (Note: for multi-target, summary/reports run after all targets are done)
+        
+        from utils.finding import deduplicate_findings
+        all_vulns = deduplicate_findings(all_vulns)
 
         # ─── AI Analysis Pipeline ────────────────────────────────────────
         if options.get("ai") and all_vulns:
@@ -1014,6 +1114,8 @@ def main():
             generate_html_report(all_vulns, url, mode, scan_dir)
 
         generate_payload_report(scan_dir, url, all_vulns)
+        generate_markdown_report(all_vulns, url, mode, scan_dir)
+        generate_pocs(all_vulns, scan_dir)  # Generate offensive PoC elements
 
         # Normalize all findings with CVSS/CWE data
         findings = normalize_all(all_vulns)
@@ -1033,7 +1135,7 @@ def main():
         # Enhanced JSON with CVSS/CWE severity breakdown
         if Config.JSON_OUTPUT:
             save_findings_json(
-                findings,
+                all_vulns,
                 scan_dir,
                 url,
                 mode,
@@ -1059,6 +1161,9 @@ def main():
             session.mark_completed()
 
         log_success(f"Log saved: {log_file}")
+        
+        # Save complete recorded console output to log file
+        save_console_log()
 
 
 if __name__ == "__main__":

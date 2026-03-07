@@ -49,6 +49,8 @@ scanner.py                          ← Main orchestrator
 │   ├── payloads.py                 ← Static payload lists
 │   ├── report.py                   ← HTML/JSON/TXT report generator
 │   ├── compare.py                  ← Two-scan comparison
+│   ├── poc_generator.py            ← Auto-generates exploit PoC HTML/JSON files
+│   ├── proxy_interceptor.py        ← MITM Proxy to capture manual browser traffic
 │   └── template_engine.py          ← Nuclei-style YAML template runner
 └── utils/
     ├── colors.py                   ← Colored logging
@@ -263,6 +265,9 @@ Step 5: Try smart payloads first, fall back to static list if needed
 - **Secret management:** `.env` + `python-dotenv` (never hardcode API keys)
 - **API server:** FastAPI with auto-generated Swagger UI (`/docs`) and ReDoc (`/redoc`)
 - **Testing:** pytest with 38 unit tests
+- **AI Vulnerability Deduplication:** Advanced AI filtering combining duplicated parameter hits and pruning Info/Low findings to optimize execution times.
+- **MITM Proxy Interception:** Built on `mitmproxy`, captures and filters in-flight traffic for targeted scoping.
+- **PoC Engine:** Produces functional `.html` proof-of-concept exploits (e.g. Clickjacking, MIME sniffing).
 - **CI/CD:** GitHub Actions pipeline (lint + test + compile-check)
 
 ---

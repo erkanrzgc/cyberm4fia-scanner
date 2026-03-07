@@ -64,6 +64,14 @@ def scan_text_for_secrets(text, source_url):
             if not match_val:
                 continue
 
+            # Avoid AWS Pre-signed URL false positives
+            if secret_name == "AWS Access Key ID":
+                idx = text.find(match_val)
+                if idx != -1:
+                    context = text[max(0, idx - 40) : idx].lower()
+                    if "amz-credential" in context:
+                        continue
+
             # Entropy Check for Generic Secrets
             # Real tokens usually have an entropy between ~3.5 and ~5.0
             # Common English text or simple repetitive arrays are lower.

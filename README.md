@@ -54,6 +54,8 @@
 | WAF Bypass | *(auto)* | WAF fingerprinting (22 vendors) + adaptive evasion |
 | Race Condition | `--race` | TOCTOU / race condition scanner |
 | Template Engine | *(auto)* | Nuclei-style YAML scan templates |
+| PoC Generator | *(auto)* | Auto-generates HTML/JSON Proof-of-Concept exploits for vulnerabilities |
+| Proxy Interceptor| *(auto)* | Built-in MITM proxy to capture and relay live browser traffic for scanning |
 
 ---
 
