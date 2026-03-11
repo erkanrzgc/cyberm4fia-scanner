@@ -160,3 +160,29 @@ class TestScanSession:
         session.add_pending_urls(["a", "b", "c"])
         session.add_pending_urls(["b", "c", "d"])
         assert len(session.data["pending_urls"]) == 4
+
+    def test_restore_config_merges_saved_options_with_explicit_overrides(self):
+        session = ScanSession()
+        session.set_target(
+            "https://example.com",
+            "stealth",
+            {
+                "xss": True,
+                "threads": 1,
+                "proxy_url": "http://saved:8080",
+                "json_output": True,
+            },
+        )
+
+        restored = session.restore_config(
+            default_options={"xss": False, "threads": 10, "proxy_url": "", "json_output": False},
+            override_options={"threads": 30, "proxy_url": "http://override:8080"},
+            override_keys={"threads"},
+        )
+
+        assert restored["target"] == "https://example.com"
+        assert restored["mode"] == "stealth"
+        assert restored["options"]["xss"] is True
+        assert restored["options"]["threads"] == 30
+        assert restored["options"]["proxy_url"] == "http://saved:8080"
+        assert restored["options"]["json_output"] is True

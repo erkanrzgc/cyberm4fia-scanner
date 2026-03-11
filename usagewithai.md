@@ -30,7 +30,7 @@ scanner.py                          ← Main orchestrator
 │   ├── rfi.py                      ← Remote File Inclusion
 │   ├── cmdi.py                     ← Command Injection
 │   │   └── cmdi_shell.py           ← Interactive shell
-│   ├── dom_xss.py                  ← DOM-based XSS (requires Selenium)
+│   ├── dom_xss.py                  ← DOM-based XSS (requires Playwright)
 │   ├── ssrf.py                     ← Server-Side Request Forgery
 │   ├── csrf.py                     ← Cross-Site Request Forgery
 │   ├── cors.py                     ← CORS misconfiguration
@@ -39,7 +39,7 @@ scanner.py                          ← Main orchestrator
 │   ├── xxe.py                      ← XML External Entity Injection
 │   ├── open_redirect.py            ← Open Redirect Scanner
 │   ├── spray.py                    ← Credential Sprayer (SSH/FTP/MySQL/Redis)
-│   ├── api_scanner.py              ← API Security (OWASP API Top 10)
+│   ├── api_scanner.py              ← API Security (OWASP API Top 10 + OpenAPI import + body/auth extraction + placeholder injection)
 │   ├── cloud_enum.py               ← Cloud Bucket Enumeration (S3/Azure/GCP)
 │   ├── subdomain_takeover.py       ← Subdomain Takeover Detection
 │   ├── tech_detect.py              ← Technology Fingerprinting
@@ -107,14 +107,29 @@ scanner.py                          ← Main orchestrator
 
 ## ⚡ Scan Modes
 
+<!-- BEGIN GENERATED: scan_modes -->
 | Mode | Delay | Threads | Use Case |
 |---|---|---|---|
-| `1-Quick` | 0.05s | 10 | Fast general scan |
-| `2-Normal` | 0.3s | 10 | Default, balanced |
-| `3-Aggressive` | 0.05s | 30 | Full power (may trigger WAF!) |
-| `4-Stealth` | 2.0s | 1 | Slow but stealthy, evades WAF/IDS |
+| `normal` | 0.5s | 10 | Balanced default mode for most targets. |
+| `stealth` | 3.0s | 1 | Slow, low-noise mode for cautious testing. |
+| `lab` | 0.05s | 30 | High-noise mode for local labs, staging, and CTF environments only. |
+<!-- END GENERATED: scan_modes -->
 
-**AI Advice:** Use `4-Stealth` or `2-Normal` on real targets. `3-Aggressive` is fine for lab environments (DVWA, Metasploitable).
+**AI Advice:** Use `stealth` or `normal` on real targets. Use `lab` only on local labs, staging, or CTF-style environments.
+
+---
+
+## 🎛️ Attack Profiles
+
+<!-- BEGIN GENERATED: attack_profiles -->
+| Profile | Coverage | Included Flags | Suggested Extras |
+|---|---|---|---|
+| `1-Fast Recon` | Recon, subdomain discovery, endpoint fuzzing, technology intel, and passive checks. | `--fuzz`, `--passive`, `--recon`, `--subdomain`, `--tech` | `--crawl`, `--osint`, `--headless` |
+| `2-Core Web Vulns` | Core web checks like XSS, SQLi, file inclusion, CMDi, CSRF, CORS, and DOM XSS. | `--cmdi`, `--cors`, `--csrf`, `--dom-xss`, `--header-inject`, `--lfi`, `--passive`, `--rfi`, `--sqli`, `--xss` | `--secrets`, `--oob`, `--headless` |
+| `3-Advanced / Modern` | JWT, deserialization, SSTI, race, prototype pollution, SSRF, business logic, API, OOB, and XXE coverage. | `--api-scan`, `--bizlogic`, `--deser`, `--jwt`, `--oob`, `--proto`, `--race`, `--redirect`, `--smuggle`, `--ssrf`, `--ssti`, `--xxe` | `--tech`, `--passive`, `--chain` |
+| `4-All-In-One` | Enables nearly every scan module except opt-in extras like AI and SARIF. | `(auto via --all)`, `--api-scan`, `--bizlogic`, `--chain`, `--cloud`, `--cmdi`, `--cors`, `--crawl`, `--csrf`, `--deser`, `--dom-xss`, `--email`, `--fuzz`, `--header-inject`, `--headless`, `--html`, `--jwt`, `--lfi`, `--oob`, `--osint`, `--passive`, `--proto`, `--race`, `--recon`, `--redirect`, `--rfi`, `--secrets`, `--smuggle`, `--spray`, `--sqli`, `--ssrf`, `--ssti`, `--subdomain`, `--takeover`, `--tech`, `--xss`, `--xxe` | `--wordlist` |
+| `5-Custom Choice` | Ask every module prompt one by one. | `manual selection` | - |
+<!-- END GENERATED: attack_profiles -->
 
 ---
 
@@ -168,6 +183,11 @@ python3 scanner.py -u http://192.168.1.100/dvwa/ --xss --sqli --lfi --cmdi \
 python3 scanner.py -u https://api.target.com --api-scan --tech
 ```
 
+### API security scan with local OpenAPI spec
+```bash
+python3 scanner.py -u https://api.target.com --api-scan --api-spec openapi.yaml
+```
+
 ### Two-scan comparison
 ```bash
 python3 scanner.py --compare scans/target_1/ scans/target_2/
@@ -191,48 +211,94 @@ Each scan creates results under `scans/<target>/`:
 
 ## 🔧 All CLI Flags
 
-```
-Target:
-  -u, --url URL           Target URL
-  -l, --list FILE         Target list file
+<!-- BEGIN GENERATED: cli_flags -->
+### Target & Scope
+| Flag | Description |
+|---|---|
+| `-u URL, --url URL` | Target URL |
+| `--compare SCAN1 SCAN2` | Compare two scan dirs |
+| `-l TARGET_LIST, --list TARGET_LIST` | File with list of target URLs |
+| `--scope SCOPE` | Scope include patterns (comma-separated, e.g. '*.target.com') |
+| `--exclude EXCLUDE` | Scope exclude patterns (comma-separated, e.g. '/logout,*.pdf') |
+| `--session SESSION` | Session file for save/resume (e.g. scan1.json) |
+| `--resume RESUME` | Resume scan from session file |
 
-Scan Modules:
-  --recon                 Network discovery (port scan + banner)
-  --subdomain             Subdomain enumeration
-  --fuzz                  Directory discovery
-  --crawl                 Site crawler
-  --xss                   XSS scanning
-  --sqli                  SQL Injection
-  --lfi                   Local File Inclusion
-  --rfi                   Remote File Inclusion
-  --cmdi                  Command Injection
-  --ssrf                  SSRF scanning
-  --ssti                  Template Injection
-  --xxe                   XXE scanning
-  --redirect              Open Redirect
-  --cors                  CORS misconfiguration
-  --header-inject         Header Injection
-  --dom-xss               DOM-based XSS
-  --api-scan              API security scan
-  --cloud                 Cloud bucket scan
-  --takeover              Subdomain takeover
-  --tech                  Technology detection
-  --spray                 Credential sprayer
-  --email                 Email harvester
-  --osint                 Shodan/WHOIS/ASN
-  --chain                 Vulnerability chaining
-  --wordlist              Wordlist generator
-  --all                   ENABLE ALL
+### Scan Modules
+| Flag | Description |
+|---|---|
+| `--all` | Enable ALL scan modules |
+| `--xss` | Enable XSS scan |
+| `--sqli` | Enable SQLi scan |
+| `--lfi` | Enable LFI scan |
+| `--rfi` | Enable RFI scan |
+| `--cmdi` | Enable Command Injection scan |
+| `--dom-xss` | Enable DOM XSS scan |
+| `--secrets` | Scan for Secrets & API Keys in JS/HTML |
+| `--recon` | Enable Server Recon |
+| `--subdomain` | Enable Subdomain scan |
+| `--fuzz` | Enable High-Speed API/Directory Fuzzer |
+| `--ssrf` | Enable SSRF scan |
+| `--oob` | Enable Out-Of-Band (OOB) testing |
+| `--csrf` | Enable CSRF scan |
+| `--cors` | Enable CORS check |
+| `--header-inject` | Enable Header Injection scan |
+| `--crawl` | Enable Crawling |
+| `--passive` | Enable passive scanning (header/secret/debug checks) |
+| `--cloud` | Scan for open cloud buckets (S3/Azure/GCP) |
+| `--takeover` | Scan for subdomain takeover |
+| `--tech` | Technology fingerprinting |
+| `--api-scan` | API security scan (OWASP API Top 10) |
+| `--api-spec FILE` | Local OpenAPI/Swagger JSON or YAML file for API scanning |
+| `--ssti` | SSTI (Template Injection) scan |
+| `--xxe` | XXE (XML External Entity) scan |
+| `--redirect` | Open Redirect scan |
+| `--spray` | Default credential spraying |
+| `--email` | Email harvesting |
+| `--osint` | OSINT enrichment (Shodan/Whois) |
+| `--chain` | Vulnerability chaining analysis |
+| `--wordlist` | Generate site-specific wordlist |
+| `--headless` | Use headless browser for SPA rendering (requires playwright) |
+| `--race` | Race condition scanner |
+| `--jwt` | JWT attack suite |
+| `--smuggle` | HTTP request smuggling scanner (CL.TE/TE.CL) |
+| `--proto` | Prototype pollution scanner (Node.js) |
+| `--deser` | Insecure deserialization scanner |
+| `--bizlogic` | Business logic flaw scanner |
 
-Settings:
-  -m, --mode {1,2,3,4}    Scan mode
-  -t, --threads N         Thread count
-  --cookie COOKIE         Session cookie
-  --proxy URL             Proxy (http/socks5)
-  --html                  Generate HTML report
-  --json                  Save JSON report
-  --compare SCAN1 SCAN2   Compare two scans
-```
+### Runtime & Output
+| Flag | Description |
+|---|---|
+| `-m MODE, --mode MODE` | Scan mode (normal, stealth, lab). Legacy aliases: 1/2=normal, 3=lab, 4=stealth |
+| `-c COOKIE, --cookie COOKIE` | Session cookie (e.g. 'PHPSESSID=...') |
+| `--quiet, -q` | Quiet mode (only show vulns/errors) |
+| `--wordlist-file FILE` | Custom wordlist for Fuzzer |
+| `--html` | Generate HTML report |
+| `--json` | Save JSON report |
+| `--sarif` | Save SARIF report (for GitHub Security tab) |
+| `--tamper TAMPER` | Tamper scripts for WAF bypass (comma-separated, e.g. space2comment,randomcase) |
+| `-t THREADS, --threads THREADS` | Number of threads |
+| `--proxy PROXY_URL` | Proxy URL (http/socks5, e.g. socks5://127.0.0.1:9050) |
+| `--ai` | Enable AI analysis (Ollama, local & free). Requires Ollama running. |
+| `--ai-model AI_MODEL` | Ollama model (default: WhiteRabbitNeo-Llama-3.1-8B) |
+
+### Service Modes
+| Flag | Description |
+|---|---|
+| `--api` | Start REST API server mode |
+| `--port PORT` | API server port (default: 8080) |
+| `--proxy-listen PORT` | Start local MITM proxy to automatically scan intercepted traffic (e.g., 8081) |
+| `--scope-proxy DOMAIN` | Target domain for the proxy interceptor (e.g., wisarc.com) |
+
+### Other
+| Flag | Description |
+|---|---|
+| `-h, --help` | show this help message and exit |
+| `--exploit` | Enable exploit follow-up actions/prompts after scan results |
+| `--max-requests N` | Stop a scan after N requests (0 disables the budget) |
+| `--request-timeout SECONDS` | Default per-request timeout in seconds |
+| `--max-host-concurrency N` | Limit simultaneous in-flight requests per host (0 disables the limit) |
+| `--path-blacklist PATTERNS` | Comma-separated risky path patterns to skip (e.g. '/logout,/checkout') |
+<!-- END GENERATED: cli_flags -->
 
 ---
 

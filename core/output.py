@@ -9,12 +9,20 @@ import json
 import os
 from datetime import datetime
 from utils.colors import log_success, log_info
-from utils.finding import normalize_all, generate_sarif
+from utils.finding import build_scan_artifacts, generate_sarif, normalize_all
 
 
-def save_findings_json(findings: list, scan_dir: str, url: str, mode: str, stats: dict):
+def save_findings_json(
+    findings: list,
+    scan_dir: str,
+    url: str,
+    mode: str,
+    stats: dict,
+    artifacts: dict | None = None,
+):
     """Save findings as enhanced JSON with CVSS/CWE data."""
-    normalized = normalize_all(findings)
+    artifacts = artifacts or build_scan_artifacts(findings)
+    normalized = artifacts["findings"]
 
     report = {
         "scanner": "cyberm4fia-scanner",
@@ -30,7 +38,9 @@ def save_findings_json(findings: list, scan_dir: str, url: str, mode: str, stats
             "low": sum(1 for f in normalized if f.severity == "low"),
             "info": sum(1 for f in normalized if f.severity == "info"),
         },
+        "observations": [obs.to_dict() for obs in artifacts["observations"]],
         "findings": [f.to_dict() for f in normalized],
+        "attack_paths": [path.to_dict() for path in artifacts["attack_paths"]],
     }
 
     json_file = os.path.join(scan_dir, "findings.json")

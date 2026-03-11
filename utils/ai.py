@@ -17,6 +17,7 @@ Usage:
 """
 
 import json
+import os
 import re
 import httpx
 from utils.colors import log_info, log_success, log_warning, log_error
@@ -53,9 +54,24 @@ def _extract_json(text: str, expect_array: bool = False):
 
 # ─── Ollama Client ──────────────────────────────────────────────────────────
 
-import os
 
-OLLAMA_BASE = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434")
+def resolve_ollama_base(explicit_url: str | None = None) -> str:
+    """Resolve Ollama base URL from explicit value or environment."""
+    raw = (
+        explicit_url
+        or os.environ.get("OLLAMA_URL")
+        or os.environ.get("OLLAMA_HOST")
+        or "http://127.0.0.1:11434"
+    )
+    raw = str(raw).strip()
+    if not raw:
+        return "http://127.0.0.1:11434"
+    if raw.startswith(("http://", "https://")):
+        return raw.rstrip("/")
+    return f"http://{raw.rstrip('/')}"
+
+
+OLLAMA_BASE = resolve_ollama_base()
 DEFAULT_MODEL = "WhiteRabbitNeo/Llama-3.1-WhiteRabbitNeo-2-8B"
 
 
@@ -64,7 +80,7 @@ class OllamaClient:
 
     def __init__(self, model: str = None, base_url: str = None):
         self.model = model or DEFAULT_MODEL
-        self.base_url = (base_url or OLLAMA_BASE).rstrip("/")
+        self.base_url = resolve_ollama_base(base_url)
         self.available = False
         self._check_connection()
 
@@ -86,12 +102,12 @@ class OllamaClient:
                         f"Install: ollama pull {self.model}"
                     )
             else:
-                log_warning("Ollama API not responding")
-        except Exception:
+                log_warning(f"Ollama API not responding at {self.base_url}")
+        except Exception as exc:
             self.available = False
             log_warning(
-                "Ollama not running. Install: "
-                "curl -fsSL https://ollama.ai/install.sh | sh"
+                f"Ollama not reachable at {self.base_url}. "
+                "If Ollama runs on another machine, set OLLAMA_URL=http://HOST:11434"
             )
 
     def generate(self, prompt: str, system: str = "", temperature: float = 0.3) -> str:
@@ -183,10 +199,13 @@ def detect_false_positives(client: OllamaClient, vulns: list) -> list:
     if not client.available or not vulns:
         return vulns
 
-    log_info(f"AI analyzing {len(vulns)} findings for false positives (filtering Low/Info issues)...")
+    log_info(
+        f"AI analyzing {len(vulns)} findings for false positives "
+        f"(filtering Low/Info issues)..."
+    )
 
     verified = []
-    
+
     # We don't need AI to verify missing headers or debug info over and over
     skip_types = ["Missing_Security_Header", "Debug_Info", "Tech_Fingerprint", "Recon"]
 
@@ -194,9 +213,9 @@ def detect_false_positives(client: OllamaClient, vulns: list) -> list:
         vuln_type = vuln.get("type", "")
         payload = vuln.get("payload", "")
         url = vuln.get("url", "")
-        severity = vuln.get("severity", "Info")
+        severity = str(vuln.get("severity", "")).strip().lower()
 
-        if vuln_type in skip_types or severity in ["Low", "Info"]:
+        if vuln_type in skip_types or severity in {"low", "info"}:
             verified.append(vuln)
             continue
 
@@ -245,12 +264,19 @@ def generate_remediation(client: OllamaClient, vulns: list) -> list:
 
     # We don't need AI to verify missing headers or debug info over and over
     skip_types = ["Missing_Security_Header", "Debug_Info", "Tech_Fingerprint", "Recon"]
-    filtered_vulns = [v for v in vulns if v.get("type") not in skip_types and v.get("severity", "Info") not in ["Low", "Info"]]
+    filtered_vulns = [
+        v
+        for v in vulns
+        if v.get("type") not in skip_types
+        and v.get("severity", "Info") not in ["Low", "Info"]
+    ]
 
     if not filtered_vulns:
         return []
 
-    log_info(f"AI generating remediation recommendations for {len(filtered_vulns)} findings...")
+    log_info(
+        f"AI generating remediation recommendations for {len(filtered_vulns)} findings..."
+    )
 
     remediations = []
     for vuln in filtered_vulns:
@@ -309,6 +335,90 @@ Example format: ["payload1", "payload2", "payload3"]"""
         return [str(p) for p in result[:10]]
 
     return []
+
+
+import re
+
+
+class EvolvingWAFBypassEngine:
+    """Stateful AI Mutation Engine for bypassing advanced HTTP WAFs."""
+
+    def __init__(self, client: OllamaClient, waf_name: str, vuln_type: str):
+        self.client = client
+        self.waf_name = waf_name
+        self.vuln_type = vuln_type
+        self.failed_attempts = []
+        self.known_bad_tokens = set()
+
+    def tokenize_payload(self, payload: str) -> list:
+        """Splits an injection payload into logical semantic tokens."""
+        # Split on common SQL/XSS delimiters (spaces, tags, quotes)
+        tokens = re.split(r'(<[^>]+>|[\'"(\s)])', payload)
+        return [t.strip() for t in tokens if t and t.strip()]
+
+    def analyze_failure(self, failed_payload: str):
+        """Records a failure and deduces the exact WAF regex signature."""
+        self.failed_attempts.append(failed_payload)
+        tokens = self.tokenize_payload(failed_payload)
+
+        # If a single keyword is always present in failures, mark it bad
+        for token in set(tokens):
+            if len(token) > 3 and token.lower() in failed_payload.lower():
+                self.known_bad_tokens.add(token.lower())
+
+    def mutate(self, blocked_payload: str, iteration: int = 1) -> list:
+        """Generates pinpoint AI variations based on exact failure context."""
+        if not self.client or not self.client.available:
+            return []
+
+        context = f"A strict {self.waf_name} firewall repeatedly blocked this {self.vuln_type} payload: `{blocked_payload}`\n"
+
+        if self.failed_attempts and iteration > 1:
+            context += f"\nPrevious failed bypasses:\n" + "\n".join(
+                f"- {p}" for p in self.failed_attempts[-3:]
+            )
+            if self.known_bad_tokens:
+                context += f"\n\nThe WAF seems to be specifically filtering these tokens: {list(self.known_bad_tokens)[-5:]}\n"
+                context += "DO NOT use these exact tokens. Use semantic alternatives (e.g. svg instead of script, HEX instead of CHAR)."
+
+        prompt = f"""{context}
+Generate exactly 5 advanced, highly mutated alternative payloads that bypass {self.waf_name}.
+
+Required techniques:
+- String assembly (e.g. 'se'+'lect', CHAR() encoding)
+- Obscure functions or tags (e.g. HANDLER, JSON_KEYS, <math>, <svg>)
+- Comment injection breaking (e.g. /*!50000SELECT*/, /**/)
+- Encoding boundaries (e.g. URL, HEX, Unicode)
+
+Return ONLY a valid JSON array of 5 payload strings. No explanation, no markdown.
+Example: ["bypass1", "bypass2", "bypass3", "bypass4", "bypass5"]"""
+
+        try:
+            response = self.client.generate(
+                prompt,
+                system="You are an expert WAF mutation engine. Generate only working payloads. Return raw JSON arrays only.",
+                temperature=0.7 + (iteration * 0.1),  # Increase creativity if stuck
+            )
+            result = _extract_json(response, expect_array=True)
+            if result and isinstance(result, list):
+                payloads = [str(p).strip() for p in result if p and str(p).strip()]
+                return payloads[:5]
+        except Exception:
+            pass
+
+        return []
+
+
+def generate_waf_bypass(
+    client: OllamaClient,
+    waf_name: str,
+    blocked_payload: str,
+    vuln_type: str,
+    param_name: str = "",
+) -> list:
+    """Helper wrapper around Evolutionary Engine for single-shot generation."""
+    engine = EvolvingWAFBypassEngine(client, waf_name, vuln_type)
+    return engine.mutate(blocked_payload, iteration=1)
 
 
 def generate_scan_summary(

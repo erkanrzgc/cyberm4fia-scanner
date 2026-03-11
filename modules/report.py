@@ -12,8 +12,31 @@ import json
 import html as html_module
 from datetime import datetime
 from utils.colors import log_success, log_info, log_error
-from utils.finding import VULN_REGISTRY, _DEFAULT_VULN, normalize_all
-from utils.request import Stats
+from utils.finding import (
+    VULN_REGISTRY,
+    _DEFAULT_VULN,
+    build_scan_artifacts,
+    normalize_all,
+)
+from utils.request import get_runtime_stats
+
+
+def _resolve_report_stats(stats=None):
+    """Resolve runtime metrics, preferring explicit scan-context stats over globals."""
+    resolved = dict(stats or {})
+    runtime_stats = get_runtime_stats()
+
+    if resolved.get("duration_seconds") is None and runtime_stats.get("start_time"):
+        duration_delta = datetime.now() - datetime.fromtimestamp(
+            runtime_stats["start_time"]
+        )
+        resolved["duration_seconds"] = round(duration_delta.total_seconds(), 2)
+
+    resolved.setdefault("total_requests", runtime_stats["total_requests"])
+    resolved.setdefault("waf_blocks", runtime_stats["waf_blocks"])
+    resolved.setdefault("errors", runtime_stats["errors"])
+    resolved.setdefault("retries", runtime_stats["retries"])
+    return resolved
 
 
 def get_severity(vuln_type):
@@ -28,7 +51,7 @@ def get_severity(vuln_type):
     return _DEFAULT_VULN["severity"]
 
 
-def generate_html_report(vulns, url, mode, scan_dir):
+def generate_html_report(vulns, url, mode, scan_dir, stats=None):
     """Generate HTML vulnerability report with CVSS & CWE enrichment"""
     try:
         os.makedirs(scan_dir, exist_ok=True)
@@ -50,11 +73,23 @@ def generate_html_report(vulns, url, mode, scan_dir):
         severity = f.severity
         param = html_module.escape(str(f.param) if f.param else "N/A")
         payload = html_module.escape(str(f.payload) if f.payload else "N/A")
+        description = html_module.escape(str(f.description) if f.description else "N/A")
+        evidence = html_module.escape(str(f.evidence) if f.evidence else "N/A")
+        confidence = html_module.escape(str(f.confidence).upper() if getattr(f, "confidence", "") else "N/A")
+        verification_state = html_module.escape(
+            str(getattr(f, "verification_state", "") or "N/A").upper()
+        )
+        exploitability = html_module.escape(
+            str(getattr(f, "exploitability", "") or "N/A").upper()
+        )
         cvss = f.cvss
         cwe = html_module.escape(str(f.cwe))
         remediation = html_module.escape(str(f.remediation))
         title = html_module.escape(str(f.title))
         vurl = html_module.escape(str(f.url))
+        response_snippet = html_module.escape(
+            str(getattr(f, "response_snippet", "") or "N/A")
+        )
 
         # Check for exploit data
         exploit_html = ""
@@ -125,6 +160,30 @@ def generate_html_report(vulns, url, mode, scan_dir):
                 <div class="detail-label">Payload</div>
                 <div><code>{payload}</code></div>
             </div>
+            <div class="detail-row">
+                <div class="detail-label">Confidence</div>
+                <div>{confidence}</div>
+            </div>
+            <div class="detail-row">
+                <div class="detail-label">Verification</div>
+                <div>{verification_state}</div>
+            </div>
+            <div class="detail-row">
+                <div class="detail-label">Exploitability</div>
+                <div>{exploitability}</div>
+            </div>
+            <div class="detail-row">
+                <div class="detail-label">Description</div>
+                <div>{description}</div>
+            </div>
+            <div class="detail-row">
+                <div class="detail-label">Evidence</div>
+                <div>{evidence}</div>
+            </div>
+            <div class="detail-row">
+                <div class="detail-label">Response Snippet</div>
+                <div><code>{response_snippet}</code></div>
+            </div>
             <div class="detail-row" style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #333;">
                 <div class="detail-label" style="color: var(--cyber-green);">Remediation</div>
                 <div style="color: #a8b2c1;">{remediation}</div>
@@ -139,10 +198,9 @@ def generate_html_report(vulns, url, mode, scan_dir):
         if f.severity in counts:
             counts[f.severity] += 1
 
-    duration = "N/A"
-    if Stats.start_time:
-        duration_delta = datetime.now() - datetime.fromtimestamp(Stats.start_time)
-        duration = str(duration_delta).split(".")[0]
+    report_stats = _resolve_report_stats(stats)
+    duration_seconds = report_stats.get("duration_seconds")
+    duration = f"{duration_seconds}s" if duration_seconds is not None else "N/A"
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -241,9 +299,9 @@ def generate_html_report(vulns, url, mode, scan_dir):
 
         <div class="exec-summary">
             <span><strong>⏱️ Duration:</strong> {duration}</span>
-            <span><strong>🌐 Requests:</strong> {Stats.total_requests}</span>
-            <span><strong>🛡️ WAF Blocks:</strong> {Stats.waf_blocks}</span>
-            <span><strong>⚠️ Errors:</strong> {Stats.errors}</span>
+            <span><strong>🌐 Requests:</strong> {report_stats["total_requests"]}</span>
+            <span><strong>🛡️ WAF Blocks:</strong> {report_stats["waf_blocks"]}</span>
+            <span><strong>⚠️ Errors:</strong> {report_stats["errors"]}</span>
         </div>
 
         <div class="summary-grid">
@@ -308,7 +366,7 @@ def generate_html_report(vulns, url, mode, scan_dir):
     return filename
 
 
-def generate_json_report(vulns, url, mode, stats, scan_dir):
+def generate_json_report(vulns, url, mode, stats, scan_dir, artifacts=None):
     """Generate JSON report"""
     try:
         os.makedirs(scan_dir, exist_ok=True)
@@ -316,6 +374,7 @@ def generate_json_report(vulns, url, mode, stats, scan_dir):
         pass
 
     filename = os.path.join(scan_dir, "scan.json")
+    artifacts = artifacts or build_scan_artifacts(vulns)
 
     report = {
         "target": url,
@@ -323,6 +382,9 @@ def generate_json_report(vulns, url, mode, stats, scan_dir):
         "date": str(datetime.now()),
         "stats": stats,
         "vulnerabilities": vulns,
+        "observations": [obs.to_dict() for obs in artifacts["observations"]],
+        "findings": [finding.to_dict() for finding in artifacts["findings"]],
+        "attack_paths": [path.to_dict() for path in artifacts["attack_paths"]],
     }
 
     with open(filename, "w") as f:
@@ -379,7 +441,7 @@ def generate_payload_report(scan_dir, url, vulns):
     return filename
 
 
-def generate_markdown_report(vulns, url, mode, scan_dir):
+def generate_markdown_report(vulns, url, mode, scan_dir, stats=None):
     """Generate Professional Markdown Report for Bug Bounty Platforms."""
     try:
         os.makedirs(scan_dir, exist_ok=True)
@@ -399,10 +461,9 @@ def generate_markdown_report(vulns, url, mode, scan_dir):
         if f.severity in counts:
             counts[f.severity] += 1
 
-    duration = "N/A"
-    if Stats.start_time:
-        duration_delta = datetime.now() - datetime.fromtimestamp(Stats.start_time)
-        duration = str(duration_delta).split(".")[0]
+    report_stats = _resolve_report_stats(stats)
+    duration_seconds = report_stats.get("duration_seconds")
+    duration = f"{duration_seconds}s" if duration_seconds is not None else "N/A"
 
     md = f"""# cyberm4fia-scanner Executive Vulnerability Report
 
@@ -415,9 +476,9 @@ def generate_markdown_report(vulns, url, mode, scan_dir):
 ## 📊 Executive Summary
 
 - **Duration:** {duration}
-- **Total Requests:** {Stats.total_requests}
-- **WAF Blocks:** {Stats.waf_blocks}
-- **Network Errors:** {Stats.errors}
+- **Total Requests:** {report_stats["total_requests"]}
+- **WAF Blocks:** {report_stats["waf_blocks"]}
+- **Network Errors:** {report_stats["errors"]}
 
 ### Severity Breakdown
 
@@ -445,6 +506,8 @@ def generate_markdown_report(vulns, url, mode, scan_dir):
             md += f"- **CWE ID:** `{f.cwe}`\n"
             md += f"- **CVSS Score:** `{f.cvss}`\n"
             md += f"- **Vulnerable Parameter:** `{f.param or 'N/A'}`\n"
+            md += f"- **Verification State:** `{f.verification_state}`\n"
+            md += f"- **Exploitability:** `{f.exploitability}`\n"
 
             payload = f.payload or "N/A"
             md += f"\n**Payload Used:**\n```text\n{payload}\n```\n"

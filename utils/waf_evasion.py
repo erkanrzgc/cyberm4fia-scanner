@@ -1,0 +1,170 @@
+"""
+cyberm4fia-scanner - Advanced WAF Evasion Module
+Implements Protocol & Transport Level WAF Bypass Techniques
+"""
+
+import urllib.parse
+import random
+
+# Common Unicode Homoglyphs that map back to standard ASCII in weak backends
+UNICODE_MAP = {
+    "a": ["\u00aa", "\u00e2", "\u00e1", "\u00e0", "\u0105"],
+    "e": ["\u00e9", "\u00ea", "\u00eb", "\u011b", "\u0119"],
+    "i": ["\u00ed", "\u00ee", "\u00ef", "\u0131", "\u012f"],
+    "o": ["\u00f3", "\u00f4", "\u00f6", "\u00f5", "\u0151"],
+    "u": ["\u00fa", "\u00fb", "\u00fc", "\u016f", "\u0173"],
+    "s": ["\u015b", "\u0161", "\u015f", "\u0282"],
+    "c": ["\u0107", "\u010d", "\u0109", "\u00e7"],
+    "r": ["\u0155", "\u0159", "\u027e"],
+    "t": ["\u0165", "\u0288"],
+    "l": ["\u013a", "\u013e", "\u0142"],
+    "<": ["\uff1c"],
+    ">": ["\uff1e"],
+    "'": ["\uff07", "\u02b9", "\u02bc"],
+    '"': ["\uff02", "\u02ba", "\u02dd"],
+    "=": ["\uff1d"],
+    "(": ["\uff08"],
+    ")": ["\uff09"],
+}
+
+
+def apply_unicode_evasion(payload: str) -> str:
+    """
+    Replaces standard ASCII characters with Unicode homoglyphs.
+    Many WAFs strip or ignore these because their regexes only look for [a-z<>'"].
+    Backend application servers (like Tomcat or IIS) often normalize these back to ASCII
+    before executing the SQL query or rendering the HTML, causing a successful bypass.
+    """
+    evaded = ""
+    for char in payload:
+        if char.lower() in UNICODE_MAP and random.random() > 0.3:  # ~70% chance to swap
+            replacement = random.choice(UNICODE_MAP[char.lower()])
+            evaded += replacement.upper() if char.isupper() else replacement
+        else:
+            evaded += char
+    return evaded
+
+
+def generate_chunked_body(body: str, chunk_size: int = 5) -> bytes:
+    """
+    Converts a standard HTTP body string into HTTP/1.1 Chunked Transfer Encoding format.
+    WAFs often have limits on buffering streams. Breaking a malicious payload into
+    tiny chunks forces the WAF to either drop analysis or pass it through directly.
+    """
+    if not body:
+        return b""
+
+    encoded_body = body.encode("utf-8") if isinstance(body, str) else body
+    chunks = []
+
+    for i in range(0, len(encoded_body), chunk_size):
+        chunk = encoded_body[i : i + chunk_size]
+        # Length in hex + CRLF + chunk data + CRLF
+        chunks.append(f"{len(chunk):x}\r\n".encode("utf-8") + chunk + b"\r\n")
+
+    # Final zero-length chunk to terminate
+    chunks.append(b"0\r\n\r\n")
+
+    return b"".join(chunks)
+
+
+def prepare_evasion_headers(
+    headers: dict, use_chunking: bool = False, use_smuggling: bool = False
+) -> dict:
+    """
+    Injects protocol-level evasion parameters into the HTTP headers.
+    """
+    evasion_headers = headers.copy() if headers else {}
+
+    if use_chunking:
+        # Strip Content-Length if present, Chunked encoding replaces it
+        evasion_headers.pop("Content-Length", None)
+        evasion_headers.pop("content-length", None)
+        evasion_headers["Transfer-Encoding"] = "chunked"
+
+    if use_smuggling:
+        # Basic HTTP Desync / Smuggling setup:
+        # CL.TE vulnerability check (Content-Length and Transfer-Encoding present)
+        # Note: HTTPX handles lower-level connections, so true smuggling requires raw sockets
+        # But injecting ambiguous pseudo-headers often triggers WAF bypasses anyway
+        evasion_headers["Transfer-Encoding"] = "chunked, cow"
+        evasion_headers["X-Smuggled"] = "True"
+
+    return evasion_headers
+
+
+def apply_advanced_evasion(
+    url: str,
+    params: dict = None,
+    data: dict = None,
+    headers: dict = None,
+    evasion_level: int = 1,
+):
+    """
+    Applies the full suite of Transport & Protocol level evasion.
+    evasion_level 1: Unicode Normalization on params/data
+    evasion_level 2: Chunked Transfer (for POST data)
+    evasion_level 3: HTTP Desync / Smuggling markers
+    """
+    evaded_url = url
+    evaded_params = params.copy() if params else None
+    evaded_data = data.copy() if data else None
+    evaded_headers = headers.copy() if headers else {}
+
+    # Apply Unicode Normalization to params
+    if evasion_level >= 1:
+        if evaded_params:
+            for k, v in evaded_params.items():
+                if isinstance(v, list):
+                    evaded_params[k] = [apply_unicode_evasion(str(item)) for item in v]
+                else:
+                    evaded_params[k] = apply_unicode_evasion(str(v))
+
+        if evaded_data and isinstance(evaded_data, dict):
+            for k, v in evaded_data.items():
+                if isinstance(v, list):
+                    evaded_data[k] = [apply_unicode_evasion(str(item)) for item in v]
+                else:
+                    evaded_data[k] = apply_unicode_evasion(str(v))
+
+    # Handle Exhaustion (Level 3)
+    if evasion_level >= 3:
+        from utils.waf_exhaustion import (
+            generate_noise_headers,
+            apply_exhaustion_to_data,
+        )
+
+        noise_headers = generate_noise_headers(level=2)  # 64KB Headers
+        evaded_headers.update(noise_headers)
+
+        # Add Junk padding to POST data before chunking
+        if evaded_data and isinstance(evaded_data, dict):
+            evaded_data = apply_exhaustion_to_data(evaded_data, length=64000)
+
+    # Handle Chunking specifically for data workloads
+    use_chunking = evasion_level >= 2 and evaded_data
+    use_smuggling = evasion_level >= 3
+
+    evaded_headers = prepare_evasion_headers(
+        evaded_headers, use_chunking, use_smuggling
+    )
+
+    if use_chunking and evaded_data:
+        # Convert dict to URL encoded string, then chunk it
+        raw_body = (
+            urllib.parse.urlencode(evaded_data, doseq=True)
+            if isinstance(evaded_data, dict)
+            else evaded_data
+        )
+        chunked_body = generate_chunked_body(raw_body)
+        # We replace the dict with the raw bytes to force httpx to use it directly
+        evaded_data = chunked_body
+
+        # We must also ensure Content-Type is set because we're bypassing httpx's dict handling
+        if (
+            "Content-Type" not in evaded_headers
+            and "content-type" not in evaded_headers
+        ):
+            evaded_headers["Content-Type"] = "application/x-www-form-urlencoded"
+
+    return evaded_url, evaded_params, evaded_data, evaded_headers

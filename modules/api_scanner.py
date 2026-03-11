@@ -7,11 +7,17 @@ import sys
 import os
 import re
 import json
-from urllib.parse import urljoin
+from urllib.parse import urlencode, urljoin, urlparse
+
+try:
+    import yaml
+except ImportError:  # pragma: no cover - dependency is optional at runtime
+    yaml = None
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.colors import log_info, log_success, log_warning
+from utils.auth import auth_manager
 from utils.request import smart_request
 
 # ─────────────────────────────────────────────────────
@@ -54,6 +60,22 @@ API_ENDPOINTS = [
     "/wp-json/wp/v2/posts",
 ]
 
+OPENAPI_SPEC_PATHS = [
+    "/openapi.json",
+    "/openapi.yaml",
+    "/openapi.yml",
+    "/swagger.json",
+    "/swagger.yaml",
+    "/swagger.yml",
+    "/api-docs",
+    "/v3/api-docs",
+    "/openapi/v3/api-docs",
+    "/api/openapi.json",
+    "/api/swagger.json",
+]
+
+HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
+
 # IDOR test patterns
 IDOR_PATTERNS = [
     (r"/api/v\d+/users/(\d+)", "user_id"),
@@ -65,7 +87,808 @@ IDOR_PATTERNS = [
 ]
 
 
-def discover_api_endpoints(url, delay=0):
+def _is_openapi_spec(doc):
+    """Return True if the parsed document looks like OpenAPI/Swagger."""
+    return (
+        isinstance(doc, dict)
+        and isinstance(doc.get("paths"), dict)
+        and ("openapi" in doc or "swagger" in doc)
+    )
+
+
+def _parse_api_spec_text(text):
+    """Parse OpenAPI/Swagger JSON or YAML text."""
+    if not text or not text.strip():
+        return None
+
+    parsers = [json.loads]
+    if yaml is not None:
+        parsers.append(yaml.safe_load)
+
+    for parser in parsers:
+        try:
+            doc = parser(text)
+        except Exception:
+            continue
+        if _is_openapi_spec(doc):
+            return doc
+
+    return None
+
+
+def _resolve_ref(spec, value):
+    """Resolve a local JSON pointer reference from an OpenAPI spec."""
+    if not isinstance(value, dict) or "$ref" not in value:
+        return value
+
+    ref = value.get("$ref", "")
+    if not ref.startswith("#/"):
+        return value
+
+    current = spec
+    for part in ref[2:].split("/"):
+        part = part.replace("~1", "/").replace("~0", "~")
+        if not isinstance(current, dict) or part not in current:
+            return value
+        current = current[part]
+
+    if current is value:
+        return value
+    return _resolve_ref(spec, current)
+
+
+def _first_example_value(examples, spec):
+    """Extract the first usable example value from an examples object."""
+    if not isinstance(examples, dict):
+        return None
+
+    for example in examples.values():
+        resolved = _resolve_ref(spec, example)
+        if isinstance(resolved, dict) and "value" in resolved:
+            return resolved["value"]
+        if resolved not in (None, {}):
+            return resolved
+
+    return None
+
+
+def _guess_schema_value(spec, schema, name="param"):
+    """Generate a simple sample value for a schema."""
+    schema = _resolve_ref(spec, schema or {})
+
+    if not isinstance(schema, dict):
+        return "test"
+
+    if "allOf" in schema:
+        merged = {}
+        for sub_schema in schema.get("allOf", []):
+            sample = _guess_schema_value(spec, sub_schema, name)
+            if isinstance(sample, dict):
+                merged.update(sample)
+        if merged:
+            return merged
+
+    for key in ("oneOf", "anyOf"):
+        variants = schema.get(key)
+        if isinstance(variants, list) and variants:
+            return _guess_schema_value(spec, variants[0], name)
+
+    if "example" in schema:
+        return schema["example"]
+    if "default" in schema:
+        return schema["default"]
+
+    enum_values = schema.get("enum")
+    if isinstance(enum_values, list) and enum_values:
+        return enum_values[0]
+
+    fmt = str(schema.get("format", "")).lower()
+    schema_type = str(schema.get("type", "")).lower()
+    lower_name = str(name).lower()
+
+    if "uuid" in fmt or "uuid" in lower_name:
+        return "00000000-0000-4000-8000-000000000000"
+    if "email" in fmt or "email" in lower_name:
+        return "test@example.com"
+    if schema_type in {"integer", "number"} or lower_name == "id" or lower_name.endswith("_id"):
+        return 1
+    if schema_type == "boolean":
+        return True
+    if schema_type == "array":
+        item_schema = schema.get("items", {})
+        return [_guess_schema_value(spec, item_schema, name)]
+    if schema_type == "object":
+        properties = schema.get("properties", {})
+        sample = {}
+        for prop_name, prop_schema in properties.items():
+            sample[prop_name] = _guess_schema_value(spec, prop_schema, prop_name)
+        return sample
+
+    return "test"
+
+
+def _guess_parameter_value(spec, parameter):
+    """Infer a safe sample value for a parameter."""
+    resolved = _resolve_ref(spec, parameter)
+    if not isinstance(resolved, dict):
+        return "test"
+
+    if "example" in resolved:
+        return resolved["example"]
+
+    example_value = _first_example_value(resolved.get("examples"), spec)
+    if example_value is not None:
+        return example_value
+
+    schema = _resolve_ref(spec, resolved.get("schema", {}))
+    return _guess_schema_value(spec, schema, resolved.get("name", "param"))
+
+
+def _pick_media_type(content):
+    """Pick the best media type from an OpenAPI requestBody content map."""
+    if not isinstance(content, dict) or not content:
+        return "", {}
+
+    preferred = [
+        "application/json",
+        "application/*+json",
+        "application/x-www-form-urlencoded",
+        "multipart/form-data",
+        "text/plain",
+    ]
+
+    for media_type in preferred:
+        if media_type in content:
+            return media_type, content[media_type]
+
+    for media_type, media_obj in content.items():
+        if media_type.endswith("+json"):
+            return media_type, media_obj
+
+    media_type = next(iter(content))
+    return media_type, content[media_type]
+
+
+def _extract_request_body(spec, operation):
+    """Generate a sample request body from an OpenAPI operation."""
+    resolved_operation = _resolve_ref(spec, operation)
+    if not isinstance(resolved_operation, dict):
+        return None, ""
+
+    request_body = _resolve_ref(spec, resolved_operation.get("requestBody", {}))
+    if not isinstance(request_body, dict):
+        return None, ""
+
+    media_type, media_obj = _pick_media_type(request_body.get("content", {}))
+    if not media_type or not isinstance(media_obj, dict):
+        return None, ""
+
+    if "example" in media_obj:
+        return media_obj["example"], media_type
+
+    example_value = _first_example_value(media_obj.get("examples"), spec)
+    if example_value is not None:
+        return example_value, media_type
+
+    schema = media_obj.get("schema", {})
+    sample = _guess_schema_value(spec, schema, "body")
+    return sample, media_type
+
+
+def _extract_auth_schemes(spec, operation):
+    """Extract auth requirements from spec-level and operation-level security."""
+    resolved_operation = _resolve_ref(spec, operation)
+    if not isinstance(resolved_operation, dict):
+        return []
+
+    if "security" in resolved_operation:
+        security_requirements = resolved_operation.get("security") or []
+    else:
+        security_requirements = spec.get("security") or []
+
+    if not security_requirements:
+        return []
+
+    security_schemes = (
+        spec.get("components", {}).get("securitySchemes", {})
+        if isinstance(spec.get("components"), dict)
+        else {}
+    )
+
+    extracted = []
+    seen = set()
+
+    for requirement in security_requirements:
+        if not isinstance(requirement, dict):
+            continue
+        for scheme_name, scopes in requirement.items():
+            scheme_obj = _resolve_ref(spec, security_schemes.get(scheme_name, {}))
+            if not isinstance(scheme_obj, dict):
+                continue
+
+            item = {
+                "id": scheme_name,
+                "type": scheme_obj.get("type", ""),
+                "scheme": scheme_obj.get("scheme", ""),
+                "in": scheme_obj.get("in", ""),
+                "name": scheme_obj.get("name", ""),
+                "bearer_format": scheme_obj.get("bearerFormat", ""),
+                "description": scheme_obj.get("description", ""),
+                "scopes": scopes or [],
+                "open_id_connect_url": scheme_obj.get("openIdConnectUrl", ""),
+            }
+
+            key = (
+                item["id"],
+                item["type"],
+                item["scheme"],
+                item["in"],
+                item["name"],
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            extracted.append(item)
+
+    return extracted
+
+
+def _describe_auth_scheme(auth_scheme):
+    """Create a human-readable description for an auth scheme."""
+    scheme_type = auth_scheme.get("type", "").lower()
+    scheme_name = auth_scheme.get("id", "auth")
+
+    if scheme_type == "http":
+        scheme = auth_scheme.get("scheme", "http").upper()
+        if auth_scheme.get("bearer_format"):
+            scheme += f" ({auth_scheme['bearer_format']})"
+        return f"{scheme_name}: HTTP {scheme}"
+
+    if scheme_type == "apikey":
+        location = auth_scheme.get("in", "header")
+        name = auth_scheme.get("name", "api_key")
+        return f"{scheme_name}: API key via {location} '{name}'"
+
+    if scheme_type == "oauth2":
+        scopes = ", ".join(auth_scheme.get("scopes", [])) or "no scopes declared"
+        return f"{scheme_name}: OAuth2 ({scopes})"
+
+    if scheme_type == "openidconnect":
+        return f"{scheme_name}: OpenID Connect"
+
+    return f"{scheme_name}: {auth_scheme.get('type', 'unknown auth')}"
+
+
+def _build_auth_placeholders(auth_schemes):
+    """Build request placeholder material from OpenAPI auth schemes."""
+    placeholders = {"headers": {}, "cookies": {}, "query": {}}
+
+    for auth_scheme in auth_schemes or []:
+        scheme_type = str(auth_scheme.get("type", "")).lower()
+        scheme = str(auth_scheme.get("scheme", "")).lower()
+        location = str(auth_scheme.get("in", "")).lower()
+        name = auth_scheme.get("name") or auth_scheme.get("id") or "auth"
+
+        if scheme_type == "http":
+            if scheme == "bearer":
+                token_name = auth_scheme.get("bearer_format") or "TOKEN"
+                placeholders["headers"]["Authorization"] = (
+                    f"Bearer <{str(token_name).upper()}_TOKEN>"
+                )
+            elif scheme == "basic":
+                placeholders["headers"]["Authorization"] = (
+                    "Basic <BASE64_USERNAME_PASSWORD>"
+                )
+            else:
+                placeholders["headers"]["Authorization"] = (
+                    f"{scheme.upper()} <TOKEN>"
+                )
+            continue
+
+        if scheme_type == "apikey":
+            placeholder_value = f"<{str(name).upper().replace('-', '_')}>"
+            if location == "cookie":
+                placeholders["cookies"][name] = placeholder_value
+            elif location == "query":
+                placeholders["query"][name] = placeholder_value
+            else:
+                placeholders["headers"][name] = placeholder_value
+            continue
+
+        if scheme_type == "oauth2":
+            placeholders["headers"]["Authorization"] = "Bearer <OAUTH_ACCESS_TOKEN>"
+            continue
+
+        if scheme_type == "openidconnect":
+            placeholders["headers"]["Authorization"] = "Bearer <OPENID_ACCESS_TOKEN>"
+
+    return {k: v for k, v in placeholders.items() if v}
+
+
+def _flatten_form_payload(value, prefix=""):
+    """Flatten nested dict/list payloads for form-style encodings."""
+    items = []
+
+    if isinstance(value, dict):
+        for key, sub_value in value.items():
+            new_prefix = f"{prefix}[{key}]" if prefix else str(key)
+            items.extend(_flatten_form_payload(sub_value, new_prefix))
+        return items
+
+    if isinstance(value, list):
+        for sub_value in value:
+            new_prefix = f"{prefix}[]"
+            items.extend(_flatten_form_payload(sub_value, new_prefix))
+        return items
+
+    items.append((prefix, value))
+    return items
+
+
+def _merge_request_body(sample_body, injection_fields):
+    """Blend a spec-derived body sample with mass-assignment test fields."""
+    if isinstance(sample_body, dict):
+        merged = dict(sample_body)
+        merged.update(injection_fields)
+        return merged
+    return dict(injection_fields)
+
+
+def _build_request_body_kwargs(target, injection_fields):
+    """Choose request kwargs based on spec-derived request body metadata."""
+    if not isinstance(target, dict):
+        return {"json": injection_fields}
+
+    sample_body = target.get("request_body")
+    content_type = str(target.get("request_body_content_type", "")).lower()
+    payload = _merge_request_body(sample_body, injection_fields)
+
+    if "application/x-www-form-urlencoded" in content_type:
+        return {
+            "data": _flatten_form_payload(payload),
+            "headers": {"Content-Type": "application/x-www-form-urlencoded"},
+        }
+    if "multipart/form-data" in content_type:
+        return {
+            "data": _flatten_form_payload(payload),
+            "headers": {"Content-Type": "multipart/form-data"},
+        }
+    if content_type.startswith("text/"):
+        return {
+            "data": json.dumps(payload),
+            "headers": {"Content-Type": content_type},
+        }
+    return {"json": payload}
+
+
+def collect_auth_findings(api_endpoints):
+    """Turn detected auth schemes into informational findings."""
+    findings = []
+    seen = set()
+
+    for endpoint in api_endpoints:
+        if not isinstance(endpoint, dict):
+            continue
+
+        for auth_scheme in endpoint.get("auth_schemes", []):
+            description = _describe_auth_scheme(auth_scheme)
+            placeholders = endpoint.get("auth_placeholders", {})
+            key = (
+                auth_scheme.get("id"),
+                auth_scheme.get("type"),
+                auth_scheme.get("name"),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            placeholder_parts = []
+            if placeholders.get("headers"):
+                placeholder_parts.append(f"headers={placeholders['headers']}")
+            if placeholders.get("cookies"):
+                placeholder_parts.append(f"cookies={placeholders['cookies']}")
+            if placeholders.get("query"):
+                placeholder_parts.append(f"query={placeholders['query']}")
+            placeholder_text = (
+                f" Suggested placeholders: {'; '.join(placeholder_parts)}."
+                if placeholder_parts
+                else ""
+            )
+            findings.append(
+                {
+                    "type": "API_Auth_Scheme",
+                    "severity": "INFO",
+                    "url": endpoint.get("url", ""),
+                    "param": auth_scheme.get("name") or auth_scheme.get("id", ""),
+                    "evidence": description + placeholder_text,
+                    "description": (
+                        f"API spec declares authentication requirement: "
+                        f"{description}.{placeholder_text}"
+                    ),
+                    "source": endpoint.get("source"),
+                    "auth_scheme": auth_scheme,
+                    "auth_placeholders": placeholders or None,
+                }
+            )
+
+    return findings
+
+
+def _render_path_template(spec, raw_path, parameters):
+    """Replace path template variables with sample values."""
+    rendered = raw_path
+    query_params = {}
+
+    for parameter in parameters:
+        resolved = _resolve_ref(spec, parameter)
+        if not isinstance(resolved, dict):
+            continue
+
+        name = resolved.get("name")
+        location = resolved.get("in")
+        if not name or not location:
+            continue
+
+        value = _guess_parameter_value(spec, resolved)
+        if location == "path":
+            rendered = rendered.replace("{" + name + "}", str(value))
+        elif location == "query":
+            query_params[name] = value
+
+    return rendered, query_params
+
+
+def _normalize_server_url(base_url, server_url):
+    """Resolve OpenAPI server URLs against the scanned target."""
+    if not server_url:
+        return base_url
+
+    if server_url.startswith(("http://", "https://")):
+        return server_url
+
+    parsed = urlparse(base_url)
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    return urljoin(origin, server_url)
+
+
+def _build_endpoint_url(base_url, server_url, rendered_path):
+    """Construct a request URL from base server URL and OpenAPI path."""
+    server_base = _normalize_server_url(base_url, server_url).rstrip("/") + "/"
+    return urljoin(server_base, rendered_path.lstrip("/"))
+
+
+def load_api_spec(spec_path):
+    """Load a local OpenAPI/Swagger JSON or YAML file."""
+    if not spec_path:
+        return None
+
+    try:
+        with open(spec_path, "r", encoding="utf-8") as handle:
+            spec = _parse_api_spec_text(handle.read())
+    except OSError as exc:
+        log_warning(f"Could not read API spec '{spec_path}': {exc}")
+        return None
+
+    if not spec:
+        log_warning(f"File is not a valid OpenAPI/Swagger spec: {spec_path}")
+        return None
+
+    log_success(f"Loaded API spec: {spec_path}")
+    return spec
+
+
+def fetch_openapi_spec(url, delay=0):
+    """Try to fetch an OpenAPI/Swagger document from common endpoints."""
+    for path in OPENAPI_SPEC_PATHS:
+        try:
+            spec_url = urljoin(url, path)
+            resp = smart_request("get", spec_url, delay=delay, timeout=5)
+            if resp.status_code not in (200, 401, 403):
+                continue
+
+            spec = _parse_api_spec_text(resp.text)
+            if spec:
+                log_success(f"OpenAPI spec discovered: {spec_url}")
+                return spec, spec_url
+        except Exception:
+            continue
+
+    return None, None
+
+
+def extract_openapi_endpoints(spec, base_url, source="openapi"):
+    """Extract concrete endpoint URLs and methods from an OpenAPI spec."""
+    if not _is_openapi_spec(spec):
+        return []
+
+    endpoints = []
+    servers = spec.get("servers") or [{"url": base_url}]
+
+    for raw_path, path_item in spec.get("paths", {}).items():
+        if not isinstance(path_item, dict):
+            continue
+
+        path_parameters = path_item.get("parameters", [])
+        for method, operation in path_item.items():
+            if method.lower() not in HTTP_METHODS:
+                continue
+
+            resolved_operation = _resolve_ref(spec, operation)
+            if not isinstance(resolved_operation, dict):
+                continue
+
+            operation_parameters = resolved_operation.get("parameters", [])
+            parameters = list(path_parameters) + list(operation_parameters)
+            rendered_path, query_params = _render_path_template(
+                spec, raw_path, parameters
+            )
+            request_body, request_body_content_type = _extract_request_body(
+                spec, resolved_operation
+            )
+            auth_schemes = _extract_auth_schemes(spec, resolved_operation)
+            auth_placeholders = _build_auth_placeholders(auth_schemes)
+
+            for server in servers:
+                server_obj = _resolve_ref(spec, server)
+                server_url = ""
+                if isinstance(server_obj, dict):
+                    server_url = server_obj.get("url", "")
+
+                endpoint_url = _build_endpoint_url(base_url, server_url, rendered_path)
+                if query_params:
+                    endpoint_url = (
+                        f"{endpoint_url}?{urlencode(query_params, doseq=True)}"
+                    )
+                endpoints.append(
+                    {
+                        "url": endpoint_url,
+                        "method": method.upper(),
+                        "status": "spec",
+                        "content_type": "openapi/spec",
+                        "is_api": True,
+                        "source": source,
+                        "path": raw_path,
+                        "query_params": query_params,
+                        "operation_id": resolved_operation.get("operationId", ""),
+                        "request_body": request_body,
+                        "request_body_content_type": request_body_content_type,
+                        "auth_schemes": auth_schemes,
+                        "auth_placeholders": auth_placeholders,
+                    }
+                )
+
+    return endpoints
+
+
+def _dedupe_api_endpoints(endpoints):
+    """Deduplicate endpoints by HTTP method and URL."""
+    deduped = []
+    seen = set()
+
+    for endpoint in endpoints:
+        if not isinstance(endpoint, dict):
+            continue
+        method = endpoint.get("method", "GET").upper()
+        url = endpoint.get("url")
+        if not url:
+            continue
+        key = (method, url)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(endpoint)
+
+    return deduped
+
+
+def _coerce_target(target):
+    """Normalize an endpoint target into (url, method)."""
+    if isinstance(target, dict):
+        return target.get("url", ""), target.get("method", "GET").upper()
+    return target, "GET"
+
+
+def _build_api_finding(
+    finding_type,
+    target,
+    severity,
+    description,
+    evidence="",
+    confidence="high",
+    **extra,
+):
+    """Build a finding dict that already matches the normalized reporting schema."""
+    url, method = _coerce_target(target)
+    request = extra.pop("request", None) or {"method": method, "url": url}
+    repro_steps = extra.pop("repro_steps", None) or [f"{method} {url}"]
+    finding = {
+        "type": finding_type,
+        "url": url,
+        "severity": severity,
+        "description": description,
+        "evidence": evidence or description,
+        "confidence": confidence,
+        "request": request,
+        "repro_steps": repro_steps,
+    }
+    finding.update(extra)
+    return finding
+
+
+def _build_endpoint_request_kwargs(target):
+    """Build a representative request for an API endpoint."""
+    if not isinstance(target, dict):
+        return {}
+
+    method = str(target.get("method", "GET")).upper()
+    if method not in {"POST", "PUT", "PATCH"}:
+        return {}
+
+    sample_body = target.get("request_body")
+    if sample_body is None:
+        return {}
+    return _build_request_body_kwargs(target, {})
+
+
+def _collect_json_paths(value, prefix=""):
+    """Flatten JSON keys into comparable dotted paths."""
+    if isinstance(value, dict):
+        paths = set()
+        for key, sub_value in value.items():
+            new_prefix = f"{prefix}.{key}" if prefix else str(key)
+            paths.add(new_prefix)
+            paths.update(_collect_json_paths(sub_value, new_prefix))
+        return paths
+
+    if isinstance(value, list):
+        paths = set()
+        if value:
+            sample = value[0]
+            array_prefix = f"{prefix}[]" if prefix else "[]"
+            paths.add(array_prefix)
+            paths.update(_collect_json_paths(sample, array_prefix))
+        return paths
+
+    return set()
+
+
+def _response_signature(resp):
+    """Summarize a response for auth/unauth diff comparisons."""
+    signature = {
+        "status_code": getattr(resp, "status_code", 0),
+        "content_type": getattr(resp, "headers", {}).get("content-type", "").lower(),
+        "length": len(getattr(resp, "text", "") or ""),
+        "snippet": (getattr(resp, "text", "") or "")[:180],
+        "json_paths": set(),
+    }
+
+    try:
+        signature["json_paths"] = _collect_json_paths(resp.json())
+    except Exception:
+        pass
+
+    return signature
+
+
+def _responses_look_equivalent(left, right):
+    """Return True when two response signatures appear materially the same."""
+    if not left or not right:
+        return False
+    if left["status_code"] != right["status_code"]:
+        return False
+
+    if left["json_paths"] or right["json_paths"]:
+        return left["json_paths"] == right["json_paths"]
+
+    max_length = max(left["length"], right["length"], 1)
+    return abs(left["length"] - right["length"]) <= max(24, int(max_length * 0.2))
+
+
+def _request_api_target(target, delay=0):
+    """Execute a representative request for an API endpoint target."""
+    url, method = _coerce_target(target)
+    request_kwargs = _build_endpoint_request_kwargs(target)
+    return smart_request(
+        method.lower(),
+        url,
+        delay=delay,
+        timeout=5,
+        **request_kwargs,
+    )
+
+
+def test_auth_response_diff(target, delay=0):
+    """Compare unauthenticated and authenticated behavior for protected endpoints."""
+    if not isinstance(target, dict):
+        return []
+
+    if not (target.get("auth_schemes") or target.get("auth_placeholders")):
+        return []
+
+    url, method = _coerce_target(target)
+    findings = []
+
+    try:
+        with auth_manager.without_auth():
+            unauth_resp = _request_api_target(target, delay=delay)
+    except Exception:
+        unauth_resp = None
+
+    placeholders = target.get("auth_placeholders") or {}
+    try:
+        with auth_manager.using_placeholders(placeholders):
+            auth_resp = _request_api_target(target, delay=delay)
+    except Exception:
+        auth_resp = None
+
+    if unauth_resp is None and auth_resp is None:
+        return findings
+
+    unauth_sig = _response_signature(unauth_resp) if unauth_resp is not None else None
+    auth_sig = _response_signature(auth_resp) if auth_resp is not None else None
+    protected_write = method in {"POST", "PUT", "PATCH", "DELETE"}
+
+    if unauth_resp is not None and unauth_resp.status_code in (200, 201, 202, 204):
+        finding_type = "API_BFLA" if protected_write else "API_Unauth_Access"
+        auth_summary = (
+            f"auth status {auth_resp.status_code}"
+            if auth_resp is not None
+            else "no authenticated baseline available"
+        )
+        findings.append(
+            _build_api_finding(
+                finding_type,
+                target,
+                "CRITICAL",
+                (
+                    f"OpenAPI declared authentication for {method} {url}, but the "
+                    f"unauthenticated request still succeeded with HTTP {unauth_resp.status_code}."
+                ),
+                evidence=(
+                    f"Unauthenticated request returned {unauth_resp.status_code}; "
+                    f"{auth_summary}."
+                ),
+                confidence="confirmed",
+                response_snippet=(unauth_sig or {}).get("snippet"),
+                unauth_status=unauth_resp.status_code,
+                auth_status=auth_resp.status_code if auth_resp is not None else None,
+            )
+        )
+        return findings
+
+    if (
+        unauth_resp is not None
+        and auth_resp is not None
+        and auth_resp.status_code in (200, 201, 202, 204)
+        and unauth_resp.status_code in (401, 403, 404)
+    ):
+        auth_only_paths = sorted(auth_sig["json_paths"] - unauth_sig["json_paths"])
+        if auth_only_paths or not _responses_look_equivalent(unauth_sig, auth_sig):
+            findings.append(
+                _build_api_finding(
+                    "API_Auth_Response_Diff",
+                    target,
+                    "INFO",
+                    (
+                        f"Authenticated and unauthenticated responses differed for "
+                        f"{method} {url}."
+                    ),
+                    evidence=(
+                        f"Unauthenticated status {unauth_resp.status_code}; "
+                        f"authenticated status {auth_resp.status_code}; "
+                        f"auth-only fields: {', '.join(auth_only_paths[:8]) or 'n/a'}."
+                    ),
+                    confidence="high",
+                    response_snippet=auth_sig.get("snippet"),
+                    unauth_status=unauth_resp.status_code,
+                    auth_status=auth_resp.status_code,
+                    auth_only_fields=auth_only_paths[:12],
+                )
+            )
+
+    return findings
+
+
+def discover_api_endpoints(url, delay=0, spec_path=None):
     """Discover available API endpoints."""
     log_info("Discovering API endpoints...")
     discovered = []
@@ -86,10 +909,15 @@ def discover_api_endpoints(url, delay=0):
                 discovered.append(
                     {
                         "url": test_url,
+                        "method": "GET",
                         "status": resp.status_code,
                         "content_type": content_type,
                         "is_api": is_api,
                         "body_preview": resp.text[:200],
+                        "request_body": None,
+                        "request_body_content_type": "",
+                        "auth_schemes": [],
+                        "auth_placeholders": {},
                     }
                 )
 
@@ -101,15 +929,34 @@ def discover_api_endpoints(url, delay=0):
         except Exception:
             pass
 
+    local_spec = load_api_spec(spec_path)
+    if local_spec:
+        discovered.extend(
+            extract_openapi_endpoints(local_spec, url, source=f"file:{spec_path}")
+        )
+    else:
+        remote_spec, spec_url = fetch_openapi_spec(url, delay=delay)
+        if remote_spec:
+            discovered.extend(
+                extract_openapi_endpoints(remote_spec, url, source=spec_url)
+            )
+
+    discovered = _dedupe_api_endpoints(discovered)
+    spec_count = len([e for e in discovered if e.get("source")])
+    if spec_count:
+        log_info(f"Loaded {spec_count} API operation(s) from OpenAPI/Swagger spec")
+
     return discovered
 
 
-def test_bola(url, delay=0):
+def test_bola(target, delay=0):
     """
     API1: Broken Object Level Authorization (BOLA/IDOR)
     Try accessing other users' data by manipulating IDs.
     """
     findings = []
+
+    url, _ = _coerce_target(target)
 
     for pattern, param_name in IDOR_PATTERNS:
         match = re.search(pattern, url)
@@ -130,7 +977,7 @@ def test_bola(url, delay=0):
                             if data and isinstance(data, dict):
                                 findings.append(
                                     {
-                                        "type": "api_vulnerability",
+                                        "type": "API_BOLA",
                                         "vuln": "BOLA (Broken Object Level Authorization)",
                                         "severity": "CRITICAL",
                                         "url": test_url,
@@ -152,17 +999,18 @@ def test_bola(url, delay=0):
     return findings
 
 
-def test_rate_limiting(url, delay=0):
+def test_rate_limiting(target, delay=0):
     """
     API4: Unrestricted Resource Consumption
     Check if API has rate limiting.
     """
     findings = []
+    url, method = _coerce_target(target)
 
     try:
         success_count = 0
         for i in range(30):
-            resp = smart_request("get", url, delay=0, timeout=3)
+            resp = smart_request(method.lower(), url, delay=0, timeout=3)
             if resp.status_code == 200:
                 success_count += 1
             elif resp.status_code == 429:
@@ -172,7 +1020,7 @@ def test_rate_limiting(url, delay=0):
         if success_count >= 28:
             findings.append(
                 {
-                    "type": "api_vulnerability",
+                    "type": "API_Rate_Limit",
                     "vuln": "No Rate Limiting",
                     "severity": "MEDIUM",
                     "url": url,
@@ -188,12 +1036,16 @@ def test_rate_limiting(url, delay=0):
     return findings
 
 
-def test_mass_assignment(url, delay=0):
+def test_mass_assignment(target, delay=0):
     """
     API6: Mass Assignment
     Try adding admin/role fields to POST/PUT requests.
     """
     findings = []
+    url, method = _coerce_target(target)
+    if isinstance(target, dict) and method not in {"POST", "PUT", "PATCH"}:
+        return findings
+
     injection_fields = {
         "role": "admin",
         "is_admin": True,
@@ -207,13 +1059,13 @@ def test_mass_assignment(url, delay=0):
     }
 
     try:
-        # Try POST with injected fields
+        request_kwargs = _build_request_body_kwargs(target, injection_fields)
         resp = smart_request(
-            "post",
+            method.lower() if method in {"POST", "PUT", "PATCH"} else "post",
             url,
-            json=injection_fields,
             delay=delay,
             timeout=5,
+            **request_kwargs,
         )
 
         if resp.status_code in (200, 201):
@@ -224,7 +1076,7 @@ def test_mass_assignment(url, delay=0):
                     if field in str(data):
                         findings.append(
                             {
-                                "type": "api_vulnerability",
+                                "type": "API_Mass_Assignment",
                                 "vuln": "Mass Assignment",
                                 "severity": "HIGH",
                                 "url": url,
@@ -272,7 +1124,7 @@ def test_graphql_introspection(url, delay=0):
                         types = data["data"]["__schema"].get("types", [])
                         findings.append(
                             {
-                                "type": "api_vulnerability",
+                                "type": "API_GraphQL_Introspection",
                                 "vuln": "GraphQL Introspection Enabled",
                                 "severity": "MEDIUM",
                                 "url": gql_url,
@@ -307,7 +1159,7 @@ def test_verb_tampering(url, delay=0):
             if resp.status_code in (200, 201, 204):
                 findings.append(
                     {
-                        "type": "api_vulnerability",
+                        "type": "API_Verb_Tampering",
                         "vuln": "HTTP Verb Tampering",
                         "severity": "MEDIUM",
                         "url": url,
@@ -353,7 +1205,7 @@ def test_jwt_issues(url, resp_headers, delay=0):
                 if alg == "none" or alg == "None":
                     findings.append(
                         {
-                            "type": "api_vulnerability",
+                            "type": "JWT_None_Alg",
                             "vuln": "JWT Algorithm None",
                             "severity": "CRITICAL",
                             "url": url,
@@ -363,7 +1215,7 @@ def test_jwt_issues(url, resp_headers, delay=0):
                 elif alg.startswith("HS"):
                     findings.append(
                         {
-                            "type": "api_vulnerability",
+                            "type": "JWT_Weak_Secret",
                             "vuln": "JWT HMAC Symmetric Key",
                             "severity": "LOW",
                             "url": url,
@@ -379,48 +1231,66 @@ def test_jwt_issues(url, resp_headers, delay=0):
     return findings
 
 
-def scan_api(url, delay=0, threads=5):
+def scan_api(url, delay=0, threads=5, spec_path=None):
     """Main entry point for API security scanning."""
     log_info("Starting API Security Scanner (OWASP API Top 10)...")
 
     all_findings = []
 
     # Step 1: Discover endpoints
-    endpoints = discover_api_endpoints(url, delay)
+    endpoints = discover_api_endpoints(url, delay, spec_path=spec_path)
     api_endpoints = [e for e in endpoints if e.get("is_api")]
 
     if not api_endpoints:
         log_info("No API endpoints discovered. Scanning target URL directly.")
-        api_endpoints = [{"url": url, "status": 200}]
+        api_endpoints = [{"url": url, "status": 200, "method": "GET"}]
+
+    auth_findings = collect_auth_findings(api_endpoints)
+    for finding in auth_findings:
+        all_findings.append(finding)
+        log_info(f"[INFO] Auth Scheme: {finding['evidence']}")
 
     # Step 2: Run tests on discovered endpoints
     for ep in api_endpoints:
         ep_url = ep["url"]
-        log_info(f"Testing API endpoint: {ep_url}")
+        method = ep.get("method", "GET").upper()
+        log_info(f"Testing API endpoint: {method} {ep_url}")
+        placeholders = ep.get("auth_placeholders") or {}
+        if placeholders:
+            log_info(f"Using auth placeholders for endpoint: {placeholders}")
 
-        # BOLA (IDOR)
-        bola_results = test_bola(ep_url, delay)
-        for r in bola_results:
-            all_findings.append(r)
-            log_success(f"[CRITICAL] BOLA/IDOR: {r['url']}")
+        auth_diff_results = test_auth_response_diff(ep, delay)
+        for result in auth_diff_results:
+            all_findings.append(result)
+            if result["type"] in {"API_Unauth_Access", "API_BFLA"}:
+                log_success(f"[CRITICAL] Auth bypass signal: {result['url']}")
+            else:
+                log_info(f"[INFO] Auth response diff: {result['url']}")
 
-        # Rate Limiting
-        rate_results = test_rate_limiting(ep_url, delay)
-        for r in rate_results:
-            all_findings.append(r)
-            log_warning(f"[MEDIUM] No Rate Limiting: {r['url']}")
+        with auth_manager.using_placeholders(placeholders):
+            # BOLA (IDOR)
+            bola_results = test_bola(ep, delay)
+            for r in bola_results:
+                all_findings.append(r)
+                log_success(f"[CRITICAL] BOLA/IDOR: {r['url']}")
 
-        # Mass Assignment
-        mass_results = test_mass_assignment(ep_url, delay)
-        for r in mass_results:
-            all_findings.append(r)
-            log_warning(f"[HIGH] Mass Assignment: {r['url']}")
+            # Rate Limiting
+            rate_results = test_rate_limiting(ep, delay)
+            for r in rate_results:
+                all_findings.append(r)
+                log_warning(f"[MEDIUM] No Rate Limiting: {r['url']}")
 
-        # Verb Tampering
-        verb_results = test_verb_tampering(ep_url, delay)
-        for r in verb_results:
-            all_findings.append(r)
-            log_info(f"[MEDIUM] Verb Tampering ({r['method']}): {r['url']}")
+            # Mass Assignment
+            mass_results = test_mass_assignment(ep, delay)
+            for r in mass_results:
+                all_findings.append(r)
+                log_warning(f"[HIGH] Mass Assignment: {r['url']}")
+
+            # Verb Tampering
+            verb_results = test_verb_tampering(ep_url, delay)
+            for r in verb_results:
+                all_findings.append(r)
+                log_info(f"[MEDIUM] Verb Tampering ({r['method']}): {r['url']}")
 
     # Step 3: GraphQL introspection (global test)
     gql_results = test_graphql_introspection(url, delay)

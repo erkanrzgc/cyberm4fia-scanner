@@ -8,7 +8,10 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.finding import (
+    AttackPath,
     Finding,
+    Observation,
+    build_scan_artifacts,
     normalize_vuln,
     normalize_all,
     generate_sarif,
@@ -42,10 +45,18 @@ class TestFinding:
             cwe="CWE-79",
             url="https://example.com",
             module="XSS_Param",
+            id="finding_1",
+            asset_id="asset_1",
+            surface="web",
+            verification_state="verified",
+            exploitability="medium",
         )
         d = f.to_dict()
         assert "title" in d
         assert "url" in d
+        assert d["type"] == "XSS_Param"
+        assert d["verification_state"] == "verified"
+        assert d["exploitability"] == "medium"
         # None values should be excluded
         assert "context" not in d
         assert "source" not in d
@@ -138,6 +149,61 @@ class TestNormalizeVuln:
         assert len(findings) == 2
         assert findings[0].cwe == "CWE-79"
         assert findings[1].cwe == "CWE-89"
+
+    def test_normalize_preserves_request_and_response_context(self):
+        finding = normalize_vuln(
+            {
+                "type": "API_Unauth_Access",
+                "url": "https://api.example.com/private",
+                "description": "Protected endpoint accessible without auth.",
+                "request_method": "GET",
+                "response_snippet": '{"id":1}',
+                "repro_steps": ["GET /private without auth"],
+            }
+        )
+
+        assert finding.finding_type == "API_Unauth_Access"
+        assert finding.request == {"method": "GET"}
+        assert finding.response_snippet == '{"id":1}'
+        assert finding.repro_steps == ["GET /private without auth"]
+
+    def test_normalize_assigns_reasoning_fields(self):
+        finding = normalize_vuln(
+            {
+                "type": "SQLi_Param",
+                "url": "https://app.example.com/item?id=1",
+                "param": "id",
+                "payload": "' OR 1=1--",
+                "evidence": "SQL syntax error returned by server",
+            }
+        )
+
+        assert finding.id.startswith("finding_")
+        assert finding.asset_id.startswith("asset_")
+        assert finding.surface == "web"
+        assert finding.verification_state == "verified"
+        assert finding.exploitability == "medium"
+        assert finding.observation_refs
+        assert finding.replay_recipe["url"] == "https://app.example.com/item?id=1"
+
+    def test_build_scan_artifacts_returns_observations_and_attack_paths(self):
+        artifacts = build_scan_artifacts(
+            [
+                {
+                    "type": "SSRF_Param",
+                    "url": "https://app.example.com/proxy",
+                    "param": "url",
+                    "payload": "http://169.254.169.254/latest/meta-data/",
+                }
+            ]
+        )
+
+        assert len(artifacts["observations"]) == 1
+        assert isinstance(artifacts["observations"][0], Observation)
+        assert len(artifacts["findings"]) == 1
+        assert artifacts["findings"][0].attack_path_refs
+        assert artifacts["attack_paths"]
+        assert isinstance(artifacts["attack_paths"][0], AttackPath)
 
 
 class TestSARIF:

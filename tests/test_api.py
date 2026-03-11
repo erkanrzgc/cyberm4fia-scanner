@@ -1,5 +1,5 @@
 """
-Tests for api_server.py — FastAPI endpoint tests
+Tests for api_server.py — FastAPI endpoint tests.
 """
 
 import sys
@@ -8,52 +8,88 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest
+import threading
 
 try:
-    from fastapi.testclient import TestClient
+    import httpx
+    import api_server
     from api_server import app
 
-    HAS_FASTAPI = True
+    HAS_API_DEPS = True
 except ImportError:
-    HAS_FASTAPI = False
+    HAS_API_DEPS = False
 
 
-@pytest.mark.skipif(not HAS_FASTAPI, reason="FastAPI not installed")
+class _NoopThread:
+    """Thread stub used to avoid background network activity in tests."""
+
+    def __init__(self, target=None, args=(), kwargs=None, daemon=None):
+        self.target = target
+        self.args = args
+        self.kwargs = kwargs or {}
+        self.daemon = daemon
+        self.started = False
+
+    def start(self):
+        self.started = True
+
+
+@pytest.mark.skipif(not HAS_API_DEPS, reason="FastAPI/httpx not installed")
 class TestAPIServer:
     """Tests for FastAPI endpoints."""
 
-    def setup_method(self):
-        self.client = TestClient(app)
+    async def _request(self, method, path, **kwargs):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://testserver",
+        ) as client:
+            return await client.request(method, path, **kwargs)
 
-    def test_index(self):
-        resp = self.client.get("/")
+    def setup_method(self):
+        api_server.SCANS.clear()
+
+    def teardown_method(self):
+        api_server.SCANS.clear()
+
+    @pytest.mark.asyncio
+    async def test_index(self):
+        resp = await self._request("GET", "/")
         assert resp.status_code == 200
         data = resp.json()
         assert data["name"] == "cyberm4fia-scanner API"
         assert "endpoints" in data
         assert "docs" in data
 
-    def test_list_scans_empty(self):
-        resp = self.client.get("/api/scans")
+    @pytest.mark.asyncio
+    async def test_list_scans_empty(self):
+        resp = await self._request("GET", "/api/scans")
         assert resp.status_code == 200
         data = resp.json()
         assert "scans" in data
         assert isinstance(data["scans"], list)
 
-    def test_get_nonexistent_scan(self):
-        resp = self.client.get("/api/scan/nonexistent")
+    @pytest.mark.asyncio
+    async def test_get_nonexistent_scan(self):
+        resp = await self._request("GET", "/api/scan/nonexistent")
         assert resp.status_code == 404
 
-    def test_delete_nonexistent_scan(self):
-        resp = self.client.delete("/api/scan/nonexistent")
+    @pytest.mark.asyncio
+    async def test_delete_nonexistent_scan(self):
+        resp = await self._request("DELETE", "/api/scan/nonexistent")
         assert resp.status_code == 404
 
-    def test_start_scan_no_url(self):
-        resp = self.client.post("/api/scan", json={})
-        assert resp.status_code == 422  # Pydantic validation error
+    @pytest.mark.asyncio
+    async def test_start_scan_no_url(self):
+        resp = await self._request("POST", "/api/scan", json={})
+        assert resp.status_code == 422
 
-    def test_start_scan_success(self):
-        resp = self.client.post(
+    @pytest.mark.asyncio
+    async def test_start_scan_success(self, monkeypatch):
+        monkeypatch.setattr(api_server.threading, "Thread", _NoopThread)
+
+        resp = await self._request(
+            "POST",
             "/api/scan",
             json={"url": "http://example.com", "modules": ["xss"], "mode": "quick"},
         )
@@ -62,18 +98,122 @@ class TestAPIServer:
         assert "scan_id" in data
         assert data["status"] == "queued"
         assert data["url"] == "http://example.com"
+        assert data["scan_id"] in api_server.SCANS
+        assert api_server.SCANS[data["scan_id"]]["status"] == "queued"
 
-    def test_report_nonexistent(self):
-        resp = self.client.get("/api/report/nonexistent")
+    @pytest.mark.asyncio
+    async def test_report_nonexistent(self):
+        resp = await self._request("GET", "/api/report/nonexistent")
         assert resp.status_code == 404
 
-    def test_openapi_docs(self):
-        resp = self.client.get("/docs")
+    @pytest.mark.asyncio
+    async def test_json_report_nonexistent(self):
+        resp = await self._request("GET", "/api/report/nonexistent/json")
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_sarif_report_nonexistent(self):
+        resp = await self._request("GET", "/api/report/nonexistent/sarif")
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_openapi_docs(self):
+        resp = await self._request("GET", "/docs")
         assert resp.status_code == 200
 
-    def test_openapi_schema(self):
-        resp = self.client.get("/openapi.json")
+    @pytest.mark.asyncio
+    async def test_openapi_schema(self):
+        resp = await self._request("GET", "/openapi.json")
         assert resp.status_code == 200
         schema = resp.json()
         assert schema["info"]["title"] == "cyberm4fia-scanner API"
         assert "paths" in schema
+
+    @pytest.mark.asyncio
+    async def test_cancel_running_scan_sets_cancelling_status(self):
+        api_server.SCANS["scan123"] = {
+            "id": "scan123",
+            "url": "http://example.com",
+            "status": "running",
+            "created_at": "now",
+            "progress": {"completed": 1, "total": 5},
+            "cancel_event": threading.Event(),
+        }
+
+        resp = await self._request("DELETE", "/api/scan/scan123")
+
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "cancelling"}
+        assert api_server.SCANS["scan123"]["status"] == "cancelling"
+        assert api_server.SCANS["scan123"]["cancel_event"].is_set() is True
+
+    @pytest.mark.asyncio
+    async def test_scan_events_endpoint_streams_progress_payload(self):
+        api_server.SCANS["scan123"] = {
+            "id": "scan123",
+            "url": "http://example.com",
+            "status": "completed",
+            "created_at": "now",
+            "progress": {"phase": "completed", "completed": 2, "total": 2},
+            "total_vulns": 1,
+            "cancel_event": threading.Event(),
+        }
+
+        resp = await self._request("GET", "/api/scan/scan123/events")
+
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("text/event-stream")
+        assert "event: progress" in resp.text
+        assert '"status": "completed"' in resp.text
+
+    @pytest.mark.asyncio
+    async def test_json_and_sarif_report_downloads(self, tmp_path):
+        scan_dir = tmp_path / "scan123"
+        scan_dir.mkdir()
+        (scan_dir / "findings.json").write_text('{"summary":{"total":1}}')
+        (scan_dir / "results.sarif").write_text('{"version":"2.1.0"}')
+
+        api_server.SCANS["scan123"] = {
+            "id": "scan123",
+            "url": "http://example.com",
+            "status": "completed",
+            "created_at": "now",
+            "scan_dir": str(scan_dir),
+            "cancel_event": threading.Event(),
+        }
+
+        json_resp = await api_server.get_json_report("scan123")
+        sarif_resp = await api_server.get_sarif_report("scan123")
+
+        assert json_resp.status_code == 200
+        assert json_resp.media_type == "application/json"
+        assert json_resp.path.endswith("findings.json")
+
+        assert sarif_resp.status_code == 200
+        assert sarif_resp.media_type == "application/sarif+json"
+        assert sarif_resp.path.endswith("results.sarif")
+
+    @pytest.mark.asyncio
+    async def test_get_scan_returns_reasoned_findings_and_attack_paths(self):
+        api_server.SCANS["scan123"] = {
+            "id": "scan123",
+            "url": "http://example.com",
+            "status": "completed",
+            "created_at": "now",
+            "total_vulns": 1,
+            "stats": {},
+            "progress": {},
+            "vulns": [{"type": "XSS_Param", "url": "http://example.com?q=1"}],
+            "observations": [{"id": "obs_1", "observation_type": "XSS_Param"}],
+            "findings": [{"id": "finding_1", "type": "XSS_Param"}],
+            "attack_paths": [{"id": "path_1", "name": "XSS_Param → Session Hijacking"}],
+            "cancel_event": threading.Event(),
+        }
+
+        resp = await self._request("GET", "/api/scan/scan123")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["findings"][0]["id"] == "finding_1"
+        assert data["observations"][0]["id"] == "obs_1"
+        assert data["attack_paths"][0]["id"] == "path_1"

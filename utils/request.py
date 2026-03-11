@@ -3,10 +3,12 @@ cyberm4fia-scanner - HTTP Request Utilities
 """
 
 import os
+import fnmatch
 import httpx
 import time
 import random
 import threading
+from urllib.parse import urlparse
 
 # Load .env file if python-dotenv is available
 try:
@@ -22,7 +24,37 @@ from utils.waf import waf_detector
 # Thread-local storage for sessions
 _thread_local = threading.local()
 _global_headers = {}
+_host_semaphores = {}
 lock = threading.Lock()
+
+
+class RequestControlError(RuntimeError):
+    """Base class for scan/runtime request guardrails."""
+
+
+class RequestBudgetExceeded(RequestControlError):
+    """Raised when the configured per-scan request budget is exhausted."""
+
+
+class ScanCancelled(RequestControlError):
+    """Raised when a running scan has been cancelled."""
+
+
+class BlockedTargetPath(RequestControlError):
+    """Raised when a request targets a risky blacklisted path."""
+
+
+def _reset_session():
+    """Drop the cached thread-local session so new config is applied cleanly."""
+    if hasattr(_thread_local, "session"):
+        try:
+            _thread_local.session.close()
+        except Exception:
+            pass
+
+    for attr in ("session", "_verify", "_proxy"):
+        if hasattr(_thread_local, attr):
+            delattr(_thread_local, attr)
 
 
 def _get_session(verify=False, proxies=None):
@@ -63,9 +95,21 @@ class Config:
     JSON_OUTPUT = False
     THREADS = int(os.environ.get("DEFAULT_THREADS", "10"))
     MAX_RETRIES = 2
+    DEFAULT_TIMEOUT = float(os.environ.get("DEFAULT_TIMEOUT", "10"))
     VERIFY_SSL = os.environ.get("VERIFY_SSL", "false").lower() == "true"
     OOB_CLIENT = None
     SHODAN_API_KEY = os.environ.get("SHODAN_API_KEY", "")
+    REQUEST_BUDGET = int(os.environ.get("REQUEST_BUDGET", "0"))
+    MAX_HOST_CONCURRENCY = int(os.environ.get("MAX_HOST_CONCURRENCY", "0"))
+    PATH_BLACKLIST = tuple(
+        part.strip()
+        for part in os.environ.get(
+            "PATH_BLACKLIST",
+            "/logout,/signout,/delete,/remove,/destroy,/reset,/terminate,/deactivate,/checkout,/payment",
+        ).split(",")
+        if part.strip()
+    )
+    CANCEL_EVENT = None
 
 
 USER_AGENTS = [
@@ -123,20 +167,177 @@ class Stats:
             cls.start_time = time.time()
 
 
-def smart_request(
-    method, url, data=None, params=None, headers=None, delay=None, **kwargs
-):
-    """Make HTTP request with retry, HTTP/2, and WAF detection"""
-    if delay is None:
-        delay = Config.REQUEST_DELAY
+def get_request_delay():
+    """Return the active per-request delay."""
+    return Config.REQUEST_DELAY
 
-    if Config.RANDOM_DELAY:
+
+def set_request_delay(delay):
+    """Update the active per-request delay."""
+    Config.REQUEST_DELAY = float(delay)
+
+
+def get_stealth_delay():
+    """Return the configured stealth-mode delay."""
+    return Config.STEALTH_DELAY
+
+
+def use_random_delay():
+    """Return whether randomized backoff is enabled."""
+    return Config.RANDOM_DELAY
+
+
+def get_proxy():
+    """Return the active outbound proxy, if any."""
+    return normalize_proxy_url(Config.PROXY)
+
+
+def get_thread_count():
+    """Return the active worker/thread count."""
+    return Config.THREADS
+
+
+def set_thread_count(threads):
+    """Update the active worker/thread count."""
+    Config.THREADS = int(threads)
+
+
+def get_default_timeout():
+    """Return the active request timeout."""
+    return Config.DEFAULT_TIMEOUT
+
+
+def get_max_retries():
+    """Return the active retry count for requests."""
+    return Config.MAX_RETRIES
+
+
+def is_ssl_verification_enabled():
+    """Return whether SSL verification is enabled."""
+    return Config.VERIFY_SSL
+
+
+def is_json_output_enabled():
+    """Return whether JSON output is enabled."""
+    return Config.JSON_OUTPUT
+
+
+def set_json_output_enabled(enabled):
+    """Update JSON output mode."""
+    Config.JSON_OUTPUT = bool(enabled)
+
+
+def get_path_blacklist():
+    """Return the configured risky-path blacklist."""
+    return tuple(Config.PATH_BLACKLIST)
+
+
+def get_oob_client():
+    """Return the active out-of-band interaction client, if any."""
+    return Config.OOB_CLIENT
+
+
+def set_oob_client(client):
+    """Update the active out-of-band interaction client."""
+    Config.OOB_CLIENT = client
+
+
+def get_global_headers():
+    """Return a copy of globally applied request headers."""
+    return dict(_global_headers)
+
+
+def get_runtime_stats():
+    """Return a snapshot of mutable request counters."""
+    with lock:
+        return {
+            "total_requests": Stats.total_requests,
+            "vulnerabilities_found": Stats.vulnerabilities_found,
+            "waf_blocks": Stats.waf_blocks,
+            "errors": Stats.errors,
+            "retries": Stats.retries,
+            "start_time": Stats.start_time,
+        }
+
+
+def increment_request_count(amount=1):
+    """Increment the total request counter."""
+    with lock:
+        Stats.total_requests += int(amount)
+        return Stats.total_requests
+
+
+def increment_vulnerability_count(amount=1):
+    """Increment the vulnerability counter."""
+    with lock:
+        Stats.vulnerabilities_found += int(amount)
+        return Stats.vulnerabilities_found
+
+
+def increment_waf_block_count(amount=1):
+    """Increment the WAF block counter."""
+    with lock:
+        Stats.waf_blocks += int(amount)
+        return Stats.waf_blocks
+
+
+def increment_retry_count(amount=1):
+    """Increment the retry counter."""
+    with lock:
+        Stats.retries += int(amount)
+        return Stats.retries
+
+
+def increment_error_count(amount=1):
+    """Increment the error counter."""
+    with lock:
+        Stats.errors += int(amount)
+        return Stats.errors
+
+
+def reset_runtime_stats():
+    """Reset request counters and start time for a new scan."""
+    Stats.reset()
+
+
+def normalize_proxy_url(proxy_addr):
+    """Normalize proxy inputs like 127.0.0.1:8080 into http://127.0.0.1:8080."""
+    proxy = str(proxy_addr or "").strip()
+    if not proxy:
+        return ""
+
+    parsed = urlparse(proxy)
+    if parsed.scheme:
+        return proxy
+
+    if proxy.startswith("//"):
+        return f"http:{proxy}"
+
+    return f"http://{proxy}"
+
+
+def smart_request(
+    method,
+    url,
+    data=None,
+    params=None,
+    headers=None,
+    delay=None,
+    evasion_level=0,
+    **kwargs,
+):
+    """Make HTTP request with retry, HTTP/2, WAF detection, and Protocol Evasion."""
+    _raise_if_scan_cancelled()
+    _raise_if_path_blocked(url)
+    _reserve_request_budget()
+
+    if delay is None:
+        delay = get_request_delay()
+
+    if use_random_delay():
         time.sleep(delay * random.uniform(0.5, 1.5))
     else:
         time.sleep(delay)
-
-    with lock:
-        Stats.total_requests += 1
 
     req_headers = {
         "User-Agent": random.choice(USER_AGENTS),
@@ -149,23 +350,44 @@ def smart_request(
     if headers:
         req_headers.update(headers)
 
-    proxies = Config.PROXY if Config.PROXY else None
+    # --- PROTOCOL-LEVEL WAF EVASION ---
+    if evasion_level > 0:
+        from utils.waf_evasion import apply_advanced_evasion
+
+        url, params, data, req_headers = apply_advanced_evasion(
+            url, params, data, req_headers, evasion_level
+        )
+
+    proxies = get_proxy() if get_proxy() else None
 
     # Defaults - HTTPX uses `follow_redirects` instead of `allow_redirects`
     allow_redirects = kwargs.pop("allow_redirects", True)
-    timeout_val = kwargs.pop("timeout", 10)
-    verify = kwargs.pop("verify", Config.VERIFY_SSL)
+    timeout_val = kwargs.pop("timeout", get_default_timeout())
+    verify = kwargs.pop("verify", is_ssl_verification_enabled())
 
     timeout = httpx.Timeout(timeout_val)
 
     # Inject Authentication
     auth_manager.inject_auth(req_headers, kwargs)
+    params = kwargs.pop("params", params)
 
     last_error = None
-    max_retries = Config.MAX_RETRIES
+    max_retries = get_max_retries()
+    host_semaphore = _get_host_semaphore(url)
+    acquired_host_slot = False
 
     for attempt in range(max_retries + 1):
         try:
+            _raise_if_scan_cancelled()
+            if host_semaphore and not acquired_host_slot:
+                acquired_host_slot = host_semaphore.acquire(
+                    timeout=max(float(timeout_val), 1.0)
+                )
+                if not acquired_host_slot:
+                    raise RequestControlError(
+                        f"Timed out waiting for host concurrency slot: {url}"
+                    )
+
             sess = _get_session(verify=verify, proxies=proxies)
 
             # Remove unsupported kwargs for httpx
@@ -192,8 +414,8 @@ def smart_request(
                         f"WAF Detected: {detected} - Auto-calibrating request delays to avoid bans."
                     )
                     # Throttle default delay to evade automated dropping
-                    if Config.REQUEST_DELAY < 1.0:
-                        Config.REQUEST_DELAY = 1.0
+                    if get_request_delay() < 1.0:
+                        set_request_delay(1.0)
 
             # Active WAF blocking detection
             if resp.status_code in (403, 406, 429, 503):
@@ -206,8 +428,7 @@ def smart_request(
                     "access denied",
                 ]
                 if any(ind in resp.text.lower() for ind in waf_indicators):
-                    with lock:
-                        Stats.waf_blocks += 1
+                    increment_waf_block_count()
 
                 # Adaptive rate limiting: auto-backoff on 429
                 if resp.status_code == 429 and attempt < max_retries:
@@ -225,9 +446,9 @@ def smart_request(
                     time.sleep(wait_time)
                     # Increase global delay to prevent future 429s
                     with lock:
-                        if Config.REQUEST_DELAY < 2.0:
-                            Config.REQUEST_DELAY = min(Config.REQUEST_DELAY * 1.5, 3.0)
-                        Stats.retries += 1
+                        if get_request_delay() < 2.0:
+                            set_request_delay(min(get_request_delay() * 1.5, 3.0))
+                    increment_retry_count()
                     continue  # Retry the request
 
             return resp
@@ -235,15 +456,17 @@ def smart_request(
         except httpx.RequestError as e:
             last_error = e
             if attempt < max_retries:
-                with lock:
-                    Stats.retries += 1
+                increment_retry_count()
                 # Exponential backoff: 0.5s, 1s, 2s...
                 backoff = (2**attempt) * 0.5
                 time.sleep(backoff)
             else:
-                with lock:
-                    Stats.errors += 1
+                increment_error_count()
                 raise last_error
+        finally:
+            if acquired_host_slot:
+                host_semaphore.release()
+                acquired_host_slot = False
 
 
 def set_cookie(cookie_str):
@@ -255,7 +478,116 @@ def set_cookie(cookie_str):
 
 def set_proxy(proxy_addr):
     """Set proxy for requests"""
-    Config.PROXY = proxy_addr
+    Config.PROXY = normalize_proxy_url(proxy_addr) or None
+
+
+def set_request_controls(
+    request_budget=None,
+    max_host_concurrency=None,
+    path_blacklist=None,
+    default_timeout=None,
+    cancel_event=None,
+):
+    """Apply mutable per-scan request guardrails."""
+    if request_budget is not None:
+        Config.REQUEST_BUDGET = int(request_budget or 0)
+    if max_host_concurrency is not None:
+        Config.MAX_HOST_CONCURRENCY = int(max_host_concurrency or 0)
+    if path_blacklist is not None:
+        if isinstance(path_blacklist, str):
+            path_blacklist = [
+                item.strip() for item in path_blacklist.split(",") if item.strip()
+            ]
+        Config.PATH_BLACKLIST = tuple(path_blacklist or ())
+    if default_timeout is not None:
+        Config.DEFAULT_TIMEOUT = float(default_timeout)
+    Config.CANCEL_EVENT = cancel_event
+    _host_semaphores.clear()
+
+
+def is_url_blocked(url):
+    """Return True when a URL path matches a configured risky-path blacklist."""
+    path = urlparse(url).path or "/"
+    for pattern in Config.PATH_BLACKLIST:
+        normalized = pattern.strip()
+        if not normalized:
+            continue
+        if fnmatch.fnmatch(path, normalized) or normalized in path:
+            return True
+    return False
+
+
+def _raise_if_path_blocked(url):
+    if is_url_blocked(url):
+        raise BlockedTargetPath(f"Blocked risky target path: {url}")
+
+
+def _raise_if_scan_cancelled():
+    if Config.CANCEL_EVENT is not None and Config.CANCEL_EVENT.is_set():
+        raise ScanCancelled("Scan cancelled by user request.")
+
+
+def _reserve_request_budget():
+    with lock:
+        if Config.REQUEST_BUDGET and Stats.total_requests >= Config.REQUEST_BUDGET:
+            raise RequestBudgetExceeded(
+                f"Request budget exceeded ({Stats.total_requests}/{Config.REQUEST_BUDGET})"
+            )
+        Stats.total_requests += 1
+
+
+def _get_host_semaphore(url):
+    limit = int(getattr(Config, "MAX_HOST_CONCURRENCY", 0) or 0)
+    if limit <= 0:
+        return None
+
+    host = urlparse(url).netloc or urlparse(url).path
+    if not host:
+        return None
+
+    with lock:
+        semaphore = _host_semaphores.get(host)
+        if semaphore is None:
+            semaphore = threading.BoundedSemaphore(limit)
+            _host_semaphores[host] = semaphore
+        return semaphore
+
+
+def snapshot_runtime_state():
+    """Capture mutable request/runtime globals for later restoration."""
+    return {
+        "proxy": Config.PROXY,
+        "request_delay": Config.REQUEST_DELAY,
+        "json_output": Config.JSON_OUTPUT,
+        "threads": Config.THREADS,
+        "default_timeout": Config.DEFAULT_TIMEOUT,
+        "request_budget": Config.REQUEST_BUDGET,
+        "max_host_concurrency": Config.MAX_HOST_CONCURRENCY,
+        "path_blacklist": tuple(Config.PATH_BLACKLIST),
+        "cancel_event": Config.CANCEL_EVENT,
+        "global_headers": dict(_global_headers),
+    }
+
+
+def restore_runtime_state(state):
+    """Restore mutable request/runtime globals from a snapshot."""
+    Config.PROXY = state.get("proxy")
+    Config.REQUEST_DELAY = state.get("request_delay", Config.REQUEST_DELAY)
+    Config.JSON_OUTPUT = state.get("json_output", Config.JSON_OUTPUT)
+    Config.THREADS = state.get("threads", Config.THREADS)
+    Config.DEFAULT_TIMEOUT = state.get("default_timeout", Config.DEFAULT_TIMEOUT)
+    Config.REQUEST_BUDGET = state.get("request_budget", Config.REQUEST_BUDGET)
+    Config.MAX_HOST_CONCURRENCY = state.get(
+        "max_host_concurrency",
+        Config.MAX_HOST_CONCURRENCY,
+    )
+    Config.PATH_BLACKLIST = tuple(state.get("path_blacklist", Config.PATH_BLACKLIST))
+    Config.CANCEL_EVENT = state.get("cancel_event")
+
+    _global_headers.clear()
+    _global_headers.update(state.get("global_headers", {}))
+    _host_semaphores.clear()
+    _reset_session()
 
 
 # Disable SSL warnings when verification is off

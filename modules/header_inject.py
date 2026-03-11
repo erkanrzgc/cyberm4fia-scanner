@@ -9,7 +9,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.colors import log_info, log_success, log_vuln
-from utils.request import smart_request, lock, Stats
+from utils.request import increment_vulnerability_count, smart_request
 
 
 # Header injection payloads
@@ -80,8 +80,7 @@ def _check_host_header(url, delay):
             resp_lower = resp.text.lower()
             for sig in HEADER_SIGNATURES["host_redirect"]:
                 if sig in resp_lower:
-                    with lock:
-                        Stats.vulnerabilities_found += 1
+                    increment_vulnerability_count()
                     log_vuln("HOST HEADER INJECTION!")
                     log_success(f"Header: {header_name}: {header_val}")
                     log_success(f"Signature: {sig}")
@@ -100,8 +99,7 @@ def _check_host_header(url, delay):
             if resp.status_code in (301, 302, 307, 308):
                 location = resp.headers.get("Location", "").lower()
                 if header_val.lower() in location:
-                    with lock:
-                        Stats.vulnerabilities_found += 1
+                    increment_vulnerability_count()
                     log_vuln("HOST HEADER REDIRECT!")
                     log_success(f"Redirects to: {resp.headers.get('Location')}")
                     vulns.append(
@@ -151,8 +149,7 @@ def _check_ip_spoof(url, delay):
                 header_name = list(header_dict.keys())[0]
                 header_val = list(header_dict.values())[0]
 
-                with lock:
-                    Stats.vulnerabilities_found += 1
+                increment_vulnerability_count()
                 log_vuln("IP SPOOFING BYPASS!")
                 log_success(f"Header: {header_name}: {header_val}")
                 log_success(f"Status changed: {baseline_status} → {resp.status_code}")
@@ -186,8 +183,7 @@ def _check_crlf(url, delay):
             for sig in HEADER_SIGNATURES["crlf_inject"]:
                 if sig in resp_headers_str:
                     header_name = list(header_dict.keys())[0]
-                    with lock:
-                        Stats.vulnerabilities_found += 1
+                    increment_vulnerability_count()
                     log_vuln("CRLF HEADER INJECTION!")
                     log_success(f"Injected via: {header_name}")
                     vulns.append(

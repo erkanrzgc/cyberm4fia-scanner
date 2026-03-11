@@ -28,78 +28,50 @@ from utils.colors import (  # noqa: E402
     log_info,
     log_success,
     log_error,
-    log_warning,
-    set_log_file,
     set_quiet,
 )
 from utils.request import (  # noqa: E402
+    BlockedTargetPath,
     Config,
-    Stats,
+    RequestBudgetExceeded,
+    ScanCancelled,
+    get_runtime_stats,
+    is_url_blocked,
+    set_json_output_enabled,
     smart_request,
-    _get_session,
-    _global_headers,
 )
 
 from modules.payloads import XSS_FLAT_PAYLOADS  # noqa: E402
-from modules.xss_exploit import (  # noqa: E402
-    run_xss_exploit,
-    run_xss_exploit_interactive,
-)
-from modules.sqli_exploit import run_sqli_exploit  # noqa: E402
-from modules.sqli import scan_blind_sqli  # noqa: E402
-from modules.cmdi_shell import InteractiveShell  # noqa: E402
-from modules.crawler import crawl_site  # noqa: E402
-from utils.oob import OOBClient  # noqa: E402
-
-# Phase 4 modules
-from modules.cloud_enum import scan_cloud_storage  # noqa: E402
-from modules.subdomain_takeover import scan_subdomain_takeover  # noqa: E402
-from modules.tech_detect import scan_technology  # noqa: E402
-from modules.api_scanner import scan_api  # noqa: E402
-
-# Phase 5 modules (SSTI and XXE run via core/engine.py)
-from modules.open_redirect import scan_open_redirect  # noqa: E402
-from modules.spray import scan_spray  # noqa: E402
-from modules.email_harvest import scan_email_harvest  # noqa: E402
-from utils.shodan_lookup import scan_osint  # noqa: E402
-from utils.vuln_chain import analyze_chains  # noqa: E402
-from utils.wordlist_gen import generate_wordlist  # noqa: E402
-
-# Phase 7 modules
-from modules.race_condition import scan_race_condition  # noqa: E402
-from modules.jwt_attack import scan_jwt  # noqa: E402
-from modules.smuggling import scan_smuggling  # noqa: E402
-from modules.proto_pollution import scan_proto_pollution  # noqa: E402
-from modules.deserialization import scan_deserialization  # noqa: E402
-from modules.business_logic import scan_business_logic  # noqa: E402
-from modules.passive import scan_passive  # noqa: E402
-from utils.finding import normalize_all  # noqa: E402
 from utils.tamper import TamperChain, set_tamper_chain  # noqa: E402
 from core.scope import ScopeFilter, set_scope, get_scope  # noqa: E402
+from core.module_registry import canonicalize_scan_urls, run_phase_modules  # noqa: E402
+from core.scan_options import (  # noqa: E402
+    API_SPEC_PROMPT,
+    ATTACK_PROFILE_SPECS,
+    DEFAULT_AI_MODEL,
+    INTERACTIVE_CUSTOM_PROMPT_GROUPS,
+    INTERACTIVE_RESUME_PROMPT,
+    INTERACTIVE_SCAN_MODE_SPECS,
+    JSON_OUTPUT_PROMPT,
+    add_parser_arguments,
+    apply_interactive_prompt_specs,
+    apply_profile_preset,
+    build_cli_scan_options,
+    build_default_scan_options,
+    get_attack_profile_spec,
+    get_attack_profile_recommended_prompt_specs,
+    get_interactive_scan_mode_spec,
+    get_interactive_runtime_prompt_specs,
+    normalize_runtime_options,
+    get_scan_mode_runtime,
+)
 from core.session import ScanSession  # noqa: E402
-from core.output import save_findings_json, save_sarif, print_severity_summary  # noqa: E402
+from core.scan_context import ScanContext  # noqa: E402
 from utils.colors import console, save_console_log
 from rich.table import Table
-from utils.ai import (  # noqa: E402
-    init_ai,
-    get_ai,
-    analyze_vulnerability,
-    detect_false_positives,
-    generate_remediation,
-    generate_scan_summary,
-)
-from modules.recon import run_recon, scan_subdomains  # noqa: E402
-from modules.report import (  # noqa: E402
-    generate_html_report,
-    generate_json_report,
-    generate_payload_report,
-    generate_markdown_report,
-)
-from modules.poc_generator import generate_pocs  # noqa: E402
-from modules.endpoint_fuzzer import scan_fuzzer_async  # noqa: E402
-from modules.cors import scan_cors  # noqa: E402
-from modules.header_inject import scan_header_inject  # noqa: E402
-from modules.csrf import scan_csrf  # noqa: E402
+from rich.panel import Panel
+from rich.markup import escape
+from utils.ai import init_ai  # noqa: E402
 from modules.compare import (  # noqa: E402
     compare_scans,
     print_comparison,
@@ -107,206 +79,286 @@ from modules.compare import (  # noqa: E402
 )
 
 
-def parse_args():
+def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="cyberm4fia-scanner")
-    parser.add_argument("-u", "--url", help="Target URL")
-    parser.add_argument(
-        "-m",
-        "--mode",
-        choices=["1", "2", "3", "4"],
-        default="2",
-        help="Scan mode (1-Quick, 2-Normal, 3-Aggressive, 4-Stealth)",
-    )
-    parser.add_argument("-c", "--cookie", help="Session cookie (e.g. 'PHPSESSID=...')")
-    parser.add_argument("--all", action="store_true", help="Enable ALL scan modules")
-    parser.add_argument(
-        "--quiet", "-q", action="store_true", help="Quiet mode (only show vulns/errors)"
-    )
-    parser.add_argument("--xss", action="store_true", help="Enable XSS scan")
-    parser.add_argument("--sqli", action="store_true", help="Enable SQLi scan")
-    parser.add_argument("--lfi", action="store_true", help="Enable LFI scan")
-    parser.add_argument("--rfi", action="store_true", help="Enable RFI scan")
-    parser.add_argument(
-        "--cmdi", action="store_true", help="Enable Command Injection scan"
-    )
-    parser.add_argument("--dom-xss", action="store_true", help="Enable DOM XSS scan")
-    parser.add_argument(
-        "--secrets", action="store_true", help="Scan for Secrets & API Keys in JS/HTML"
-    )
-    parser.add_argument("--recon", action="store_true", help="Enable Server Recon")
-    parser.add_argument(
-        "--subdomain", action="store_true", help="Enable Subdomain scan"
-    )
-    parser.add_argument("--fuzz", action="store_true", help="Enable High-Speed API/Directory Fuzzer")
-    parser.add_argument(
-        "--wordlist-file", default="wordlists/api_endpoints.txt", metavar="FILE", help="Custom wordlist for Fuzzer"
-    )
-    parser.add_argument("--ssrf", action="store_true", help="Enable SSRF scan")
-    parser.add_argument(
-        "--oob", action="store_true", help="Enable Out-Of-Band (OOB) testing"
-    )
-    parser.add_argument("--cors", action="store_true", help="Enable CORS check")
-    parser.add_argument(
-        "--header-inject", action="store_true", help="Enable Header Injection scan"
-    )
-    parser.add_argument("--crawl", action="store_true", help="Enable Crawling")
-
-    parser.add_argument("--html", action="store_true", help="Generate HTML report")
-    parser.add_argument("--json", action="store_true", help="Save JSON report")
-    parser.add_argument(
-        "--sarif",
-        action="store_true",
-        help="Save SARIF report (for GitHub Security tab)",
-    )
-    parser.add_argument(
-        "--passive",
-        action="store_true",
-        help="Enable passive scanning (header/secret/debug checks)",
-    )
-    parser.add_argument(
-        "--tamper",
-        type=str,
-        default="",
-        help="Tamper scripts for WAF bypass (comma-separated, e.g. space2comment,randomcase)",
-    )
-    parser.add_argument(
-        "-t", "--threads", type=int, default=10, help="Number of threads"
-    )
-    parser.add_argument("--api", action="store_true", help="Start REST API server mode")
-    parser.add_argument(
-        "--port", type=int, default=8080, help="API server port (default: 8080)"
-    )
-    parser.add_argument(
-        "--compare", nargs=2, metavar=("SCAN1", "SCAN2"), help="Compare two scan dirs"
-    )
-    # Proxy / Interceptor Mode
-    parser.add_argument(
-        "--proxy-listen", type=int, metavar="PORT", help="Start local MITM proxy to automatically scan intercepted traffic (e.g., 8081)"
-    )
-    parser.add_argument(
-        "--scope-proxy", type=str, metavar="DOMAIN", help="Target domain for the proxy interceptor (e.g., wisarc.com)"
-    )
-    # Phase 4 flags
-    parser.add_argument(
-        "--cloud",
-        action="store_true",
-        help="Scan for open cloud buckets (S3/Azure/GCP)",
-    )
-    parser.add_argument(
-        "--takeover", action="store_true", help="Scan for subdomain takeover"
-    )
-    parser.add_argument("--tech", action="store_true", help="Technology fingerprinting")
-    parser.add_argument(
-        "--api-scan", action="store_true", help="API security scan (OWASP API Top 10)"
-    )
-    # Phase 5 flags
-    parser.add_argument(
-        "--ssti", action="store_true", help="SSTI (Template Injection) scan"
-    )
-    parser.add_argument(
-        "--xxe", action="store_true", help="XXE (XML External Entity) scan"
-    )
-    parser.add_argument("--redirect", action="store_true", help="Open Redirect scan")
-    parser.add_argument(
-        "--spray", action="store_true", help="Default credential spraying"
-    )
-    parser.add_argument("--email", action="store_true", help="Email harvesting")
-    parser.add_argument(
-        "--osint", action="store_true", help="OSINT enrichment (Shodan/Whois)"
-    )
-    parser.add_argument(
-        "--chain", action="store_true", help="Vulnerability chaining analysis"
-    )
-    parser.add_argument(
-        "--wordlist", action="store_true", help="Generate site-specific wordlist"
-    )
-    parser.add_argument(
-        "-l", "--list", dest="target_list", help="File with list of target URLs"
-    )
-    parser.add_argument(
-        "--proxy",
-        dest="proxy_url",
-        help="Proxy URL (http/socks5, e.g. socks5://127.0.0.1:9050)",
-    )
-    # Phase 7 flags
-    parser.add_argument(
-        "--headless",
-        action="store_true",
-        help="Use headless browser for SPA rendering (requires playwright)",
-    )
-    parser.add_argument("--race", action="store_true", help="Race condition scanner")
-    parser.add_argument("--jwt", action="store_true", help="JWT attack suite")
-    parser.add_argument(
-        "--smuggle",
-        action="store_true",
-        help="HTTP request smuggling scanner (CL.TE/TE.CL)",
-    )
-    parser.add_argument(
-        "--proto",
-        action="store_true",
-        help="Prototype pollution scanner (Node.js)",
-    )
-    parser.add_argument(
-        "--deser",
-        action="store_true",
-        help="Insecure deserialization scanner",
-    )
-    parser.add_argument(
-        "--bizlogic",
-        action="store_true",
-        help="Business logic flaw scanner",
-    )
-    parser.add_argument(
-        "--scope",
-        type=str,
-        default="",
-        help="Scope include patterns (comma-separated, e.g. '*.target.com')",
-    )
-    parser.add_argument(
-        "--exclude",
-        type=str,
-        default="",
-        help="Scope exclude patterns (comma-separated, e.g. '/logout,*.pdf')",
-    )
-    parser.add_argument(
-        "--session",
-        type=str,
-        default="",
-        help="Session file for save/resume (e.g. scan1.json)",
-    )
-    parser.add_argument(
-        "--resume",
-        type=str,
-        default="",
-        help="Resume scan from session file",
-    )
-    parser.add_argument(
-        "--ai",
-        action="store_true",
-        help="Enable AI analysis (Ollama, local & free). Requires Ollama running.",
-    )
-    parser.add_argument(
-        "--ai-model",
-        type=str,
-        default="WhiteRabbitNeo/Llama-3.1-WhiteRabbitNeo-2-8B",
-        help="Ollama model (default: WhiteRabbitNeo-Llama-3.1-8B)",
-    )
-
-    return parser.parse_args()
+    add_parser_arguments(parser)
+    effective_argv = list(sys.argv[1:] if argv is None else argv)
+    args = parser.parse_args(effective_argv)
+    provided_dests = set()
+    for token in effective_argv:
+        option_token = token.split("=", 1)[0]
+        action = parser._option_string_actions.get(option_token)
+        if action:
+            provided_dests.add(action.dest)
+    setattr(args, "_provided_dests", provided_dests)
+    return args
 
 
 def get_input(prompt, default=""):
     """Get user input with default value using rich Console to record it"""
     try:
-        val = console.input(f"{Colors.BOLD}{prompt}{Colors.END} ").strip()
+        val = console.input(f"[bold white]{escape(prompt)}[/] ").strip()
         return val if val else default
     except EOFError:
         return default
 
 
+def _print_interactive_section(title, subtitle=None):
+    """Render a compact section header for the interactive menu."""
+    body = f"[bold cyan]{escape(title)}[/]"
+    if subtitle:
+        body += f"\n[dim]{escape(subtitle)}[/]"
+    console.print(Panel.fit(body, border_style="cyan", padding=(0, 2)))
+
+
+def _print_scan_mode_menu():
+    """Render the primary scan mode selector."""
+    table = Table(border_style="cyan")
+    table.add_column("Choice", style="bold cyan", justify="center")
+    table.add_column("Mode", style="bold white")
+    table.add_column("Delay", style="magenta", justify="right")
+    table.add_column("Threads", style="green", justify="right")
+    table.add_column("Use Case", style="white")
+
+    for spec in INTERACTIVE_SCAN_MODE_SPECS:
+        table.add_row(
+            spec.interactive_choice or "-",
+            spec.label,
+            f"{spec.delay:.2f}s",
+            str(spec.threads),
+            spec.description,
+        )
+
+    console.print(table)
+    console.print(
+        "[dim]Lab mode stays available after selecting Normal. Use it only for lab/staging targets.[/]"
+    )
+
+
+def _print_attack_profile_menu():
+    """Render attack profile choices in a compact table."""
+    table = Table(border_style="cyan")
+    table.add_column("Choice", style="bold cyan", justify="center")
+    table.add_column("Profile", style="bold white")
+    table.add_column("Focus", style="white")
+
+    for spec in ATTACK_PROFILE_SPECS:
+        table.add_row(spec.choice, spec.label, spec.description)
+
+    console.print(table)
+
+
+def _print_preflight_summary(url, mode, profile_spec, options):
+    """Render a concise interactive summary before the scan starts."""
+    reports = []
+    if options.get("json_output"):
+        reports.append("json")
+    if options.get("html"):
+        reports.append("html")
+    if options.get("sarif"):
+        reports.append("sarif")
+
+    table = Table(title="Interactive Scan Summary", border_style="green")
+    table.add_column("Setting", style="bold green", justify="right")
+    table.add_column("Value", style="white")
+    table.add_row("Target", url)
+    table.add_row("Mode", mode.title())
+    table.add_row("Profile", profile_spec.label)
+    table.add_row("Proxy", options.get("proxy_url") or "-")
+    table.add_row("Scope", options.get("scope") or "-")
+    table.add_row("Session", options.get("session") or "-")
+    table.add_row(
+        "Reports",
+        ", ".join(reports) if reports else "-",
+    )
+    console.print(table)
+
+
+def _resume_override_option_keys(provided_dests):
+    """Map explicit CLI args to option keys that should override session values."""
+    override_keys = set(provided_dests) & {
+        "xss",
+        "sqli",
+        "lfi",
+        "rfi",
+        "cmdi",
+        "dom_xss",
+        "secrets",
+        "recon",
+        "subdomain",
+        "fuzz",
+        "ssrf",
+        "oob",
+        "csrf",
+        "cors",
+        "header_inject",
+        "crawl",
+        "passive",
+        "cloud",
+        "takeover",
+        "tech",
+        "api_scan",
+        "api_spec",
+        "ssti",
+        "xxe",
+        "redirect",
+        "spray",
+        "email",
+        "osint",
+        "chain",
+        "wordlist",
+        "headless",
+        "jwt",
+        "race",
+        "smuggle",
+        "proto",
+        "deser",
+        "bizlogic",
+        "cookie",
+        "tamper",
+        "proxy_url",
+        "scope",
+        "exclude",
+        "session",
+        "resume",
+        "max_requests",
+        "request_timeout",
+        "max_host_concurrency",
+        "path_blacklist",
+        "wordlist_file",
+        "threads",
+        "exploit",
+        "ai",
+        "ai_model",
+        "proxy_listen",
+        "html",
+        "sarif",
+    }
+    if "json" in provided_dests:
+        override_keys.add("json_output")
+    if "mode" in provided_dests:
+        override_keys.add("threads")
+    return override_keys
+
+
+def restore_resume_scan_state(session, options, provided_dests=None, mode_override=None):
+    """Restore target, mode and options from a saved session."""
+    provided_dests = provided_dests or set()
+    restored = session.restore_config(
+        default_options=build_default_scan_options(
+            threads=options.get("threads", 10),
+            ai_model=options.get("ai_model", DEFAULT_AI_MODEL),
+        ),
+        override_options=options,
+        override_keys=_resume_override_option_keys(provided_dests),
+    )
+
+    restored_mode = mode_override or restored["mode"] or "normal"
+    mode, delay, default_threads = get_scan_mode_runtime(restored_mode)
+    restored_options = restored["options"]
+
+    if "threads" not in provided_dests:
+        restored_options["threads"] = int(
+            restored_options.get("threads", default_threads)
+        )
+
+    restored_options["resume"] = session.session_file or restored_options.get(
+        "resume", ""
+    )
+    normalize_runtime_options(restored_options)
+
+    return restored.get("target", ""), mode, delay, restored_options
+
+
+def summarize_restored_config(target, mode, options, provided_dests=None):
+    """Return a compact summary of restored scan configuration."""
+    provided_dests = provided_dests or set()
+    enabled_checks = sorted(
+        key.replace("_", "-")
+        for key, value in options.items()
+        if isinstance(value, bool)
+        and value
+        and key
+        not in {"html", "sarif", "json_output", "ai", "proxy_listen", "templates", "exploit"}
+    )
+    reports = []
+    if options.get("json_output"):
+        reports.append("json")
+    if options.get("html"):
+        reports.append("html")
+    if options.get("sarif"):
+        reports.append("sarif")
+
+    summary = {
+        "Target": target or "-",
+        "Mode": mode,
+        "Threads": str(options.get("threads", "-")),
+        "Enabled Checks": str(len(enabled_checks)),
+        "Sample Checks": ", ".join(enabled_checks[:6]) if enabled_checks else "-",
+        "Proxy": options.get("proxy_url") or "-",
+        "Scope": options.get("scope") or "-",
+        "Exclude": options.get("exclude") or "-",
+        "Request Budget": str(options.get("max_requests") or "-"),
+        "Timeout": str(options.get("request_timeout") or "-"),
+        "Host Concurrency": str(options.get("max_host_concurrency") or "-"),
+        "Path Blacklist": options.get("path_blacklist") or "-",
+        "Cookie": "set" if options.get("cookie") else "-",
+        "Tamper": options.get("tamper") or "-",
+        "Exploit Follow-up": "enabled" if options.get("exploit") else "disabled",
+        "Session File": options.get("resume") or options.get("session") or "-",
+        "Reports": ", ".join(reports) if reports else "-",
+        "AI": "enabled" if options.get("ai") else "disabled",
+    }
+
+    if provided_dests:
+        override_keys = sorted(_resume_override_option_keys(provided_dests))
+        if override_keys:
+            summary["CLI Overrides"] = ", ".join(override_keys)
+
+    return summary
+
+
+def print_restored_config_summary(target, mode, options, provided_dests=None):
+    """Print a concise table of restored scan configuration."""
+    summary = summarize_restored_config(target, mode, options, provided_dests)
+    table = Table(title="Resumed Scan Config", border_style="cyan")
+    table.add_column("Setting", style="bold cyan", justify="right")
+    table.add_column("Value", style="white")
+
+    for key, value in summary.items():
+        table.add_row(key, str(value))
+
+    console.print(table)
+
+
 def interactive_menu():
     """Interactive menu for scan options"""
+    _print_interactive_section(
+        "Interactive Setup",
+        "Configure target, mode, profile, and runtime behavior.",
+    )
     url = get_input("\n[?] Target URL:", "")
+
+    resume_path = get_input(
+        INTERACTIVE_RESUME_PROMPT.prompt,
+        INTERACTIVE_RESUME_PROMPT.default,
+    )
+    if resume_path:
+        session = ScanSession.load(resume_path)
+        restored_target, mode, delay, options = restore_resume_scan_state(
+            session,
+            build_default_scan_options(),
+        )
+        if restored_target:
+            url = restored_target
+            log_info(f"Resuming scan on {url}")
+        if not url:
+            log_error("Resume session does not contain a target URL.")
+            sys.exit(1)
+        set_json_output_enabled(options.get("json_output"))
+        print_restored_config_summary(url, mode, options)
+        return url, mode, delay, options
+
     while not url:
         log_error("No URL provided! Please enter a valid URL.")
         url = get_input("\n[?] Target URL:", "")
@@ -315,113 +367,123 @@ def interactive_menu():
         url = "http://" + url
 
     # Scan mode
-    console.print(f"{Colors.BOLD}[?] Scan mode:")
-    console.print(f"    1-Quick  2-Normal  3-Aggressive  4-Stealth{Colors.END}")
-    mode_choice = get_input("[?] Choice [2]:", "2")
-
-    modes = {
-        "1": ("quick", Config.QUICK_DELAY, 10),
-        "2": ("normal", Config.REQUEST_DELAY, 10),
-        "3": ("aggressive", 0.05, 30),
-        "4": ("stealth", Config.STEALTH_DELAY, 1),
-    }
-    mode, delay, threads = modes.get(mode_choice, ("normal", Config.REQUEST_DELAY, 10))
+    _print_interactive_section(
+        "Scan Mode",
+        "Choose the main noise profile for the scan.",
+    )
+    _print_scan_mode_menu()
+    mode_choice = get_input("[?] Choice [1]:", "1")
+    selected_mode_spec = get_interactive_scan_mode_spec(mode_choice)
+    selected_mode_key = selected_mode_spec.key
+    if selected_mode_key == "normal":
+        use_lab_mode = get_input(
+            "[?] Enable Lab mode? (y/N) [high-noise, lab/staging only]",
+            "N",
+        ).lower() == "y"
+        if use_lab_mode:
+            selected_mode_key = "lab"
+    mode, delay, threads = get_scan_mode_runtime(selected_mode_key)
 
     # Attack Profiles
-    console.print(f"\n{Colors.BOLD}[?] Attack Profile:{Colors.END}")
-    console.print(f"    [1] 🕷️  Fast Recon (Recon, Subdomains, Fuzzer)")
-    console.print(f"    [2] 💉 Core Web Vulns (XSS, SQLi, LFI, CMDi, CSRF, CORS)")
-    console.print(f"    [3] 💥 Advanced / Modern (JWT, Deser, SSTI, Race, Proto, SSRF, BizLogic)")
-    console.print(f"    [4] 🔥 ALL-IN-ONE (Scan Everything!)")
-    console.print(f"    [5] ⚙️  Custom Choice (Ask me one by one)")
+    _print_interactive_section(
+        "Attack Profile",
+        "Pick the coverage style you want before runtime tweaks.",
+    )
+    _print_attack_profile_menu()
     profile_choice = get_input(f"[?] Choice [4]:", "4")
+    profile_spec = get_attack_profile_spec(profile_choice)
 
     # Options Dictionary initialization mapping
-    options = {
-        "recon": False, "subdomain": False, "fuzz": False, "crawl": False,
-        "xss": False, "sqli": False, "lfi": False, "rfi": False, "cmdi": False,
-        "dom_xss": False, "secrets": False, "oob": False, "ssrf": False, "csrf": False,
-        "cors": False, "header_inject": False, "tech": False, "cloud": False, 
-        "takeover": False, "api_scan": False, "ssti": False, "xxe": False, 
-        "redirect": False, "spray": False, "email": False, "passive": False,
-        "jwt": False, "race": False, "smuggle": False, "proto": False, "deser": False,
-        "bizlogic": False
-    }
+    options = build_default_scan_options(threads=threads)
 
-    if profile_choice == "1":
-        options["recon"] = options["subdomain"] = options["fuzz"] = options["tech"] = options["passive"] = True
-    elif profile_choice == "2":
-        options["xss"] = options["sqli"] = options["lfi"] = options["rfi"] = options["cmdi"] = True
-        options["csrf"] = options["cors"] = options["header_inject"] = options["passive"] = True
-        options["dom_xss"] = True
-    elif profile_choice == "3":
-        options["jwt"] = options["deser"] = options["ssti"] = options["race"] = options["proto"] = True
-        options["ssrf"] = options["bizlogic"] = options["redirect"] = options["smuggle"] = options["xxe"] = True
-        options["api_scan"] = options["oob"] = True
-    elif profile_choice == "4":
-        for k in options.keys():
-            options[k] = True
+    if profile_spec.choice != "5":
+        apply_profile_preset(options, profile_spec.choice)
+        recommended_prompt_specs = get_attack_profile_recommended_prompt_specs(
+            profile_spec.choice,
+            options,
+        )
+        if recommended_prompt_specs:
+            _print_interactive_section(
+                f"Recommended Extras: {profile_spec.label}",
+                "High-signal toggles for the selected profile.",
+            )
+            apply_interactive_prompt_specs(
+                options,
+                recommended_prompt_specs,
+                get_input,
+            )
     else:
         # Profile 5: Custom Choice
-        console.print(f"\n{Colors.CYAN}--- Custom Selection ---{Colors.END}")
-        options["recon"] = get_input("[?] Run Server Recon? (Y/n)", "Y").lower() != "n"
-        options["subdomain"] = get_input("[?] Run Subdomain Scan? (y/N)", "N").lower() == "y"
-        options["fuzz"] = get_input("[?] Run Directory Fuzzer? (y/N)", "N").lower() == "y"
-        options["crawl"] = get_input("[?] Crawl site? (y/N)", "N").lower() == "y"
-        options["xss"] = get_input("[?] Test XSS? (y/N)", "N").lower() == "y"
-        options["sqli"] = get_input("[?] Test SQLi? (y/N)", "N").lower() == "y"
-        options["lfi"] = get_input("[?] Test LFI? (y/N)", "N").lower() == "y"
-        options["rfi"] = get_input("[?] Test RFI? (y/N)", "N").lower() == "y"
-        options["cmdi"] = get_input("[?] Test Command Injection? (y/N)", "N").lower() == "y"
-        options["dom_xss"] = get_input("[?] Test DOM XSS? (y/N) [Requires Selenium]", "N").lower() == "y"
-        options["secrets"] = get_input("[?] Scan for Secrets in JS/HTML? (y/N)", "N").lower() == "y"
-        options["oob"] = get_input("[?] Use Out-of-Band (OOB) Testing? (y/N)", "N").lower() == "y"
-        options["ssrf"] = get_input("[?] Test SSRF? (y/N)", "N").lower() == "y"
-        options["csrf"] = get_input("[?] Test CSRF? (y/N)", "N").lower() == "y"
-        options["cors"] = get_input("[?] Check CORS? (y/N)", "N").lower() == "y"
-        options["header_inject"] = get_input("[?] Test Header Injection? (y/N)", "N").lower() == "y"
+        _print_interactive_section(
+            "Custom Selection",
+            "Choose modules one by one.",
+        )
+        for section_title, prompt_specs in INTERACTIVE_CUSTOM_PROMPT_GROUPS:
+            if section_title != "Custom Selection":
+                _print_interactive_section(section_title)
+            apply_interactive_prompt_specs(options, prompt_specs, get_input)
 
-        console.print(f"\n{Colors.BOLD}{Colors.CYAN}── Phase 4: Infrastructure & Cloud ──{Colors.END}")
-        options["tech"] = get_input("[?] Run Technology Fingerprinting? (Y/n)", "Y").lower() != "n"
-        options["cloud"] = get_input("[?] Scan Cloud Buckets (S3/Azure/GCP)? (y/N)", "N").lower() == "y"
-        options["takeover"] = get_input("[?] Scan Subdomain Takeover? (y/N)", "N").lower() == "y"
-        options["api_scan"] = get_input("[?] Run API Security Scan? (y/N)", "N").lower() == "y"
+    if options.get("api_scan") and not options.get("api_spec"):
+        options["api_spec"] = get_input(API_SPEC_PROMPT.prompt, API_SPEC_PROMPT.default)
 
-        console.print(f"\n{Colors.BOLD}{Colors.CYAN}── Phase 5: Advanced Injection & OSINT ──{Colors.END}")
-        options["ssti"] = get_input("[?] Test SSTI? (y/N)", "N").lower() == "y"
-        options["xxe"] = get_input("[?] Test XXE? (y/N)", "N").lower() == "y"
-        options["redirect"] = get_input("[?] Test Open Redirect? (y/N)", "N").lower() == "y"
-        options["spray"] = get_input("[?] Default Credential Spraying? (y/N)", "N").lower() == "y"
-        options["email"] = get_input("[?] Email Harvesting? (y/N)", "N").lower() == "y"
-        options["passive"] = get_input("[?] Passive Scanning? (Y/n)", "Y").lower() != "n"
-
-        console.print(f"\n{Colors.BOLD}{Colors.CYAN}── Phase 7: Advanced Attacks ──{Colors.END}")
-        options["jwt"] = get_input("[?] JWT Attack Suite? (y/N)", "N").lower() == "y"
-        options["race"] = get_input("[?] Race Condition Scanner? (y/N)", "N").lower() == "y"
-        options["smuggle"] = get_input("[?] HTTP Smuggling? (y/N)", "N").lower() == "y"
-        options["proto"] = get_input("[?] Prototype Pollution? (y/N)", "N").lower() == "y"
-        options["deser"] = get_input("[?] Insecure Deserialization? (y/N)", "N").lower() == "y"
-        options["bizlogic"] = get_input("[?] Business Logic Flaws? (y/N)", "N").lower() == "y"
-
-    options["cookie"] = get_input("[?] Cookie (leave empty for none)", "")
-    options["ai"] = get_input("[?] Enable AI Vulnerability Analysis (Ollama)? (y/N)", "N").lower() == "y"
-    options["ai_model"] = "WhiteRabbitNeo/Llama-3.1-WhiteRabbitNeo-2-8B"
-    options["proxy_listen"] = get_input("[?] Start MITM Proxy Interceptor in background (Port 8081)? (y/N)", "N").lower() == "y"
-    options["html"] = get_input("[?] Generate HTML report? (y/N)", "N").lower() == "y"
+    runtime_prompt_specs = get_interactive_runtime_prompt_specs(
+        selected_mode_key,
+        profile_spec.choice,
+        options,
+    )
+    if runtime_prompt_specs:
+        _print_interactive_section(
+            "Runtime Settings",
+            "Connection, scope, session, and output controls.",
+        )
+        apply_interactive_prompt_specs(options, runtime_prompt_specs, get_input)
+    options["ai_model"] = DEFAULT_AI_MODEL
     options["threads"] = threads
 
-    Config.JSON_OUTPUT = get_input("[?] Save JSON? (y/N)", "N").lower() == "y"
+    options["json_output"] = bool(
+        get_input(JSON_OUTPUT_PROMPT.prompt, JSON_OUTPUT_PROMPT.default).lower() == "y"
+    )
+    normalize_runtime_options(options)
+    set_json_output_enabled(options["json_output"])
+    _print_preflight_summary(url, mode, profile_spec, options)
 
     return url, mode, delay, options
 
 
-def print_summary(vulns, recon_data=None):
+def print_summary(vulns, recon_data=None, stats=None):
     """Print an attractive ASCII scan summary using Rich"""
-    if Stats.start_time:
-        duration_delta = datetime.now() - datetime.fromtimestamp(Stats.start_time)
+    runtime_stats = get_runtime_stats()
+
+    if stats and stats.get("duration_seconds") is not None:
+        duration = f"{stats['duration_seconds']}s"
+    elif runtime_stats.get("start_time"):
+        duration_delta = datetime.now() - datetime.fromtimestamp(
+            runtime_stats["start_time"]
+        )
         duration = str(duration_delta).split(".")[0]
     else:
         duration = "N/A"
+
+    total_requests = (
+        stats.get("total_requests")
+        if stats and stats.get("total_requests") is not None
+        else runtime_stats["total_requests"]
+    )
+    waf_blocks = (
+        stats.get("waf_blocks")
+        if stats and stats.get("waf_blocks") is not None
+        else runtime_stats["waf_blocks"]
+    )
+    retries = (
+        stats.get("retries")
+        if stats and stats.get("retries") is not None
+        else runtime_stats["retries"]
+    )
+    errors = (
+        stats.get("errors")
+        if stats and stats.get("errors") is not None
+        else runtime_stats["errors"]
+    )
 
     table = Table(
         title="🛡️ cyberm4fia-scanner SCAN SUMMARY 🛡️",
@@ -433,10 +495,10 @@ def print_summary(vulns, recon_data=None):
     table.add_column("Value", style="bold green")
 
     table.add_row("Duration", duration)
-    table.add_row("Total Requests", str(Stats.total_requests))
-    table.add_row("WAF Blocks", f"[red]{Stats.waf_blocks}[/red]")
-    table.add_row("Request Retries", str(Stats.retries))
-    table.add_row("Network Errors", f"[red]{Stats.errors}[/red]")
+    table.add_row("Total Requests", str(total_requests))
+    table.add_row("WAF Blocks", f"[red]{waf_blocks}[/red]")
+    table.add_row("Request Retries", str(retries))
+    table.add_row("Network Errors", f"[red]{errors}[/red]")
 
     if recon_data:
         table.add_section()
@@ -489,6 +551,173 @@ def print_summary(vulns, recon_data=None):
     console.print(vuln_table)
 
 
+def scan_target(url, mode, delay, options, runtime_options, session=None, wordlist_file="wordlists/api_endpoints.txt"):
+    """Run the full scan pipeline for a single target with isolated runtime state."""
+    scan_ctx = ScanContext(
+        url,
+        mode,
+        delay,
+        options=runtime_options,
+        session_options=options,
+        session=session,
+    )
+
+    with scan_ctx.activate():
+        target_host = scan_ctx.target_host
+        scan_dir = scan_ctx.scan_dir
+        log_file = scan_ctx.log_file
+
+        if options.get("cookie"):
+            cookie_val = options["cookie"].strip("\"'")
+            log_success(f"Cookie set: {cookie_val[:30]}...")
+
+        log_info(f"Target: {url} | Mode: {mode.title()}")
+
+        phase_state = {
+            "url": url,
+            "mode": mode,
+            "delay": delay,
+            "options": options,
+            "target_host": target_host,
+            "scan_dir": scan_dir,
+            "crawled_forms": [],
+            "urls_to_scan": [],
+            "recon_data": None,
+            "all_vulns": [],
+            "wordlist_file": wordlist_file,
+            "summary_printer": print_summary,
+            "report_stats_factory": scan_ctx.report_stats,
+            "summary_stats_factory": scan_ctx.collect_stats,
+        }
+
+        pre_scan_vulns = run_phase_modules("pre_scan", options, phase_state)
+        phase4_vulns = run_phase_modules("phase4_target", options, phase_state)
+
+        # Get URLs to scan
+        urls_to_scan = [url]
+        crawled_forms = []
+        phase_state["urls_to_scan"] = urls_to_scan
+        phase_state["crawled_forms"] = crawled_forms
+        run_phase_modules("discovery_seed", options, phase_state)
+        urls_to_scan = phase_state["urls_to_scan"]
+        target_check_vulns = run_phase_modules("target_checks", options, phase_state)
+        run_phase_modules("discovery_expand", options, phase_state)
+        urls_to_scan = phase_state["urls_to_scan"]
+        crawled_forms = phase_state["crawled_forms"]
+        urls_to_scan = canonicalize_scan_urls(urls_to_scan)
+
+        log_info(f"Loaded {len(XSS_FLAT_PAYLOADS)} payloads")
+
+        # Scan each URL
+        all_vulns = pre_scan_vulns + target_check_vulns + phase4_vulns
+
+        # Apply scope filter to crawled URLs
+        scope = get_scope()
+        if scope.active:
+            urls_to_scan = scope.filter_urls(urls_to_scan)
+
+        blocked_urls = [candidate for candidate in urls_to_scan if is_url_blocked(candidate)]
+        if blocked_urls:
+            for blocked_url in blocked_urls:
+                log_info(f"Skipping risky path by blacklist: {blocked_url}")
+            urls_to_scan = [candidate for candidate in urls_to_scan if not is_url_blocked(candidate)]
+
+        # Session: save target info and filter already-scanned URLs
+        urls_to_scan = scan_ctx.prepare_urls_for_scan(urls_to_scan)
+
+        for scan_url in urls_to_scan:
+            console.print(f"[bold cyan]Scanning:[/bold cyan] {scan_url}")
+
+            try:
+                resp = smart_request("get", scan_url)
+                soup = BeautifulSoup(resp.content, "lxml")
+                forms = soup.find_all("form")
+                # Note: crawled_forms are dicts (not BS Tags), so we don't
+                # merge them into 'forms' to avoid AttributeError on find_all().
+                # Crawled URLs are already in urls_to_scan and will be parsed
+                # independently when visited.
+
+                page_state = {
+                    "scan_url": scan_url,
+                    "response": resp,
+                    "forms": forms,
+                    "delay": delay,
+                    "options": options,
+                    "all_vulns": list(all_vulns),
+                }
+                all_vulns.extend(run_phase_modules("page_hooks", options, page_state))
+
+                # Phase 1: Run error-based modules concurrently (async engine)
+                from core.engine import run_modules_async
+
+                module_vulns = run_modules_async(scan_url, forms, delay, options)
+                all_vulns.extend(module_vulns)
+
+                # Categorize results for post-processing
+                sqli_vulns = [
+                    v for v in module_vulns if v.get("type", "").startswith("SQLi")
+                ]
+                xss_vulns = [
+                    v
+                    for v in module_vulns
+                    if "XSS" in v.get("type", "") or "DOM" in v.get("type", "")
+                ]
+                cmdi_vulns = [
+                    v for v in module_vulns if v.get("type", "").startswith("CMDi")
+                ]
+
+                processor_state = {
+                    "scan_url": scan_url,
+                    "forms": forms,
+                    "delay": delay,
+                    "options": options,
+                    "xss_vulns": xss_vulns,
+                    "sqli_vulns": sqli_vulns,
+                    "cmdi_vulns": cmdi_vulns,
+                    "prompt_input": get_input,
+                    "all_vulns": list(all_vulns),
+                }
+                all_vulns.extend(
+                    run_phase_modules("result_processors", options, processor_state)
+                )
+
+            except (RequestBudgetExceeded, ScanCancelled) as e:
+                log_error(str(e))
+                break
+            except BlockedTargetPath as e:
+                log_info(str(e))
+            except Exception as e:
+                log_error(f"Failed to scan {scan_url}: {e}")
+
+            # Session: mark URL as done and save incrementally
+            scan_ctx.mark_url_done(scan_url)
+
+        # Process OOB callbacks
+        scan_ctx.wait_for_oob_hits(wait_seconds=15)
+
+        # ──── Phase 5 / 7 registry-backed post-scan modules ────
+        # Note: SSTI and XXE already run via engine (core/engine.py)
+        # so they are NOT called again here to avoid duplicates.
+        phase_state["urls_to_scan"] = urls_to_scan
+        phase_state["crawled_forms"] = crawled_forms
+        phase_state["all_vulns"] = list(all_vulns)
+        all_vulns.extend(run_phase_modules("post_scan", options, phase_state))
+        phase_state["all_vulns"] = list(all_vulns)
+        run_phase_modules("result_cleanup", options, phase_state)
+        run_phase_modules("analysis", options, phase_state)
+        all_vulns = phase_state["all_vulns"]
+        run_phase_modules("reporting", options, phase_state)
+
+        # Session: save final state
+        scan_ctx.finalize_session(
+            all_vulns,
+            phase_state.get("finding_count", len(all_vulns)),
+        )
+
+        log_success(f"Log saved: {log_file}")
+        save_console_log()
+
+
 def main():
     """Main scanner function"""
     print_gradient_banner()
@@ -522,20 +751,13 @@ def main():
         start_proxy(listen_port=args.proxy_listen, scope=args.scope_proxy)
         return
 
-    if args.url:
-        url = args.url
-        if not url.startswith(("http://", "https://")):
+    if args.url or args.resume:
+        url = args.url or ""
+        if url and not url.startswith(("http://", "https://")):
             url = "http://" + url
 
-        modes = {
-            "1": ("quick", Config.QUICK_DELAY, 10),
-            "2": ("normal", Config.REQUEST_DELAY, 10),
-            "3": ("aggressive", 0.05, 30),
-            "4": ("stealth", Config.STEALTH_DELAY, 1),
-        }
-        mode, delay, threads = modes.get(
-            args.mode, ("normal", Config.REQUEST_DELAY, 10)
-        )
+        provided_dests = getattr(args, "_provided_dests", set())
+        mode, delay, threads = get_scan_mode_runtime(args.mode)
 
         if args.threads:
             threads = args.threads
@@ -543,85 +765,25 @@ def main():
         # --all flag enables everything
         use_all = getattr(args, "all", False)
 
-        options = {
-            "recon": args.recon or use_all,
-            "subdomain": args.subdomain or use_all,
-            "fuzz": args.fuzz or use_all,
-            "crawl": args.crawl or use_all,
-            "xss": args.xss or use_all,
-            "sqli": args.sqli or use_all,
-            "lfi": args.lfi or use_all,
-            "rfi": args.rfi or use_all,
-            "cmdi": args.cmdi or use_all,
-            "dom_xss": args.dom_xss or use_all,
-            "secrets": args.secrets or use_all,
-            "oob": args.oob or use_all,
-            "ssrf": args.ssrf or use_all,
-            "cors": args.cors or use_all,
-            "header_inject": args.header_inject or use_all,
-            "templates": use_all,
-            "cloud": args.cloud or use_all,
-            "takeover": args.takeover or use_all,
-            "tech": args.tech or use_all,
-            "api_scan": args.api_scan or use_all,
-            "ssti": args.ssti or use_all,
-            "xxe": args.xxe or use_all,
-            "redirect": args.redirect or use_all,
-            "spray": args.spray or use_all,
-            "email": args.email or use_all,
-            "osint": args.osint or use_all,
-            "chain": args.chain or use_all,
-            "wordlist": args.wordlist,
-            "headless": args.headless or use_all,
-            "race": args.race or use_all,
-            "jwt": args.jwt or use_all,
-            "smuggle": args.smuggle or use_all,
-            "proto": args.proto or use_all,
-            "deser": args.deser or use_all,
-            "bizlogic": args.bizlogic or use_all,
-            "cookie": args.cookie,
-            "html": args.html or use_all,
-            "passive": args.passive or use_all,
-            "sarif": args.sarif,
-            "threads": threads,
-            "ai": args.ai,
-            "ai_model": args.ai_model,
-        }
-        Config.JSON_OUTPUT = args.json or use_all
+        options = build_cli_scan_options(args, threads)
 
-        # Initialize tamper chain
-        if args.tamper:
-            tamper_names = [t.strip() for t in args.tamper.split(",") if t.strip()]
-            chain = TamperChain(tamper_names)
-            set_tamper_chain(chain)
-            Config.TAMPER_CHAIN = chain
-
-        # Initialize scope filter
-        if args.scope or args.exclude:
-            include = (
-                [p.strip() for p in args.scope.split(",") if p.strip()]
-                if args.scope
-                else []
+        if options.get("resume"):
+            session = ScanSession.load(options["resume"])
+            restored_target, mode, delay, options = restore_resume_scan_state(
+                session,
+                options,
+                provided_dests=provided_dests,
+                mode_override=args.mode if "mode" in provided_dests else None,
             )
-            exclude = (
-                [p.strip() for p in args.exclude.split(",") if p.strip()]
-                if args.exclude
-                else []
-            )
-            scope = ScopeFilter(include=include, exclude=exclude)
-            set_scope(scope)
-
-        # Initialize AI client (Moved to global setup so interactive mode catches it too)
-
-        # Initialize session (resume or new)
-        session = None
-        if args.resume:
-            session = ScanSession.load(args.resume)
-            if session.data.get("target"):
-                url = session.data["target"]
+            if restored_target:
+                url = restored_target
                 log_info(f"Resuming scan on {url}")
-        elif args.session:
-            session = ScanSession(args.session)
+            if not url:
+                log_error("Resume session does not contain a target URL.")
+                sys.exit(1)
+            print_restored_config_summary(url, mode, options, provided_dests)
+        else:
+            session = None
 
     else:
         try:
@@ -631,16 +793,41 @@ def main():
             sys.exit(0)
         session = None
 
-    # Setup
-    Stats.reset()
-    Stats.start_time = datetime.now().timestamp()
+    set_json_output_enabled(options.get("json_output"))
+
+    # Initialize tamper chain
+    if options.get("tamper"):
+        tamper_names = [t.strip() for t in options["tamper"].split(",") if t.strip()]
+        chain = TamperChain(tamper_names)
+        set_tamper_chain(chain)
+
+    # Initialize scope filter
+    if options.get("scope") or options.get("exclude"):
+        include = (
+            [p.strip() for p in options["scope"].split(",") if p.strip()]
+            if options.get("scope")
+            else []
+        )
+        exclude = (
+            [p.strip() for p in options["exclude"].split(",") if p.strip()]
+            if options.get("exclude")
+            else []
+        )
+        scope = ScopeFilter(include=include, exclude=exclude)
+        set_scope(scope)
+
+    # Initialize session (resume or new)
+    if session is None and options.get("resume"):
+        session = ScanSession.load(options["resume"])
+        if session.data.get("target"):
+            url = session.data["target"]
+            log_info(f"Resuming scan on {url}")
+    elif session is None and options.get("session"):
+        session = ScanSession(options["session"])
 
     # Initialize AI logic globally if enabled (CLI or Interactive)
     if options.get("ai"):
-        init_ai(model=options.get("ai_model", "WhiteRabbitNeo/Llama-3.1-WhiteRabbitNeo-2-8B"))
-
-    if options.get("oob"):
-        Config.OOB_CLIENT = OOBClient()
+        init_ai(model=options.get("ai_model", DEFAULT_AI_MODEL))
 
     # If proxy_listen was enabled interactively, start it in the background
     if options.get("proxy_listen"):
@@ -655,11 +842,6 @@ def main():
         # Allow proxy a second to bind
         import time
         time.sleep(1)
-
-    # Set proxy if provided (Active Scanner Routing)
-    if hasattr(args, "proxy_url") and args.proxy_url:
-        Config.PROXY = args.proxy_url
-        log_info(f"Proxy set: {args.proxy_url}")
 
     # Multi-target support: build URL list
     target_urls = []
@@ -679,491 +861,29 @@ def main():
     else:
         target_urls = [url]
 
+    runtime_options = dict(options)
+
+    if runtime_options.get("proxy_url"):
+        log_info(f"Proxy set: {runtime_options['proxy_url']}")
+
     # Run scan for each target
     for target_idx, url in enumerate(target_urls):
         if len(target_urls) > 1:
             console.print(
                 f"\n[bold magenta]━━━ Target {target_idx + 1}/{len(target_urls)}: {url} ━━━[/bold magenta]"
             )
-
-        parsed_target = urlparse(url)
-        target_host = parsed_target.hostname or parsed_target.netloc.split(":")[0]
-        safe_target = target_host.replace(".", "_").replace(":", "_")
-        scan_dir = f"scans/{safe_target}"
-        os.makedirs(scan_dir, exist_ok=True)
-
-        log_file = f"{scan_dir}/scan.txt"
-        set_log_file(log_file)
-        with open(log_file, "w") as f:
-            f.write(f"--- cyberm4fia-scanner Scan: {url} at {datetime.now()} ---\n")
-
-        # Set cookie if provided
-        if options.get("cookie"):
-            cookie_val = options["cookie"].strip("\"'")
-            _global_headers["Cookie"] = cookie_val
-            _get_session().headers["Cookie"] = cookie_val
-            log_success(f"Cookie set: {cookie_val[:30]}...")
-
-        log_info(f"Target: {url} | Mode: {mode.title()}")
-
-        # Run recon (deep=True if user explicitly selected it)
-        recon_data = None
-        if options.get("recon"):
-            recon_data = run_recon(url, deep=True)
-        else:
-            recon_data = run_recon(url, deep=False)
-
-        # OSINT enrichment (early — enriches findings)
-        if options.get("osint"):
-            osint_data = scan_osint(url, delay=delay)  # noqa: F841
-
-        # Technology Fingerprinting (run early — informs other scans)
-        tech_results = []
-        cve_intel = []
-        if options.get("tech"):
-            tech_results = scan_technology(url, delay=delay)
-
-            # SiberAdar CVE Threat Intelligence Feed
-            try:
-                from utils.cve_feed import enrich_with_cves
-
-                cve_intel = enrich_with_cves(tech_results)
-            except Exception as e:
-                log_warning(f"CVE feed unavailable: {e}")
-                cve_intel = []
-
-        # Cloud Storage Enumeration
-        if options.get("cloud"):
-            cloud_vulns = scan_cloud_storage(url, delay=delay)
-        else:
-            cloud_vulns = []
-
-        # Subdomain Takeover
-        if options.get("takeover"):
-            takeover_vulns = scan_subdomain_takeover(url, delay=delay)
-        else:
-            takeover_vulns = []
-
-        # API Security Scan
-        if options.get("api_scan"):
-            api_vulns = scan_api(url, delay=delay)
-        else:
-            api_vulns = []
-
-        # Subdomain Scan (legacy)
-        if options.get("subdomain"):
-            scan_subdomains(target_host)
-
-        # Get URLs to scan
-        urls_to_scan = [url]
-        crawled_forms = []
-
-        # Async API/Directory Fuzzer
-        if options.get("fuzz"):
-            # Use custom wordlist from CLI if provided, else use default
-            wordlist_path = getattr(args, "wordlist_file", "wordlists/api_endpoints.txt")
-            endpoints = scan_fuzzer_async(
-                url,
-                wordlist_path,
-                threads=options.get("threads", 50),
-                delay=delay,
-            )
-            # Add discovered endpoints to the scan scope automatically
-            if endpoints:
-                urls_to_scan.extend([e["url"] for e in endpoints if e["status"] in [200, 301, 302, 307, 308]])
-                urls_to_scan = list(set(urls_to_scan))
-
-        # CORS check (once per target, before crawl)
-        if options.get("cors"):
-            cors_vulns = scan_cors(url)
-        else:
-            cors_vulns = []
-
-        # Header injection (once per target)
-        if options.get("header_inject"):
-            header_vulns = scan_header_inject(url, delay)
-        else:
-            header_vulns = []
-
-        if options.get("headless"):
-            # Use dynamic Playwright crawler for SPA rendering and API interception
-            from modules.dynamic_crawler import run_dynamic_spider
-            
-            log_info("Using dynamic Playwright crawler for SPA...")
-            crawl_result = run_dynamic_spider(url, delay=delay)
-            
-            # Extract discovered links
-            found_links = crawl_result.get("links", [])
-            urls_to_scan = list(set([url] + found_links))
-            crawled_forms = crawl_result.get("forms", [])
-            
-            # Extract internal API endpoints and add GET requests to scan scope
-            endpoints = crawl_result.get("endpoints", [])
-            if endpoints:
-                log_success(f"Discovered {len(endpoints)} background API endpoints")
-                for method, e_url in endpoints:
-                    if method.upper() == "GET":
-                        urls_to_scan.append(e_url)
-                        
-            # Limit scope to avoid excessive scanning
-            urls_to_scan = list(set(urls_to_scan))[:30]
-        elif options.get("crawl"):
-            crawl_result = crawl_site(url, max_pages=30)
-            # Handle both old (list) and new (dict) return formats
-            if isinstance(crawl_result, dict):
-                urls_to_scan = crawl_result.get("urls", [url])
-                crawled_forms = crawl_result.get("forms", [])
-            else:
-                urls_to_scan = crawl_result
-
-        log_info(f"Loaded {len(XSS_FLAT_PAYLOADS)} payloads")
-        Config.THREADS = options.get("threads", 10)
-
-        # Scan each URL
-        all_vulns = cors_vulns + header_vulns + cloud_vulns + takeover_vulns + api_vulns
-
-        # Merge CVE threat intel (collected earlier from SiberAdar)
-        if tech_results and cve_intel:
-            all_vulns.extend(cve_intel)
-
-        # Apply scope filter to crawled URLs
-        scope = get_scope()
-        if scope.active:
-            urls_to_scan = scope.filter_urls(urls_to_scan)
-
-        # Session: save target info and filter already-scanned URLs
-        if session and session.active:
-            session.set_target(url, mode, options)
-            session.add_pending_urls(urls_to_scan)
-            if session.is_resume:
-                urls_to_scan = [u for u in urls_to_scan if not session.is_url_done(u)]
-                log_info(f"Session resume: {len(urls_to_scan)} URLs remaining")
-
-        for scan_url in urls_to_scan:
-            console.print(f"[bold cyan]Scanning:[/bold cyan] {scan_url}")
-
-            try:
-                resp = smart_request("get", scan_url)
-                soup = BeautifulSoup(resp.content, "lxml")
-                forms = soup.find_all("form")
-                # Note: crawled_forms are dicts (not BS Tags), so we don't
-                # merge them into 'forms' to avoid AttributeError on find_all().
-                # Crawled URLs are already in urls_to_scan and will be parsed
-                # independently when visited.
-
-                # Passive scanning (no extra requests — analyzes the response)
-                if options.get("passive"):
-                    passive_vulns = scan_passive(scan_url, response=resp)
-                    all_vulns.extend(passive_vulns)
-
-                # CSRF scan (needs forms)
-                if options.get("csrf") and forms:
-                    csrf_vulns = scan_csrf(scan_url, forms, delay)
-                    all_vulns.extend(csrf_vulns)
-
-                # Phase 1: Run error-based modules concurrently (async engine)
-                from core.engine import run_modules_async
-
-                module_vulns = run_modules_async(scan_url, forms, delay, options)
-                all_vulns.extend(module_vulns)
-
-                # Categorize results for post-processing
-                sqli_vulns = [
-                    v for v in module_vulns if v.get("type", "").startswith("SQLi")
-                ]
-                xss_vulns = [
-                    v
-                    for v in module_vulns
-                    if "XSS" in v.get("type", "") or "DOM" in v.get("type", "")
-                ]
-                cmdi_vulns = [
-                    v for v in module_vulns if v.get("type", "").startswith("CMDi")
-                ]
-
-                # Phase 2: Sequential post-processing
-                # XSS Exploitation
-                if options.get("xss") and xss_vulns:
-                    log_info(
-                        f"Found {len(xss_vulns)} XSS vulns. Generating exploit payloads..."
-                    )
-                    run_xss_exploit(xss_vulns, suppress_output=True)
-
-                    # Interactive Cookie Stealer
-                    print(
-                        f"\n{Colors.BOLD}{Colors.CYAN}"
-                        f"[?] XSS found! "
-                        f"Start Cookie Stealer? (y/N)"
-                        f"{Colors.END}"
-                    )
-                    choice = get_input("Choice:", "N").lower()
-                    if choice == "y":
-                        run_xss_exploit_interactive(xss_vulns)
-
-                # SQLi post-processing
-                if options.get("sqli"):
-                    # Auto-exploit found SQLi vulns
-                    if sqli_vulns:
-                        log_info(
-                            f"Found {len(sqli_vulns)} SQLi vulns. Attempting exploit..."
-                        )
-                        for v in sqli_vulns:
-                            if "exploit_data" not in v:
-                                exploit_data = run_sqli_exploit(v)
-                                if exploit_data:
-                                    v["exploit_data"] = exploit_data
-                                    log_success(
-                                        "Exploitation successful! Data added to report."
-                                    )
-
-                    # Blind SQLi scan (sequential - timing)
-                    # Skip if Union-based already found SQLi
-                    # Skip if Union-based already found SQLi AND successfully extracted data
-                    extracted_data = any(
-                        v.get("exploit_data", {}).get("database") for v in sqli_vulns
-                    )
-
-                    if sqli_vulns and extracted_data:
-                        log_info(
-                            "Union-based SQLi successfully extracted data — skipping Blind SQLi (redundant)"
-                        )
-                    else:
-                        if sqli_vulns:
-                            log_warning(
-                                "Union SQLi found but data extraction failed. Falling back to Blind SQLi..."
-                            )
-                        console.print(
-                            f"\n{Colors.BOLD}{Colors.CYAN}"
-                            f"[?] Run Blind SQLi? "
-                            f"(slow, time-based) (y/N)"
-                            f"{Colors.END}"
-                        )
-                        blind_choice = get_input("Choice:", "N").lower()
-                        if blind_choice == "y":
-                            log_info("Running Time-Based Blind SQLi checks...")
-                            blind_vulns = scan_blind_sqli(scan_url, forms, delay)
-                            all_vulns.extend(blind_vulns)
-
-                            if blind_vulns:
-                                log_info(
-                                    f"Found {len(blind_vulns)}"
-                                    f" Blind SQLi vulns. "
-                                    f"Attempting exploit..."
-                                )
-                                for v in blind_vulns:
-                                    if "exploit_data" not in v:
-                                        exploit_data = run_sqli_exploit(v)
-                                        if exploit_data:
-                                            v["exploit_data"] = exploit_data
-                                            log_success(
-                                                "Blind Exploitation "
-                                                "successful! "
-                                                "Data added to "
-                                                "report."
-                                            )
-
-                # Command Injection post-processing
-                if options.get("cmdi") and cmdi_vulns:
-                    log_info(f"Found {len(cmdi_vulns)} Command Injection vulns.")
-                    print(
-                        f"\n{Colors.BOLD}{Colors.CYAN}"
-                        f"[?] CMDi found! "
-                        f"Start Interactive Shell? (y/N)"
-                        f"{Colors.END}"
-                    )
-                    choice = get_input("Choice:", "N").lower()
-                    if choice == "y":
-                        shell = InteractiveShell(scan_url, cmdi_vulns[0])
-                        shell.run()
-
-            except Exception as e:
-                log_error(f"Failed to scan {scan_url}: {e}")
-
-            # Session: mark URL as done and save incrementally
-            if session and session.active:
-                session.mark_url_done(scan_url)
-                session.save()
-
-        # Process OOB callbacks
-        if Config.OOB_CLIENT and Config.OOB_CLIENT.ready:
-            print(
-                f"\n{Colors.BOLD}[*] Waiting 15s for late Out-of-Band (OOB) callbacks...{Colors.END}"
-            )
-            import time
-
-            time.sleep(15)
-            oob_hits = Config.OOB_CLIENT.poll()
-            if oob_hits:
-                log_success(f"Processed {len(oob_hits)} OOB hit(s)!")
-            else:
-                log_info("No OOB callbacks received.")
-
-        # ──── Phase 5: Post-scan modules ────
-        # Note: SSTI and XXE already run via engine (core/engine.py)
-        # so they are NOT called again here to avoid duplicates.
-
-        # Open Redirect scan
-        if options.get("redirect"):
-            for scan_url in urls_to_scan:
-                redirect_vulns = scan_open_redirect(scan_url, delay)
-                all_vulns.extend(redirect_vulns)
-
-        # Credential Sprayer (uses port scan results)
-        if options.get("spray"):
-            open_ports = recon_data.get("open_ports", []) if recon_data else []
-            spray_vulns = scan_spray(target_host, open_ports=open_ports)
-            all_vulns.extend(spray_vulns)
-
-        # Email Harvester
-        if options.get("email"):
-            scan_email_harvest(url, delay)
-
-        # Wordlist Generator
-        if options.get("wordlist"):
-            wl_file = f"{scan_dir}/wordlist.txt"
-            generate_wordlist(url, depth=2, output_file=wl_file, delay=delay)
-
-        # JWT Attack Suite
-        if options.get("jwt"):
-            jwt_vulns = scan_jwt(url, delay, cookie=options.get("cookie"))
-            all_vulns.extend(jwt_vulns)
-
-        # Race Condition Scanner
-        if options.get("race"):
-            race_vulns = scan_race_condition(
-                url, forms=crawled_forms, delay=delay, cookie=options.get("cookie")
-            )
-            all_vulns.extend(race_vulns)
-
-        # HTTP Request Smuggling
-        if options.get("smuggle"):
-            smuggle_vulns = scan_smuggling(url, delay)
-            all_vulns.extend(smuggle_vulns)
-
-        # Prototype Pollution
-        if options.get("proto"):
-            proto_vulns = scan_proto_pollution(url, delay=delay)
-            all_vulns.extend(proto_vulns)
-
-        # Insecure Deserialization
-        if options.get("deser"):
-            deser_vulns = scan_deserialization(url, delay)
-            all_vulns.extend(deser_vulns)
-
-        # Business Logic
-        if options.get("bizlogic"):
-            bizlogic_vulns = scan_business_logic(url, forms=crawled_forms, delay=delay)
-            all_vulns.extend(bizlogic_vulns)
-
-        # Vulnerability Chaining Analysis
-        if options.get("chain") and all_vulns:
-            analyze_chains(all_vulns)
-
-        # ──── End multi-target loop ────
-        # (Note: for multi-target, summary/reports run after all targets are done)
-        
-        from utils.finding import deduplicate_findings
-        all_vulns = deduplicate_findings(all_vulns)
-
-        # ─── AI Analysis Pipeline ────────────────────────────────────────
-        if options.get("ai") and all_vulns:
-            ai = get_ai()
-            if ai.available:
-                # Step 1: Filter false positives
-                all_vulns = detect_false_positives(ai, all_vulns)
-
-                # Step 2: Deep analysis of each finding
-                if all_vulns:
-                    log_info("AI analyzing vulnerabilities...")
-                    for vuln in all_vulns:
-                        analysis = analyze_vulnerability(ai, vuln)
-                        if analysis:
-                            vuln["ai_analysis"] = analysis
-
-                # Step 3: Remediation recommendations
-                remediations = generate_remediation(ai, all_vulns)
-                if remediations:
-                    log_success(
-                        f"AI generated {len(remediations)} remediation guide(s)"
-                    )
-
-                # Step 4: Executive summary
-                summary = generate_scan_summary(
-                    ai,
-                    all_vulns,
-                    url,
-                    {
-                        "requests": Stats.total_requests,
-                        "vulns": len(all_vulns),
-                        "waf": Stats.waf_blocks,
-                    },
-                )
-                if summary:
-                    console.print(
-                        "\n[bold cyan]═══ AI Executive Summary ═══[/bold cyan]"
-                    )
-                    console.print(summary)
-                    console.print(
-                        "[bold cyan]════════════════════════════[/bold cyan]\n"
-                    )
-
-        # Summary
-        print_summary(all_vulns, recon_data=recon_data)
-
-        # Generate reports
-        if options.get("html"):
-            generate_html_report(all_vulns, url, mode, scan_dir)
-
-        generate_payload_report(scan_dir, url, all_vulns)
-        generate_markdown_report(all_vulns, url, mode, scan_dir)
-        generate_pocs(all_vulns, scan_dir)  # Generate offensive PoC elements
-
-        # Normalize all findings with CVSS/CWE data
-        findings = normalize_all(all_vulns)
-
-        if Config.JSON_OUTPUT:
-            stats = {
-                "requests": Stats.total_requests,
-                "vulns": len(findings),
-                "waf": Stats.waf_blocks,
-            }
-            generate_json_report(all_vulns, url, mode, stats, scan_dir)
-
-        # SARIF output (for GitHub Security tab)
-        if options.get("sarif"):
-            save_sarif(all_vulns, scan_dir)
-
-        # Enhanced JSON with CVSS/CWE severity breakdown
-        if Config.JSON_OUTPUT:
-            save_findings_json(
-                all_vulns,
-                scan_dir,
-                url,
-                mode,
-                {
-                    "requests": Stats.total_requests,
-                    "vulns": len(findings),
-                    "waf": Stats.waf_blocks,
-                },
-            )
-
-        # Severity summary
-        print_severity_summary(all_vulns)
-
-        # Session: save final state
-        if session and session.active:
-            session.add_vulnerabilities(all_vulns)
-            session.update_stats(
-                {
-                    "requests": Stats.total_requests,
-                    "vulns": len(findings),
-                }
-            )
-            session.mark_completed()
-
-        log_success(f"Log saved: {log_file}")
-        
-        # Save complete recorded console output to log file
-        save_console_log()
+        scan_target(
+            url,
+            mode,
+            delay,
+            options,
+            runtime_options,
+            session=session,
+            wordlist_file=options.get(
+                "wordlist_file",
+                getattr(args, "wordlist_file", "wordlists/api_endpoints.txt"),
+            ),
+        )
 
 
 if __name__ == "__main__":

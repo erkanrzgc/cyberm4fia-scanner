@@ -3,12 +3,17 @@ Tests for utils/ai.py — Ollama AI Integration
 Tests run without requiring Ollama to be installed.
 """
 
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.ai import OllamaClient, generate_smart_payloads, generate_scan_summary
+from utils.ai import (
+    OllamaClient,
+    generate_scan_summary,
+    generate_smart_payloads,
+    resolve_ollama_base,
+)
 
 
 class TestOllamaClientInit:
@@ -38,6 +43,17 @@ class TestOllamaClientInit:
         client = OllamaClient.__new__(OllamaClient)
         client.available = False
         assert client.generate("test") == ""
+
+    def test_resolve_ollama_base_accepts_bare_host(self, monkeypatch):
+        monkeypatch.delenv("OLLAMA_URL", raising=False)
+        monkeypatch.setenv("OLLAMA_HOST", "192.168.1.50:11434")
+
+        assert resolve_ollama_base() == "http://192.168.1.50:11434"
+
+    def test_resolve_ollama_base_prefers_explicit_url(self, monkeypatch):
+        monkeypatch.setenv("OLLAMA_URL", "http://127.0.0.1:11434")
+
+        assert resolve_ollama_base("http://10.0.0.5:11434") == "http://10.0.0.5:11434"
 
 
 class TestAIFunctions:
@@ -146,8 +162,8 @@ class TestAIModule:
     def test_ollama_base_constant(self):
         from utils.ai import OLLAMA_BASE
 
+        assert OLLAMA_BASE.startswith("http://")
         assert "11434" in OLLAMA_BASE
-        assert "192.168.6.1" in OLLAMA_BASE
 
     def test_init_ai_returns_client(self):
         # Should not crash even without Ollama running

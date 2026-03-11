@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.colors import log_info, log_success
-from utils.request import smart_request, lock, Stats
+from utils.request import increment_vulnerability_count, smart_request
 
 
 # ─────────────────────────────────────────────────────
@@ -122,8 +122,7 @@ def _test_url_params(url, delay=0):
                     evidence = f"Response size changed by {diff} bytes"
 
             if vuln_detected:
-                with lock:
-                    Stats.vulnerabilities_found += 1
+                increment_vulnerability_count()
 
                 severity = "HIGH"
                 if "isAdmin" in param_name or "role" in param_name:
@@ -194,8 +193,7 @@ def _test_json_body(url, delay=0):
                 evidence = "Server error (500) triggered by pollution payload"
 
             if vuln_detected:
-                with lock:
-                    Stats.vulnerabilities_found += 1
+                increment_vulnerability_count()
 
                 payload_str = json.dumps(payload)[:100]
                 findings.append(

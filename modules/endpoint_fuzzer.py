@@ -14,7 +14,7 @@ import random
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.colors import log_info, log_success, log_warning, log_error
-from utils.request import Config, _global_headers
+from utils.request import get_global_headers, get_proxy, is_ssl_verification_enabled
 
 class EndpointFuzzer:
     def __init__(self, target_url, wordlist_path, delay=0, threads=50):
@@ -114,15 +114,16 @@ class EndpointFuzzer:
         log_info(f"🚀 Starting High-Speed API Fuzzer on {self.target_url}...")
         
         # Configure the HTTP client
-        proxy_settings = Config.PROXY if Config.PROXY else None
+        proxy = get_proxy()
+        proxy_settings = proxy if proxy else None
         
-        headers = dict(_global_headers) if _global_headers else {}
+        headers = get_global_headers()
         if "User-Agent" not in headers:
             headers["User-Agent"] = "cyberm4fia-fuzzer/4.0"
             
         limits = httpx.Limits(max_connections=self.threads, max_keepalive_connections=self.threads)
         
-        async with httpx.AsyncClient(verify=Config.VERIFY_SSL, proxy=proxy_settings, headers=headers, limits=limits, follow_redirects=False, timeout=5.0) as client:
+        async with httpx.AsyncClient(verify=is_ssl_verification_enabled(), proxy=proxy_settings, headers=headers, limits=limits, follow_redirects=False, timeout=5.0) as client:
             
             # Step 1: Calibrate context to avoid false positives
             await self._calibrate(client)

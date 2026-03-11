@@ -8,7 +8,12 @@ import urllib.parse
 from bs4 import BeautifulSoup
 import math
 from utils.colors import log_success, log_vuln
-from utils.request import smart_request, lock, Stats, Config
+from utils.request import (
+    get_request_delay,
+    increment_vulnerability_count,
+    lock,
+    smart_request,
+)
 
 VISITED_JS = set()
 
@@ -129,7 +134,7 @@ def scan_secrets(url, response_text):
                 VISITED_JS.add(full_url)
 
             try:
-                resp = smart_request("get", full_url, delay=Config.REQUEST_DELAY)
+                resp = smart_request("get", full_url, delay=get_request_delay())
                 js_found = scan_text_for_secrets(resp.text, full_url)
                 if js_found:
                     vulns.extend(js_found)
@@ -140,8 +145,7 @@ def scan_secrets(url, response_text):
 
     # Reporting
     for v in vulns:
-        with lock:
-            Stats.vulnerabilities_found += 1
+        increment_vulnerability_count()
         log_vuln("SENSITIVE DATA EXPOSURE FOUND!")
         log_success(f"Type: {v['secret_type']}")
         log_success(f"Value: {v['value']}")

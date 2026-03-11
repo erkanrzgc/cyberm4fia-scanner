@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 from utils.colors import log_info, log_success, log_warning, log_error, log_vuln
-from utils.request import lock, Stats
+from utils.request import increment_vulnerability_count
 
 
 DOM_XSS_PAYLOADS = [
@@ -74,8 +74,7 @@ def scan_dom_xss(url):
                     pass
 
                 if alert_triggered[0]:
-                    with lock:
-                        Stats.vulnerabilities_found += 1
+                    increment_vulnerability_count()
                     log_vuln("DOM XSS VULNERABILITY FOUND!")
                     log_success(f"Type: URL Hash | Payload: {payload[:40]}...")
                     vulns.append(
@@ -115,8 +114,7 @@ def scan_dom_xss(url):
                         pass
 
                     if alert_triggered_param[0]:
-                        with lock:
-                            Stats.vulnerabilities_found += 1
+                        increment_vulnerability_count()
                         log_vuln("DOM XSS VULNERABILITY FOUND!")
                         log_success(
                             f"Type: URL Param '{param}' | Payload: {payload[:40]}..."

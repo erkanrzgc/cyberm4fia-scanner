@@ -11,8 +11,12 @@ from urllib.parse import urlparse, parse_qs, urlencode, urlunparse, urljoin
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.request import smart_request, lock, Stats, Config
-from utils.colors import Colors, log_info, log_success, log_vuln
+from utils.request import (
+    get_thread_count,
+    increment_vulnerability_count,
+    smart_request,
+)
+from utils.colors import Colors, log_info, log_success, log_vuln, log_warning
 from modules.payloads import (
     BLIND_SQLI_PAYLOADS,
     BLIND_SQLI_THRESHOLD,
@@ -32,46 +36,252 @@ def detect_sqli(text):
     return None
 
 
+def _check_sqli_error(
+    resp, payload, target_name, url_or_action, method, data, smart_payloads, source=None
+):
+    """Helper to check reflection and log SQLi"""
+    error = detect_sqli(resp.text)
+    if error:
+        increment_vulnerability_count()
+        if not source:
+            source = "🧠 Smart" if payload in smart_payloads else "📋 Static"
+        log_vuln(f"SQLi VULNERABILITY FOUND! [{source}]")
+        log_success(f"Target: {target_name} | Error: {error}")
+        log_success(f"Payload: {payload}")
+        return {
+            "type": "SQLi_Form" if data else "SQLi_Param",
+            ("field" if data else "param"): target_name,
+            "payload": payload,
+            "error": error,
+            "url": url_or_action,
+            "method": method if data else "get",
+            "form_data": data if data else {},
+            "source": source,
+        }
+    return None
+
+
 def _test_sqli_form_input(inp, inputs, method, target, delay):
     """Test a single form input for SQLi (helper for threading)"""
-    # Smart probe: detect DB type + generate targeted payloads
-    probe = probe_sqli_context(
-        target, inp, {}, method=method, form_data=inputs.copy(), delay=delay
-    )
-    smart = probe.get("smart_payloads", [])
-    if smart:
-        all_payloads = smart + [p for p in SQLI_PAYLOADS if p not in smart]
-    else:
-        all_payloads = SQLI_PAYLOADS
+    smart = []
+    # Could add smart probe for SQLi forms here later
+    all_payloads = SQLI_PAYLOADS
 
     for payload in all_payloads:
         data = inputs.copy()
         data[inp] = payload
         try:
-            resp = smart_request(
-                method,
-                target,
-                data=data if method == "post" else None,
-                params=data if method != "post" else None,
-                delay=delay,
+            if method == "post":
+                resp = smart_request("post", target, data=data, delay=delay)
+            else:
+                resp = smart_request("get", target, params=data, delay=delay)
+
+            vuln_found = _check_sqli_error(
+                resp, payload, inp, target, method, data, smart
             )
-            error = detect_sqli(resp.text)
-            if error:
-                with lock:
-                    Stats.vulnerabilities_found += 1
-                source = "🧠 Smart" if payload in smart else "📋 Static"
-                log_vuln(f"SQLi VULNERABILITY FOUND! [{source}]")
-                log_success(f"Field: {inp} | Error: {error}")
-                log_success(f"Payload: {payload}")
-                return {
-                    "type": "SQLi_Form",
-                    "field": inp,
-                    "payload": payload,
-                    "error": error,
-                    "url": target,
-                    "method": method,
-                    "form_data": data,
-                }
+            if vuln_found:
+                return vuln_found
+
+            # --- SMART WAF BYPASS LOGIC ---
+            from utils.waf import waf_detector
+
+            if waf_detector.is_waf_block(resp.status_code, resp.text):
+                waf_name = waf_detector.detected_waf or "Generic WAF"
+                log_warning(f"WAF Block ({waf_name}) detected on form field '{inp}'")
+
+                from utils.tamper import TamperChain
+
+                tampers = waf_detector.get_recommended_tampers()
+                if tampers:
+                    log_info(
+                        f"Applying auto-tamper for {waf_name}: {'+'.join(tampers)}"
+                    )
+                    chain = TamperChain(tampers)
+                    tampered_payload = chain.apply(payload)
+                    if tampered_payload != payload:
+                        data[inp] = tampered_payload
+                        resp_t = (
+                            smart_request("post", target, data=data, delay=delay)
+                            if method == "post"
+                            else smart_request("get", target, params=data, delay=delay)
+                        )
+                        vuln_found = _check_sqli_error(
+                            resp_t,
+                            tampered_payload,
+                            inp,
+                            target,
+                            method,
+                            data,
+                            smart,
+                            source="⚡ Auto-Tamper",
+                        )
+                        if vuln_found:
+                            return vuln_found
+
+                        # 2. Try AI Bypass (Evolutionary Mutation Loop)
+                        from utils.ai import get_ai, EvolvingWAFBypassEngine
+
+                        ai_client = get_ai()
+                        if (
+                            ai_client
+                            and ai_client.available
+                            and waf_detector.is_waf_block(
+                                resp_t.status_code, resp_t.text
+                            )
+                        ):
+                            log_info(
+                                f"🤖 Starting Evolutionary AI Mutation for {waf_name}..."
+                            )
+                            engine = EvolvingWAFBypassEngine(
+                                ai_client, waf_name, "SQL Injection"
+                            )
+                            current_payload = payload
+
+                            for iteration in range(1, 4):
+                                ai_payloads = engine.mutate(current_payload, iteration)
+
+                                for ai_p in ai_payloads:
+                                    data[inp] = ai_p
+                                    resp_ai = (
+                                        smart_request(
+                                            "post", target, data=data, delay=delay
+                                        )
+                                        if method == "post"
+                                        else smart_request(
+                                            "get", target, params=data, delay=delay
+                                        )
+                                    )
+                                    vuln_found = _check_sqli_error(
+                                        resp_ai,
+                                        ai_p,
+                                        inp,
+                                        target,
+                                        method,
+                                        data,
+                                        smart,
+                                        source=f"🤖 AI Gen-{iteration}",
+                                    )
+                                    if vuln_found:
+                                        return vuln_found
+
+                                    if waf_detector.is_waf_block(
+                                        resp_ai.status_code, resp_ai.text
+                                    ):
+                                        engine.analyze_failure(ai_p)
+                                        current_payload = ai_p
+
+                                if vuln_found:
+                                    break
+
+                            # 3. Protocol-Level Evasion (If AI failed or unavailable)
+                            if not vuln_found:
+                                log_info(
+                                    f"🛡️ Falling back to Protocol-Level Evasion for {waf_name}..."
+                                )
+
+                                # Evasion Level 1: Unicode Normalization
+                                data[inp] = payload
+                                resp_ev1 = (
+                                    smart_request(
+                                        "post",
+                                        target,
+                                        data=data,
+                                        delay=delay,
+                                        evasion_level=1,
+                                    )
+                                    if method == "post"
+                                    else smart_request(
+                                        "get",
+                                        target,
+                                        params=data,
+                                        delay=delay,
+                                        evasion_level=1,
+                                    )
+                                )
+                                vuln_found = _check_sqli_error(
+                                    resp_ev1,
+                                    payload,
+                                    inp,
+                                    target,
+                                    method,
+                                    data,
+                                    smart,
+                                    source="🛡️ Unicode Evasion",
+                                )
+                                if vuln_found:
+                                    return vuln_found
+
+                                # Evasion Level 2: Chunked Transfer
+                                if waf_detector.is_waf_block(
+                                    resp_ev1.status_code, resp_ev1.text
+                                ):
+                                    resp_ev2 = (
+                                        smart_request(
+                                            "post",
+                                            target,
+                                            data=data,
+                                            delay=delay,
+                                            evasion_level=2,
+                                        )
+                                        if method == "post"
+                                        else smart_request(
+                                            "get",
+                                            target,
+                                            params=data,
+                                            delay=delay,
+                                            evasion_level=2,
+                                        )
+                                    )
+                                    vuln_found = _check_sqli_error(
+                                        resp_ev2,
+                                        payload,
+                                        inp,
+                                        target,
+                                        method,
+                                        data,
+                                        smart,
+                                        source="🧱 Chunked Evasion",
+                                    )
+                                    if vuln_found:
+                                        return vuln_found
+
+                                    # Evasion Level 3: WAF Resource Exhaustion (ReDoS)
+                                    if waf_detector.is_waf_block(
+                                        resp_ev2.status_code, resp_ev2.text
+                                    ):
+                                        log_warning(
+                                            f"💥 Bruteforcing {waf_name} via Resource Exhaustion (Level 3)"
+                                        )
+                                        resp_ev3 = (
+                                            smart_request(
+                                                "post",
+                                                target,
+                                                data=data,
+                                                delay=delay,
+                                                evasion_level=3,
+                                            )
+                                            if method == "post"
+                                            else smart_request(
+                                                "get",
+                                                target,
+                                                params=data,
+                                                delay=delay,
+                                                evasion_level=3,
+                                            )
+                                        )
+                                        vuln_found = _check_sqli_error(
+                                            resp_ev3,
+                                            payload,
+                                            inp,
+                                            target,
+                                            method,
+                                            data,
+                                            smart,
+                                            source="💥 ReDoS Evasion",
+                                        )
+                                        if vuln_found:
+                                            return vuln_found
+
         except Exception:
             pass
     return None
@@ -95,21 +305,150 @@ def _test_sqli_param(param, params, parsed, delay):
         test_url = urlunparse(parsed._replace(query=urlencode(test_params, doseq=True)))
         try:
             resp = smart_request("get", test_url, delay=delay)
-            error = detect_sqli(resp.text)
-            if error:
-                with lock:
-                    Stats.vulnerabilities_found += 1
-                source = "🧠 Smart" if payload in smart else "📋 Static"
-                log_vuln(f"SQLi VULNERABILITY FOUND! [{source}]")
-                log_success(f"Param: {param} | Error: {error}")
-                log_success(f"Payload: {payload}")
-                return {
-                    "type": "SQLi_Param",
-                    "param": param,
-                    "payload": payload,
-                    "error": error,
-                    "url": test_url,
-                }
+            vuln_found = _check_sqli_error(
+                resp, payload, param, test_url, "get", None, smart
+            )
+            if vuln_found:
+                return vuln_found
+
+            # --- SMART WAF BYPASS LOGIC ---
+            from utils.waf import waf_detector
+
+            if waf_detector.is_waf_block(resp.status_code, resp.text):
+                waf_name = waf_detector.detected_waf or "Generic WAF"
+                log_warning(f"WAF Block ({waf_name}) detected on param '{param}'")
+
+                from utils.tamper import TamperChain
+
+                tampers = waf_detector.get_recommended_tampers()
+                if tampers:
+                    log_info(
+                        f"Applying auto-tamper for {waf_name}: {'+'.join(tampers)}"
+                    )
+                    chain = TamperChain(tampers)
+                    tampered_payload = chain.apply(payload)
+                    if tampered_payload != payload:
+                        test_params[param] = [tampered_payload]
+                        test_url = urlunparse(
+                            parsed._replace(query=urlencode(test_params, doseq=True))
+                        )
+                        resp_t = smart_request("get", test_url, delay=delay)
+                        vuln_found = _check_sqli_error(
+                            resp_t,
+                            tampered_payload,
+                            param,
+                            test_url,
+                            "get",
+                            None,
+                            smart,
+                            source="⚡ Auto-Tamper",
+                        )
+                        if vuln_found:
+                            return vuln_found
+
+                        # 2. Try AI Bypass (Evolutionary Mutation Loop)
+                        from utils.ai import get_ai, EvolvingWAFBypassEngine
+
+                        ai_client = get_ai()
+                        if (
+                            ai_client
+                            and ai_client.available
+                            and waf_detector.is_waf_block(
+                                resp_t.status_code, resp_t.text
+                            )
+                        ):
+                            log_info(
+                                f"🤖 Starting Evolutionary AI Mutation for {waf_name}..."
+                            )
+                            engine = EvolvingWAFBypassEngine(
+                                ai_client, waf_name, "SQL Injection"
+                            )
+                            current_payload = payload
+
+                            for iteration in range(1, 4):
+                                ai_payloads = engine.mutate(current_payload, iteration)
+
+                                for ai_p in ai_payloads:
+                                    test_params[param] = [ai_p]
+                                    test_url = urlunparse(
+                                        parsed._replace(
+                                            query=urlencode(test_params, doseq=True)
+                                        )
+                                    )
+                                    resp_ai = smart_request(
+                                        "get", test_url, delay=delay
+                                    )
+                                    vuln_found = _check_sqli_error(
+                                        resp_ai,
+                                        ai_p,
+                                        param,
+                                        test_url,
+                                        "get",
+                                        None,
+                                        smart,
+                                        source=f"🤖 AI Gen-{iteration}",
+                                    )
+                                    if vuln_found:
+                                        return vuln_found
+
+                                    if waf_detector.is_waf_block(
+                                        resp_ai.status_code, resp_ai.text
+                                    ):
+                                        engine.analyze_failure(ai_p)
+                                        current_payload = ai_p
+
+                                if vuln_found:
+                                    break
+
+                            # 3. Protocol-Level Evasion (If AI failed or unavailable)
+                            if not vuln_found:
+                                log_info(
+                                    f"🛡️ Falling back to Protocol-Level Evasion for {waf_name}..."
+                                )
+
+                                # Evasion Level 1: Unicode Normalization
+                                test_params[param] = [payload]
+                                test_url = urlunparse(
+                                    parsed._replace(
+                                        query=urlencode(test_params, doseq=True)
+                                    )
+                                )
+                                resp_ev1 = smart_request(
+                                    "get", test_url, delay=delay, evasion_level=1
+                                )
+                                vuln_found = _check_sqli_error(
+                                    resp_ev1,
+                                    payload,
+                                    param,
+                                    test_url,
+                                    "get",
+                                    None,
+                                    smart,
+                                    source="🛡️ Unicode Evasion",
+                                )
+                                if vuln_found:
+                                    return vuln_found
+
+                                # Evasion Level 2: Chunked Transfer
+                                if waf_detector.is_waf_block(
+                                    resp_ev1.status_code, resp_ev1.text
+                                ):
+                                    resp_ev2 = smart_request(
+                                        "get", test_url, delay=delay, evasion_level=2
+                                    )
+                                    vuln_found = _check_sqli_error(
+                                        resp_ev2,
+                                        payload,
+                                        param,
+                                        test_url,
+                                        "get",
+                                        None,
+                                        smart,
+                                        source="🧱 Chunked Evasion",
+                                    )
+                                    if vuln_found:
+                                        return vuln_found
+
         except Exception:
             pass
     return None
@@ -120,7 +459,7 @@ def scan_sqli(url, forms, delay, threads=None):
     from utils.tamper import get_tamper_chain
 
     if threads is None:
-        threads = Config.THREADS
+        threads = get_thread_count()
 
     # Apply tamper chain for WAF bypass variants
     chain = get_tamper_chain()
@@ -252,8 +591,7 @@ def scan_blind_sqli(url, forms, delay):
                                 sys.stdout.write("\r" + " " * 60 + "\r")
                                 sys.stdout.flush()
 
-                                with lock:
-                                    Stats.vulnerabilities_found += 1
+                                increment_vulnerability_count()
 
                                 log_vuln("BLIND SQLi VULNERABILITY FOUND!")
                                 log_success(
@@ -313,8 +651,7 @@ def scan_blind_sqli(url, forms, delay):
                         base_elapsed = time.time() - start_base
 
                         if base_elapsed < 2.0:
-                            with lock:
-                                Stats.vulnerabilities_found += 1
+                            increment_vulnerability_count()
 
                             log_vuln("BLIND SQLi VULNERABILITY FOUND!")
                             log_success(

@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from urllib.parse import urlparse
 from utils.colors import log_info, log_success, log_vuln
-from utils.request import smart_request, lock, Stats
+from utils.request import increment_vulnerability_count, smart_request
 
 
 # Test origins to send as Origin header
@@ -71,8 +71,7 @@ def scan_cors(url):
                 vuln_detail = "null origin accepted (iframe sandbox bypass)"
 
             if is_vuln:
-                with lock:
-                    Stats.vulnerabilities_found += 1
+                increment_vulnerability_count()
 
                 severity = "high"
                 if "Credentials" in vuln_detail:
