@@ -8,6 +8,18 @@ from unittest.mock import AsyncMock, patch, MagicMock
 from core.engine import _run_module, run_modules_async_impl, run_modules_async
 
 
+@pytest.fixture(autouse=True)
+def no_real_to_thread(monkeypatch):
+    """Keep engine tests deterministic without leaving threadpool workers behind."""
+
+    async def immediate_to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    import core.engine as engine_mod
+
+    monkeypatch.setattr(engine_mod.asyncio, "to_thread", immediate_to_thread)
+
+
 class TestRunModule:
     """Tests for the _run_module helper."""
 

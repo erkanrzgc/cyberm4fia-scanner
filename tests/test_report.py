@@ -89,12 +89,19 @@ def test_json_report_generation(mock_vulns, temp_scan_dir):
     assert data["target"] == "http://test.com"
     assert len(data["vulnerabilities"]) == 2
     assert data["stats"]["requests"] == 100
+    assert len(data["observations"]) == 2
+    assert len(data["findings"]) == 2
+    assert "attack_paths" in data
 
 
 def test_markdown_report_generation(mock_vulns, temp_scan_dir):
     """Test Markdown report contains CVSS, CWE, Remediation info"""
     res = generate_markdown_report(
-        mock_vulns, "http://test.com", "normal", temp_scan_dir
+        mock_vulns,
+        "http://test.com",
+        "normal",
+        temp_scan_dir,
+        stats={"total_requests": 55, "waf_blocks": 2, "errors": 1, "duration_seconds": 9.5},
     )
 
     assert os.path.exists(res)
@@ -104,6 +111,8 @@ def test_markdown_report_generation(mock_vulns, temp_scan_dir):
     assert "Executive Vulnerability Report" in md
     assert "CWE-89" in md
     assert "**🛡️ Remediation:**" in md
+    assert "55" in md
+    assert "Verification State" in md
 
 
 def test_payload_report_generation(mock_vulns, temp_scan_dir):
@@ -155,3 +164,22 @@ def test_html_report_has_remediation(mock_vulns, temp_scan_dir):
     assert "Remediation" in html
     assert "parameterized queries" in html  # SQLi remediation
     assert "Content-Security-Policy" in html  # XSS remediation
+
+
+def test_html_report_prefers_explicit_stats(mock_vulns, temp_scan_dir):
+    Stats.total_requests = 999
+    Stats.waf_blocks = 99
+
+    res = generate_html_report(
+        mock_vulns,
+        "http://test.com",
+        "normal",
+        temp_scan_dir,
+        stats={"total_requests": 12, "waf_blocks": 3, "errors": 1, "duration_seconds": 4.2},
+    )
+
+    with open(res, "r", encoding="utf-8") as f:
+        html = f.read()
+
+    assert "12" in html
+    assert "999" not in html

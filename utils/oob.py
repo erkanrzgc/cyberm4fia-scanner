@@ -84,6 +84,7 @@ class LocalListener:
 
         try:
             self.server = HTTPServer(("0.0.0.0", port), CallbackHandler)
+            self.clear_hits()
             self.thread = threading.Thread(
                 target=self.server.serve_forever, daemon=True
             )
@@ -121,6 +122,9 @@ class LocalListener:
         """Stop the listener."""
         if self.server:
             self.server.shutdown()
+            self.server.server_close()
+        self.clear_hits()
+        self.ready = False
 
 
 # ─────────────────────────────────────────────────────
@@ -412,6 +416,8 @@ class OOBClient:
         """Cleanup."""
         if self.local:
             self.local.stop()
+        self.found_vulns = []
+        self.ready = False
 
 
 def _display_hit(hit, source):

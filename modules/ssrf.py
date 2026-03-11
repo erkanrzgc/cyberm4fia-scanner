@@ -13,7 +13,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 from utils.colors import log_info, log_success, log_vuln
-from utils.request import smart_request, lock, Stats, Config
+from utils.request import (
+    get_oob_client,
+    get_thread_count,
+    increment_vulnerability_count,
+    smart_request,
+)
 from modules.payloads import load_payloads_from_file
 
 
@@ -181,8 +186,9 @@ def detect_ssrf(text, payload, baseline_text="", baseline_len=0):
 def _test_ssrf_param(param, params, parsed, delay, baseline_text, baseline_len):
     """Test a single param for SSRF with baseline comparison."""
     all_payloads = list(SSRF_PAYLOADS)
-    if Config.OOB_CLIENT and Config.OOB_CLIENT.ready:
-        all_payloads.append(Config.OOB_CLIENT.generate_payload("ssrf", param))
+    oob_client = get_oob_client()
+    if oob_client and oob_client.ready:
+        all_payloads.append(oob_client.generate_payload("ssrf", param))
 
     for payload in all_payloads:
         test_params = params.copy()
@@ -192,8 +198,7 @@ def _test_ssrf_param(param, params, parsed, delay, baseline_text, baseline_len):
             resp = smart_request("get", test_url, delay=delay)
             category, sig = detect_ssrf(resp.text, payload, baseline_text, baseline_len)
             if category:
-                with lock:
-                    Stats.vulnerabilities_found += 1
+                increment_vulnerability_count()
                 log_vuln("SSRF VULNERABILITY FOUND!")
                 log_success(f"Param: {param} | Type: {category} | Indicator: {sig}")
                 log_success(f"Payload: {payload}")
@@ -215,8 +220,9 @@ def _test_ssrf_form(
 ):
     """Test a single form input for SSRF with baseline comparison."""
     all_payloads = list(SSRF_PAYLOADS)
-    if Config.OOB_CLIENT and Config.OOB_CLIENT.ready:
-        all_payloads.append(Config.OOB_CLIENT.generate_payload("ssrf", inp))
+    oob_client = get_oob_client()
+    if oob_client and oob_client.ready:
+        all_payloads.append(oob_client.generate_payload("ssrf", inp))
 
     for payload in all_payloads:
         data = {n: "test" for n in inputs}
@@ -233,8 +239,7 @@ def _test_ssrf_form(
             )
             category, sig = detect_ssrf(resp.text, payload, baseline_text, baseline_len)
             if category:
-                with lock:
-                    Stats.vulnerabilities_found += 1
+                increment_vulnerability_count()
                 log_vuln("SSRF VULNERABILITY FOUND!")
                 log_success(f"Form field: {inp} | Type: {category}")
                 log_success(f"Payload: {payload}")
@@ -255,7 +260,7 @@ def _test_ssrf_form(
 def scan_ssrf(url, forms, delay, threads=None):
     """Scan for SSRF vulnerabilities (threaded)."""
     if threads is None:
-        threads = Config.THREADS
+        threads = get_thread_count()
 
     log_info(f"Testing SSRF with {len(SSRF_PAYLOADS)} payloads ({threads} threads)...")
     vulns = []

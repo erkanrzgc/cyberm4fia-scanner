@@ -13,7 +13,7 @@ from urllib.parse import urlparse, urljoin
 import httpx
 
 from utils.colors import Colors, log_info, log_success, log_vuln, log_warning
-from utils.request import smart_request, lock, Stats
+from utils.request import increment_vulnerability_count, smart_request
 
 # Common anti-CSRF token field names
 CSRF_TOKEN_NAMES = [
@@ -204,8 +204,7 @@ def scan_csrf(url, forms, delay):
                 f"  Form #{i + 1} [{method.upper()}] → Token found: {token_name}"
             )
         else:
-            with lock:
-                Stats.vulnerabilities_found += 1
+            increment_vulnerability_count()
 
             log_vuln("CSRF VULNERABILITY FOUND!")
             log_success(f"  Form #{i + 1} [{method.upper()}] → NO anti-CSRF token!")

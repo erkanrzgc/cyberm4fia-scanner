@@ -14,7 +14,7 @@ import json
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.colors import log_info, log_success, log_warning, log_error
-from utils.request import Config, _global_headers
+from utils.request import get_request_delay, set_cookie
 
 try:
     from mitmproxy import ctx
@@ -51,7 +51,7 @@ class Cyberm4fiaInterceptor:
         # Extract headers (especially cookies for authenticated scanning)
         headers = dict(flow.request.headers)
         if "Cookie" in headers:
-            _global_headers["Cookie"] = headers["Cookie"]
+            set_cookie(headers["Cookie"])
 
         # Parse form data or query parameters
         params = {}
@@ -100,7 +100,7 @@ class Cyberm4fiaInterceptor:
             }
             
             # Use the global Config delay (removed unsupported `method` keyword)
-            run_modules_async(url, [dummy_form], Config.REQUEST_DELAY, options)
+            run_modules_async(url, [dummy_form], get_request_delay(), options)
             
         except Exception as e:
             log_error(f"Failed to scan intercepted request {url}: {e}")

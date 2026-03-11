@@ -9,7 +9,11 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.colors import Colors, log_info, log_success, log_vuln
-from utils.request import smart_request, lock, Stats, Config
+from utils.request import (
+    get_thread_count,
+    increment_vulnerability_count,
+    smart_request,
+)
 from modules.payloads import LFI_PAYLOADS, LFI_SIGNATURES
 from modules.smart_payload import probe_lfi_context
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse, urljoin
@@ -97,8 +101,7 @@ def _test_lfi_param(param, params, parsed, delay):
             resp = smart_request("get", test_url, delay=delay)
             os_type, sig = detect_lfi(resp.text, baseline_text=baseline_text)
             if os_type:
-                with lock:
-                    Stats.vulnerabilities_found += 1
+                increment_vulnerability_count()
                 source = "🧠 Smart" if payload in smart else "📋 Static"
                 log_vuln(f"LFI VULNERABILITY FOUND! [{source}]")
                 log_success(f"Param: {param} | OS: {os_type} | Signature: {sig}")
@@ -185,8 +188,7 @@ def _test_lfi_form_input(inp, inputs, method, target, delay):
             )
             os_type, sig = detect_lfi(resp.text, baseline_text=baseline_text)
             if os_type:
-                with lock:
-                    Stats.vulnerabilities_found += 1
+                increment_vulnerability_count()
                 source = "🧠 Smart" if payload in smart else "📋 Static"
                 log_vuln(f"LFI VULNERABILITY FOUND! [{source}]")
                 log_success(f"Form field: {inp} | OS: {os_type}")
@@ -240,7 +242,7 @@ def scan_lfi(url, forms, delay, threads=None):
     from utils.tamper import get_tamper_chain
 
     if threads is None:
-        threads = Config.THREADS
+        threads = get_thread_count()
 
     # Apply tamper chain for WAF bypass variants
     chain = get_tamper_chain()

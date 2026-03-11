@@ -13,7 +13,7 @@ import traceback
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.colors import log_info, log_success, log_warning, log_error, log_vuln
-from utils.request import smart_request, lock, Stats
+from utils.request import increment_vulnerability_count, smart_request
 
 TEMPLATE_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates"
@@ -160,8 +160,7 @@ def run_templates(url, delay=0):
                         allow_redirects=False,
                     )
                     if _match_response(resp, matchers):
-                        with lock:
-                            Stats.vulnerabilities_found += 1
+                        increment_vulnerability_count()
 
                         log_vuln(f"TEMPLATE MATCH! [{tid}] - {name} ({severity})")
                         log_success(f"Target: {target}")

@@ -13,6 +13,7 @@ Usage:
 
 import asyncio
 from utils.colors import log_info, log_warning
+from core.module_registry import iter_async_module_specs
 
 
 async def _run_module(name: str, func, *args):
@@ -45,46 +46,15 @@ async def run_modules_async_impl(
     Returns:
         list of vulnerability dicts
     """
-    # Lazy imports to avoid circular dependencies
-    from modules.xss import scan_xss
-    from modules.sqli import scan_sqli
-    from modules.lfi import scan_lfi
-    from modules.rfi import scan_rfi
-    from modules.cmdi import scan_cmdi
-    from modules.ssrf import scan_ssrf
-    from modules.ssti import scan_ssti
-    from modules.xxe import scan_xxe
-    from modules.dom_xss import scan_dom_xss
-
     tasks = []
-
-    # Phase 1: Error-based modules (can run fully in parallel)
-    if options.get("xss"):
-        tasks.append(_run_module("XSS", scan_xss, scan_url, forms, delay))
-    if options.get("sqli"):
-        tasks.append(_run_module("SQLi", scan_sqli, scan_url, forms, delay))
-    if options.get("lfi"):
-        tasks.append(_run_module("LFI", scan_lfi, scan_url, forms, delay))
-    if options.get("rfi"):
-        tasks.append(_run_module("RFI", scan_rfi, scan_url, forms, delay))
-    if options.get("cmdi"):
-        tasks.append(_run_module("CMDi", scan_cmdi, scan_url, forms, delay))
-    if options.get("ssrf"):
-        tasks.append(_run_module("SSRF", scan_ssrf, scan_url, forms, delay))
-    if options.get("ssti"):
-        tasks.append(_run_module("SSTI", scan_ssti, scan_url, delay))
-    if options.get("xxe"):
-        tasks.append(_run_module("XXE", scan_xxe, scan_url, delay))
-
-    # DOM modules
-    if options.get("dom_xss"):
-        tasks.append(_run_module("DOM-XSS", scan_dom_xss, scan_url))
-
-    # Template engine
-    if options.get("templates"):
-        from modules.template_engine import run_templates
-
-        tasks.append(_run_module("Templates", run_templates, scan_url, delay))
+    for spec in iter_async_module_specs(options):
+        tasks.append(
+            _run_module(
+                spec.name,
+                spec.loader(),
+                *spec.build_args(scan_url, forms, delay),
+            )
+        )
 
     if not tasks:
         return []

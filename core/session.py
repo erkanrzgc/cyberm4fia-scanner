@@ -86,6 +86,22 @@ class ScanSession:
             if isinstance(v, (str, int, float, bool, list, type(None)))
         }
 
+    def restore_config(self, default_options=None, override_options=None, override_keys=()):
+        """Return target/mode/options restored from the session with optional overrides."""
+        restored_options = dict(default_options or {})
+        restored_options.update(self.data.get("options", {}))
+
+        if override_options:
+            for key in override_keys:
+                if key in override_options:
+                    restored_options[key] = override_options[key]
+
+        return {
+            "target": self.data.get("target", ""),
+            "mode": self.data.get("mode", ""),
+            "options": restored_options,
+        }
+
     def mark_url_done(self, url: str):
         """Mark a URL as scanned."""
         if url not in self.data["scanned_urls"]:

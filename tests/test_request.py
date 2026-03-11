@@ -8,7 +8,32 @@ import threading
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.request import Config, Stats, USER_AGENTS, lock, _get_session
+import pytest
+
+from utils.request import (
+    BlockedTargetPath,
+    Config,
+    RequestBudgetExceeded,
+    ScanCancelled,
+    Stats,
+    USER_AGENTS,
+    _get_session,
+    is_url_blocked,
+    lock,
+    normalize_proxy_url,
+    restore_runtime_state,
+    set_request_controls,
+    set_proxy,
+    snapshot_runtime_state,
+    smart_request,
+)
+
+
+@pytest.fixture(autouse=True)
+def reset_request_runtime():
+    state = snapshot_runtime_state()
+    yield
+    restore_runtime_state(state)
 
 
 class TestConfig:
@@ -34,6 +59,10 @@ class TestConfig:
     def test_delay_modes(self):
         assert Config.QUICK_DELAY < Config.REQUEST_DELAY
         assert Config.REQUEST_DELAY < Config.STEALTH_DELAY
+
+    def test_default_timeout_and_blacklist_shape(self):
+        assert Config.DEFAULT_TIMEOUT > 0
+        assert isinstance(Config.PATH_BLACKLIST, tuple)
 
 
 class TestStats:
@@ -114,3 +143,49 @@ class TestSession:
         assert s1 is not s2
         # Cleanup
         _get_session(verify=False)
+
+
+class TestRequestControls:
+    def test_normalize_proxy_url_adds_http_scheme(self):
+        assert normalize_proxy_url("127.0.0.1:8080") == "http://127.0.0.1:8080"
+        assert (
+            normalize_proxy_url("socks5://127.0.0.1:9050")
+            == "socks5://127.0.0.1:9050"
+        )
+
+    def test_set_proxy_normalizes_runtime_proxy(self):
+        set_proxy("127.0.0.1:8080")
+        assert Config.PROXY == "http://127.0.0.1:8080"
+
+    def test_path_blacklist_helper_matches_risky_paths(self):
+        set_request_controls(path_blacklist="/logout,/checkout")
+
+        assert is_url_blocked("https://example.com/logout") is True
+        assert is_url_blocked("https://example.com/account") is False
+
+    def test_smart_request_blocks_blacklisted_paths_before_network(self, monkeypatch):
+        calls = []
+
+        monkeypatch.setattr("utils.request._get_session", lambda **kwargs: calls.append(kwargs))
+        set_request_controls(path_blacklist="/logout")
+
+        with pytest.raises(BlockedTargetPath):
+            smart_request("get", "https://example.com/logout", delay=0)
+
+        assert calls == []
+
+    def test_request_budget_raises_before_network(self, monkeypatch):
+        Stats.reset()
+        Stats.total_requests = 2
+        set_request_controls(request_budget=2, path_blacklist="", cancel_event=None)
+
+        with pytest.raises(RequestBudgetExceeded):
+            smart_request("get", "https://example.com", delay=0)
+
+    def test_cancelled_scan_raises_before_network(self, monkeypatch):
+        event = threading.Event()
+        event.set()
+        set_request_controls(cancel_event=event, path_blacklist="")
+
+        with pytest.raises(ScanCancelled):
+            smart_request("get", "https://example.com", delay=0)

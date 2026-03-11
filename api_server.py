@@ -13,11 +13,15 @@ Endpoints:
   GET    /api/scan/{id}     Get scan status/results
   GET    /api/scans         List all scans
   GET    /api/report/{id}   Download HTML report
+  GET    /api/report/{id}/json   Download JSON findings report
+  GET    /api/report/{id}/sarif  Download SARIF report
   DELETE /api/scan/{id}     Cancel a scan
 """
 
 import sys
 import os
+import json
+import asyncio
 import uuid
 import threading
 from datetime import datetime
@@ -27,7 +31,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 try:
     from fastapi import FastAPI, HTTPException
-    from fastapi.responses import FileResponse
+    from fastapi.responses import FileResponse, StreamingResponse
     from pydantic import BaseModel, Field
     import uvicorn
 except ImportError:
@@ -35,7 +39,14 @@ except ImportError:
     sys.exit(1)
 
 from utils.colors import log_info, log_success, set_quiet
-from utils.request import Config, Stats, smart_request
+from utils.request import (
+    ScanCancelled,
+    get_default_timeout,
+    get_path_blacklist,
+    smart_request,
+)
+from core.scan_context import ScanContext
+from core.scan_options import get_scan_mode_runtime
 
 
 # ─── Pydantic Models ───
@@ -54,8 +65,28 @@ class ScanRequest(BaseModel):
     )
     mode: str = Field(
         default="normal",
-        description="Scan mode: quick | normal | aggressive | stealth",
+        description="Scan mode: normal | stealth | lab (legacy aliases quick/aggressive still work)",
         examples=["normal"],
+    )
+    exploit: bool = Field(
+        default=False,
+        description="Enable exploit follow-up actions after findings are detected",
+    )
+    max_requests: int = Field(
+        default=0,
+        description="Optional request budget; 0 disables the limit",
+    )
+    request_timeout: float = Field(
+        default=get_default_timeout(),
+        description="Default request timeout for this scan",
+    )
+    max_host_concurrency: int = Field(
+        default=0,
+        description="Maximum simultaneous requests per host; 0 disables the limit",
+    )
+    path_blacklist: str = Field(
+        default=",".join(get_path_blacklist()),
+        description="Comma-separated risky path patterns to skip",
     )
 
 
@@ -78,8 +109,12 @@ class ScanResult(BaseModel):
     created_at: str
     completed_at: Optional[str] = None
     total_vulns: int = 0
-    stats: dict = {}
-    vulnerabilities: list = []
+    stats: dict = Field(default_factory=dict)
+    progress: dict = Field(default_factory=dict)
+    vulnerabilities: list = Field(default_factory=list)
+    observations: list = Field(default_factory=list)
+    findings: list = Field(default_factory=list)
+    attack_paths: list = Field(default_factory=list)
     error: Optional[str] = None
 
 
@@ -95,6 +130,32 @@ app = FastAPI(
 
 # In-memory scan storage
 SCANS: dict = {}
+_SCAN_LOCK = threading.Lock()
+
+
+def _update_scan(scan_id: str, **changes):
+    with _SCAN_LOCK:
+        if scan_id in SCANS:
+            SCANS[scan_id].update(changes)
+
+
+def _set_scan_progress(scan_id: str, phase: str, completed: int, total: int, message: str):
+    _update_scan(
+        scan_id,
+        progress={
+            "phase": phase,
+            "completed": completed,
+            "total": total,
+            "message": message,
+            "updated_at": str(datetime.now()),
+        },
+    )
+
+
+def _check_cancelled(scan: dict):
+    cancel_event = scan.get("cancel_event")
+    if cancel_event is not None and cancel_event.is_set():
+        raise ScanCancelled("Scan cancelled by API request.")
 
 
 # ─── Background Scan Worker ───
@@ -112,79 +173,152 @@ def _run_scan_job(scan_id: str, url: str, options: dict):
     from modules.cors import scan_cors
     from modules.header_inject import scan_header_inject
     from modules.report import generate_html_report, generate_json_report
-    from urllib.parse import urlparse
+    from core.output import save_findings_json, save_sarif
+    from utils.finding import build_scan_artifacts
 
     scan = SCANS[scan_id]
-    scan["status"] = "running"
-    scan["started_at"] = str(datetime.now())
+    _update_scan(scan_id, status="running", started_at=str(datetime.now()))
 
-    Stats.reset()
     mode = options.get("mode", "normal")
-    delay_map = {
-        "quick": Config.QUICK_DELAY,
-        "normal": Config.REQUEST_DELAY,
-        "aggressive": 0.05,
-        "stealth": Config.STEALTH_DELAY,
-    }
-    delay = delay_map.get(mode, Config.REQUEST_DELAY)
+    mode, delay, _ = get_scan_mode_runtime(mode)
     modules = options.get("modules", [])
     use_all = "all" in modules
+    scan_ctx = ScanContext(
+        url,
+        mode,
+        delay,
+        options={
+            "json_output": True,
+            "exploit": bool(options.get("exploit")),
+            "max_requests": int(options.get("max_requests", 0) or 0),
+            "request_timeout": float(
+                options.get("request_timeout", get_default_timeout())
+                or get_default_timeout()
+            ),
+            "max_host_concurrency": int(
+                options.get("max_host_concurrency", 0) or 0
+            ),
+            "path_blacklist": options.get("path_blacklist", ""),
+            "cancel_event": scan.get("cancel_event"),
+        },
+        scan_suffix=scan_id[:8],
+    )
 
+    selected_steps = [
+        name
+        for name in ("cors", "header_inject", "fetch_forms", "xss", "sqli", "lfi", "rfi", "cmdi", "ssrf")
+        if name == "fetch_forms" or use_all or name in modules
+    ]
     all_vulns = []
 
     try:
-        # CORS + Header (target-level)
-        if use_all or "cors" in modules:
-            all_vulns.extend(scan_cors(url))
-        if use_all or "header_inject" in modules:
-            all_vulns.extend(scan_header_inject(url, delay))
+        with scan_ctx.activate():
+            forms = []
+            total_steps = len(selected_steps)
+            completed_steps = 0
 
-        # Page-level scans
-        resp = smart_request("get", url)
-        soup = BeautifulSoup(resp.content, "lxml")
-        forms = soup.find_all("form")
+            if use_all or "cors" in modules:
+                _check_cancelled(scan)
+                _set_scan_progress(scan_id, "cors", completed_steps, total_steps, "Running CORS checks")
+                all_vulns.extend(scan_cors(url))
+                completed_steps += 1
 
-        if use_all or "xss" in modules:
-            all_vulns.extend(scan_xss(url, forms, delay))
-        if use_all or "sqli" in modules:
-            all_vulns.extend(scan_sqli(url, forms, delay))
-        if use_all or "lfi" in modules:
-            all_vulns.extend(scan_lfi(url, forms, delay))
-        if use_all or "rfi" in modules:
-            all_vulns.extend(scan_rfi(url, forms, delay))
-        if use_all or "cmdi" in modules:
-            all_vulns.extend(scan_cmdi(url, forms, delay))
-        if use_all or "ssrf" in modules:
-            all_vulns.extend(scan_ssrf(url, forms, delay))
+            if use_all or "header_inject" in modules:
+                _check_cancelled(scan)
+                _set_scan_progress(scan_id, "header_inject", completed_steps, total_steps, "Running header injection checks")
+                all_vulns.extend(scan_header_inject(url, delay))
+                completed_steps += 1
 
-        # Generate reports
-        parsed = urlparse(url)
-        host = parsed.hostname or parsed.netloc.split(":")[0]
-        safe = host.replace(".", "_")
-        scan_dir = f"scans/{safe}_{scan_id[:8]}"
-        os.makedirs(scan_dir, exist_ok=True)
+            _check_cancelled(scan)
+            _set_scan_progress(scan_id, "fetch_forms", completed_steps, total_steps, "Fetching target and extracting forms")
+            resp = smart_request(
+                "get",
+                url,
+                timeout=options.get("request_timeout", get_default_timeout()),
+            )
+            soup = BeautifulSoup(resp.content, "lxml")
+            forms = soup.find_all("form")
+            completed_steps += 1
 
-        stats = {
-            "total_requests": Stats.total_requests,
-            "vulnerabilities": Stats.vulnerabilities_found,
-            "waf_blocks": Stats.waf_blocks,
-            "errors": Stats.errors,
-            "retries": Stats.retries,
-        }
+            for step_name, runner in (
+                ("xss", scan_xss),
+                ("sqli", scan_sqli),
+                ("lfi", scan_lfi),
+                ("rfi", scan_rfi),
+                ("cmdi", scan_cmdi),
+                ("ssrf", scan_ssrf),
+            ):
+                if not (use_all or step_name in modules):
+                    continue
+                _check_cancelled(scan)
+                _set_scan_progress(
+                    scan_id,
+                    step_name,
+                    completed_steps,
+                    total_steps,
+                    f"Running {step_name.upper()} checks",
+                )
+                all_vulns.extend(runner(url, forms, delay))
+                completed_steps += 1
 
-        generate_json_report(all_vulns, url, mode, stats, scan_dir)
-        generate_html_report(all_vulns, url, mode, scan_dir)
+            artifacts = build_scan_artifacts(all_vulns)
+            stats = scan_ctx.collect_stats(len(artifacts["findings"]))
+            _set_scan_progress(scan_id, "reporting", completed_steps, total_steps, "Generating reports")
+            generate_json_report(
+                all_vulns,
+                url,
+                mode,
+                stats,
+                scan_ctx.scan_dir,
+                artifacts=artifacts,
+            )
+            generate_html_report(all_vulns, url, mode, scan_ctx.scan_dir, stats=stats)
+            save_findings_json(
+                all_vulns,
+                scan_ctx.scan_dir,
+                url,
+                mode,
+                stats,
+                artifacts=artifacts,
+            )
+            save_sarif(all_vulns, scan_ctx.scan_dir)
 
-        scan["status"] = "completed"
-        scan["completed_at"] = str(datetime.now())
-        scan["vulns"] = all_vulns
-        scan["stats"] = stats
-        scan["scan_dir"] = scan_dir
-        scan["total_vulns"] = len(all_vulns)
+        _update_scan(
+            scan_id,
+            status="completed",
+            completed_at=str(datetime.now()),
+            vulns=all_vulns,
+            observations=[obs.to_dict() for obs in artifacts["observations"]],
+            findings=[finding.to_dict() for finding in artifacts["findings"]],
+            attack_paths=[path.to_dict() for path in artifacts["attack_paths"]],
+            stats=stats,
+            scan_dir=scan_ctx.scan_dir,
+            total_vulns=len(artifacts["findings"]),
+        )
+        _set_scan_progress(scan_id, "completed", total_steps, total_steps, "Scan completed")
 
+    except ScanCancelled as exc:
+        _update_scan(
+            scan_id,
+            status="cancelled",
+            completed_at=str(datetime.now()),
+            error=str(exc),
+        )
+        progress = scan.get("progress", {})
+        _set_scan_progress(
+            scan_id,
+            "cancelled",
+            progress.get("completed", 0),
+            progress.get("total", 0),
+            "Scan cancelled",
+        )
     except Exception as e:
-        scan["status"] = "failed"
-        scan["error"] = str(e)
+        _update_scan(
+            scan_id,
+            status="failed",
+            completed_at=str(datetime.now()),
+            error=str(e),
+        )
 
 
 # ─── API Endpoints ───
@@ -210,6 +344,11 @@ async def start_scan(scan_req: ScanRequest):
     options = {
         "modules": scan_req.modules,
         "mode": scan_req.mode,
+        "exploit": scan_req.exploit,
+        "max_requests": scan_req.max_requests,
+        "request_timeout": scan_req.request_timeout,
+        "max_host_concurrency": scan_req.max_host_concurrency,
+        "path_blacklist": scan_req.path_blacklist,
     }
 
     SCANS[scan_id] = {
@@ -220,6 +359,14 @@ async def start_scan(scan_req: ScanRequest):
         "created_at": str(datetime.now()),
         "vulns": [],
         "stats": {},
+        "progress": {
+            "phase": "queued",
+            "completed": 0,
+            "total": 0,
+            "message": "Queued",
+            "updated_at": str(datetime.now()),
+        },
+        "cancel_event": threading.Event(),
     }
 
     # Run in background thread
@@ -251,7 +398,11 @@ async def get_scan(scan_id: str):
         completed_at=scan.get("completed_at"),
         total_vulns=scan.get("total_vulns", 0),
         stats=scan.get("stats", {}),
+        progress=scan.get("progress", {}),
         vulnerabilities=scan.get("vulns", []),
+        observations=scan.get("observations", []),
+        findings=scan.get("findings", []),
+        attack_paths=scan.get("attack_paths", []),
         error=scan.get("error"),
     )
 
@@ -299,6 +450,52 @@ async def get_report(scan_id: str):
     raise HTTPException(status_code=404, detail="Report not found")
 
 
+@app.get(
+    "/api/report/{scan_id}/json",
+    summary="Download JSON findings report",
+    tags=["Reports"],
+)
+async def get_json_report(scan_id: str):
+    """Download the generated JSON findings report for a completed scan."""
+    scan = SCANS.get(scan_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+
+    scan_dir = scan.get("scan_dir")
+    if not scan_dir:
+        raise HTTPException(status_code=400, detail="Scan not completed yet")
+
+    preferred_paths = [
+        os.path.join(scan_dir, "findings.json"),
+        os.path.join(scan_dir, "scan.json"),
+    ]
+    for report_path in preferred_paths:
+        if os.path.exists(report_path):
+            return FileResponse(report_path, media_type="application/json")
+    raise HTTPException(status_code=404, detail="JSON report not found")
+
+
+@app.get(
+    "/api/report/{scan_id}/sarif",
+    summary="Download SARIF report",
+    tags=["Reports"],
+)
+async def get_sarif_report(scan_id: str):
+    """Download the generated SARIF report for a completed scan."""
+    scan = SCANS.get(scan_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+
+    scan_dir = scan.get("scan_dir")
+    if not scan_dir:
+        raise HTTPException(status_code=400, detail="Scan not completed yet")
+
+    sarif_path = os.path.join(scan_dir, "results.sarif")
+    if os.path.exists(sarif_path):
+        return FileResponse(sarif_path, media_type="application/sarif+json")
+    raise HTTPException(status_code=404, detail="SARIF report not found")
+
+
 @app.delete(
     "/api/scan/{scan_id}",
     summary="Cancel/delete a scan",
@@ -306,10 +503,60 @@ async def get_report(scan_id: str):
 )
 async def cancel_scan(scan_id: str):
     """Cancel or delete a scan and its results."""
-    if scan_id in SCANS:
+    scan = SCANS.get(scan_id)
+    if scan:
+        if scan.get("status") in {"queued", "running", "cancelling"}:
+            scan["cancel_event"].set()
+            scan["status"] = "cancelling"
+            _set_scan_progress(
+                scan_id,
+                "cancelling",
+                scan.get("progress", {}).get("completed", 0),
+                scan.get("progress", {}).get("total", 0),
+                "Cancellation requested",
+            )
+            return {"status": "cancelling"}
         del SCANS[scan_id]
         return {"status": "deleted"}
     raise HTTPException(status_code=404, detail="Scan not found")
+
+
+@app.get(
+    "/api/scan/{scan_id}/events",
+    summary="Stream scan progress events",
+    tags=["Scans"],
+)
+async def stream_scan_events(scan_id: str):
+    """Stream scan status updates using Server-Sent Events (SSE)."""
+    if scan_id not in SCANS:
+        raise HTTPException(status_code=404, detail="Scan not found")
+
+    async def event_stream():
+        previous_payload = None
+        while True:
+            scan = SCANS.get(scan_id)
+            if not scan:
+                break
+
+            payload = json.dumps(
+                {
+                    "id": scan["id"],
+                    "status": scan["status"],
+                    "progress": scan.get("progress", {}),
+                    "total_vulns": scan.get("total_vulns", 0),
+                    "error": scan.get("error"),
+                }
+            )
+            if payload != previous_payload:
+                previous_payload = payload
+                yield f"event: progress\ndata: {payload}\n\n"
+
+            if scan.get("status") in {"completed", "failed", "cancelled"}:
+                break
+
+            await asyncio.sleep(0.25)
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @app.get("/", summary="API info", tags=["Info"])
@@ -323,8 +570,11 @@ async def index():
         "endpoints": {
             "POST /api/scan": "Start scan",
             "GET /api/scan/{id}": "Scan results",
+            "GET /api/scan/{id}/events": "Stream progress (SSE)",
             "GET /api/scans": "List all scans",
             "GET /api/report/{id}": "HTML report",
+            "GET /api/report/{id}/json": "JSON findings report",
+            "GET /api/report/{id}/sarif": "SARIF report",
             "DELETE /api/scan/{id}": "Cancel scan",
         },
     }

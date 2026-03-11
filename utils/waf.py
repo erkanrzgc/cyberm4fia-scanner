@@ -146,6 +146,51 @@ class WAFDetector:
             },
         }
 
+    # ── WAF-specific tamper recommendations ──
+    TAMPER_MAP = {
+        "Cloudflare": ["doubleurlencode", "unicodeencode", "randomcase", "multiline"],
+        "Akamai": ["doubleurlencode", "charencode", "space2comment", "base64encode"],
+        "AWS WAF": ["urlencode", "multiline", "unicodeencode", "space2tab"],
+        "Azure Front Door": ["urlencode", "randomcase", "space2comment"],
+        "Azure App Gateway": ["urlencode", "randomcase", "space2comment"],
+        "Google Cloud Armor": ["doubleurlencode", "unicodeencode", "concat"],
+        "Imperva / Incapsula": [
+            "charencode",
+            "concat",
+            "base64encode",
+            "space2comment",
+        ],
+        "F5 BIG-IP ASM": [
+            "space2comment",
+            "between",
+            "commentbeforeparentheses",
+            "randomcase",
+        ],
+        "Fortinet FortiWeb": ["doubleurlencode", "randomcase", "space2tab"],
+        "Barracuda WAF": ["urlencode", "space2comment", "randomcase"],
+        "Citrix NetScaler": ["space2comment", "urlencode", "charencode"],
+        "Radware AppWall": ["doubleurlencode", "unicodeencode", "concat"],
+        "ModSecurity": [
+            "space2comment",
+            "between",
+            "commentbeforeparentheses",
+            "randomcase",
+            "concat",
+        ],
+        "Wordfence": ["unicodeencode", "htmlencode", "doubleurlencode", "randomcase"],
+        "Sucuri": ["doubleurlencode", "charencode", "space2comment", "base64encode"],
+        "SiteLock": ["urlencode", "randomcase", "space2comment"],
+        "DDoS-Guard": ["urlencode", "randomcase"],
+        "StackPath": ["doubleurlencode", "unicodeencode"],
+        "Reblaze": ["doubleurlencode", "randomcase", "space2comment"],
+        "Qrator": ["urlencode", "randomcase"],
+        "Wallarm": ["unicodeencode", "space2comment", "concat", "randomcase"],
+        "Generic WAF": ["space2comment", "randomcase", "urlencode", "doubleurlencode"],
+    }
+
+    # HTTP status codes that indicate a WAF block
+    WAF_BLOCK_CODES = {403, 406, 429, 444, 503}
+
     def analyze_response(self, headers, text):
         """Analyze HTTP response to fingerprint WAF vendors."""
         with self.lock:
@@ -160,11 +205,9 @@ class WAFDetector:
                 for h_key, h_val in signatures.get("headers", {}).items():
                     if h_key in headers_lower:
                         if not h_val:
-                            # Empty value = key existence is enough (e.g. x-azure-ref)
                             self.detected_waf = waf_name
                             return waf_name
                         elif h_val in headers_lower[h_key]:
-                            # Non-empty value = must match (e.g. server: cloudflare)
                             self.detected_waf = waf_name
                             return waf_name
                 # Check Cookies
@@ -180,6 +223,35 @@ class WAFDetector:
                         return waf_name
 
             return None
+
+    def get_recommended_tampers(self, waf_name: str = None) -> list:
+        """Return recommended tamper script names for the detected or given WAF."""
+        name = waf_name or self.detected_waf
+        if not name:
+            return self.TAMPER_MAP.get("Generic WAF", [])
+        # Try exact match first, then partial
+        if name in self.TAMPER_MAP:
+            return self.TAMPER_MAP[name]
+        for key, tampers in self.TAMPER_MAP.items():
+            if key.lower() in name.lower() or name.lower() in key.lower():
+                return tampers
+        return self.TAMPER_MAP.get("Generic WAF", [])
+
+    def is_waf_block(self, status_code: int, text: str = "") -> bool:
+        """Check if an HTTP response indicates a WAF block."""
+        if status_code in self.WAF_BLOCK_CODES:
+            return True
+        block_phrases = [
+            "access denied",
+            "blocked",
+            "forbidden",
+            "not acceptable",
+            "request rejected",
+            "security policy",
+            "waf",
+        ]
+        text_lower = text.lower()
+        return any(phrase in text_lower for phrase in block_phrases)
 
 
 waf_detector = WAFDetector()

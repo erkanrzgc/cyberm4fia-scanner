@@ -12,7 +12,19 @@ import asyncio
 import random
 import httpx
 
-from utils.request import USER_AGENTS, Config, Stats, lock
+from utils.request import (
+    USER_AGENTS,
+    get_default_timeout,
+    get_global_headers,
+    get_max_retries,
+    get_request_delay,
+    increment_error_count,
+    increment_request_count,
+    increment_retry_count,
+    increment_waf_block_count,
+    is_ssl_verification_enabled,
+    use_random_delay,
+)
 
 
 async def async_smart_request(
@@ -20,15 +32,14 @@ async def async_smart_request(
 ):
     """Async version of smart_request with retry and HTTP/2."""
     if delay is None:
-        delay = Config.REQUEST_DELAY
+        delay = get_request_delay()
 
-    if Config.RANDOM_DELAY:
+    if use_random_delay():
         await asyncio.sleep(delay * random.uniform(0.5, 1.5))
     else:
         await asyncio.sleep(delay)
 
-    with lock:
-        Stats.total_requests += 1
+    increment_request_count()
 
     req_headers = {
         "User-Agent": random.choice(USER_AGENTS),
@@ -40,9 +51,9 @@ async def async_smart_request(
     if headers:
         req_headers.update(headers)
 
-    timeout = httpx.Timeout(kwargs.pop("timeout", 10))
+    timeout = httpx.Timeout(kwargs.pop("timeout", get_default_timeout()))
     allow_redirects = kwargs.pop("allow_redirects", True)
-    max_retries = Config.MAX_RETRIES
+    max_retries = get_max_retries()
     last_error = None
 
     for attempt in range(max_retries + 1):
@@ -61,8 +72,7 @@ async def async_smart_request(
             # WAF / rate limiting detection
             if resp.status_code in (403, 429):
                 if resp.status_code == 403:
-                    with lock:
-                        Stats.waf_blocks += 1
+                    increment_waf_block_count()
                 # Adaptive rate limiting on 429
                 if resp.status_code == 429 and attempt < max_retries:
                     retry_after = resp.headers.get("retry-after", "")
@@ -71,8 +81,7 @@ async def async_smart_request(
                     except (ValueError, TypeError):
                         wait_time = (2**attempt) * 2
                     await asyncio.sleep(wait_time)
-                    with lock:
-                        Stats.retries += 1
+                    increment_retry_count()
                     continue
 
             return resp
@@ -80,13 +89,11 @@ async def async_smart_request(
         except httpx.RequestError as e:
             last_error = e
             if attempt < max_retries:
-                with lock:
-                    Stats.retries += 1
+                increment_retry_count()
                 backoff = (2**attempt) * 0.5
                 await asyncio.sleep(backoff)
             else:
-                with lock:
-                    Stats.errors += 1
+                increment_error_count()
                 raise last_error
 
 
@@ -117,11 +124,8 @@ async def async_scan_urls(urls, scan_callback, concurrency=20, delay=None):
     all_vulns = []
     semaphore = asyncio.Semaphore(concurrency)
 
-    cookie_str = None
-    from utils.request import _global_headers
-
-    if "Cookie" in _global_headers:
-        cookie_str = _global_headers["Cookie"]
+    headers = get_global_headers()
+    cookie_str = headers.get("Cookie")
 
     async_headers = {}
     if cookie_str:
@@ -134,7 +138,7 @@ async def async_scan_urls(urls, scan_callback, concurrency=20, delay=None):
 
     async with httpx.AsyncClient(
         http2=True,
-        verify=Config.VERIFY_SSL,
+        verify=is_ssl_verification_enabled(),
         limits=limits,
         headers=async_headers,
         follow_redirects=True,

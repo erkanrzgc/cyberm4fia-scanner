@@ -15,7 +15,11 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.colors import log_info, log_success, log_vuln, log_warning
-from utils.request import smart_request, lock, Stats, Config
+from utils.request import (
+    get_thread_count,
+    increment_vulnerability_count,
+    smart_request,
+)
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse, urljoin
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import httpx
@@ -139,8 +143,7 @@ def _test_rfi_param(param, params, parsed, delay, baseline_text):
             resp = smart_request("get", test_url, delay=delay)
             found, sig = detect_rfi(resp.text, baseline_text)
             if found:
-                with lock:
-                    Stats.vulnerabilities_found += 1
+                increment_vulnerability_count()
                 log_vuln("RFI VULNERABILITY FOUND!")
                 log_success(f"Param: {param} | Signature: {sig}")
                 log_success(f"Payload: {payload}")
@@ -175,8 +178,7 @@ def _test_rfi_form_input(
             )
             found, sig = detect_rfi(resp.text, baseline_text)
             if found:
-                with lock:
-                    Stats.vulnerabilities_found += 1
+                increment_vulnerability_count()
                 log_vuln("RFI VULNERABILITY FOUND!")
                 log_success(f"Form field: {inp} | Signature: {sig}")
                 log_success(f"Payload: {payload}")
@@ -196,7 +198,7 @@ def _test_rfi_form_input(
 def scan_rfi(url, forms, delay, threads=None):
     """Scan for Remote File Inclusion vulnerabilities (threaded)."""
     if threads is None:
-        threads = Config.THREADS
+        threads = get_thread_count()
 
     log_info(f"Testing RFI with {len(RFI_PAYLOADS)} payloads ({threads} threads)...")
 

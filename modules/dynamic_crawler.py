@@ -12,7 +12,11 @@ import re
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.colors import log_info, log_success, log_warning, log_error
-from utils.request import Config, _global_headers, USER_AGENTS
+from utils.request import (
+    USER_AGENTS,
+    get_global_headers,
+    get_proxy,
+)
 from bs4 import BeautifulSoup
 
 try:
@@ -49,8 +53,9 @@ class DynamicCrawler:
         async with async_playwright() as p:
             # Set up proxy if configured
             proxy_settings = None
-            if Config.PROXY:
-                proxy_settings = {"server": Config.PROXY}
+            proxy = get_proxy()
+            if proxy:
+                proxy_settings = {"server": proxy}
                 
             browser = await p.chromium.launch(
                 headless=True,
@@ -60,7 +65,7 @@ class DynamicCrawler:
             
             import random
             # Use realistic user agent
-            headers = _global_headers.copy() if _global_headers else {}
+            headers = get_global_headers()
             user_agent = headers.pop("User-Agent", random.choice(USER_AGENTS))
             
             context = await browser.new_context(
