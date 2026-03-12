@@ -35,7 +35,7 @@
 ### Network & Infrastructure
 | Module | Flag | Description |
 |---|---|---|
-| Recon | `--recon` | Async port scan, banner grabbing, DNS, TLS, and header intelligence. |
+| Recon | `--recon` | Deep port, DNS, and TLS recon. Lightweight server and header intel runs on every scan. |
 | Subdomain Discovery | `--subdomain` | Subdomain enumeration for the target host. |
 | Endpoint Fuzzer | `--fuzz` | Directory and API endpoint brute forcing with smart 404 calibration. |
 | Crawler | `--crawl` | Recursive crawler with form and link discovery. |
@@ -62,7 +62,7 @@
 | Business Logic | `--bizlogic` | Multi-step business logic flaw checks. |
 | Vulnerability Chaining | `--chain` | Attack path correlation across discovered findings. |
 | Wordlist Generation | `--wordlist` | Site-specific password wordlist generation. |
-| AI Analysis | `--ai` | Local AI-assisted false-positive filtering and remediation guidance. |
+| AI Analysis | `--ai` | Dual-model AI with autonomous exploit agent, PoC generation, and false-positive filtering. |
 | Proxy Interceptor | `--proxy-listen PORT` | Built-in MITM proxy to capture traffic and feed scanner workflows. |
 | PoC Generator | `(auto)` | Automatic HTML and JSON proof-of-concept generation for findings. |
 | Template Engine | `(auto via --all)` | Built-in template-based checks that can be enabled through all-modules mode. |
@@ -95,6 +95,106 @@ python3 scanner.py -l targets.txt --all
 # Through proxy
 python3 scanner.py -u https://target.com --all --proxy socks5://127.0.0.1:9050
 ```
+
+---
+
+## Usage with AI
+
+The scanner integrates a **dual-model AI system** for autonomous exploit generation, intelligent analysis, and automated PoC creation.
+
+### Prerequisites
+
+Install [Ollama](https://ollama.com/) and pull the required models:
+
+```bash
+# On your machine (Linux/Mac/Windows)
+ollama pull WhiteRabbitNeo/Llama-3.1-WhiteRabbitNeo-2-8B
+ollama pull qwen3-coder:30b
+```
+
+If Ollama runs on a different machine (e.g., Windows GPU host):
+
+```bash
+export OLLAMA_URL="http://192.168.x.x:11434"
+```
+
+### AI-Powered Scanning
+
+```bash
+# Full scan with AI enabled
+python3 scanner.py -u https://target.com --all --ai
+
+# AI + specific modules
+python3 scanner.py -u https://target.com --xss --sqli --ai
+
+# AI with stealth mode
+python3 scanner.py -u https://target.com --all --ai --mode stealth
+```
+
+### Dual-Model Architecture
+
+| Model | Role | What It Does |
+|---|---|---|
+| 🐇 **WhiteRabbitNeo 8B** | Exploit & Strategy | Payload crafting, WAF bypass, exploit planning, false-positive filtering |
+| 🧠 **Qwen3-Coder 30B** | Code Generation | PoC script writing, remediation code, code analysis |
+
+The system automatically routes tasks to the best model. If one model is unavailable, it falls back to the other.
+
+### AI Exploit Agent
+
+When standard payload lists fail, the **Autonomous AI Exploit Agent** takes over:
+
+```
+Static Payloads → Smart Probes → WAF Mutation → AI Exploit Agent
+                                                       ↓
+                                              Think → Generate → Execute
+                                              → Validate → Learn (3 rounds)
+                                                       ↓
+                                              PoC: cURL + Python + Nuclei
+```
+
+**Supported vulnerability types:** XSS, SQLi, LFI, CMDi, SSRF
+
+**Anti-hallucination pipeline:** Every AI-generated exploit is validated with regex checks + AI double-verification. Confidence below 70% is automatically rejected.
+
+### Public Exploit Intelligence
+
+The scanner automatically searches for known public exploits when CVEs are discovered:
+
+```
+Technology Detected → SiberAdar CVE Feed → Public Exploit Search
+                                                  ↓
+                                    ExploitDB (searchsploit) — offline archive
+                                    GitHub PoC — starred repositories
+                                    sploitscan — multi-source aggregation
+                                                  ↓
+                                    AI Agent uses real PoCs as templates
+```
+
+Optional tools for enhanced coverage:
+
+```bash
+# ExploitDB offline archive
+sudo apt install exploitdb
+
+# Multi-source exploit search
+pip3 install sploitscan
+```
+
+### AI Features Summary
+
+| Feature | Description |
+|---|---|
+| **Autonomous Exploit Agent** | Iterative think→generate→execute→validate→learn loop |
+| **Dual-Model Routing** | WhiteRabbitNeo for exploits, Qwen3-Coder for code |
+| **Anti-Hallucination** | Regex + AI verification, 70% confidence threshold |
+| **PoC Generation** | Auto-generates cURL, Python scripts, Nuclei templates |
+| **Exploit Chain Detection** | 7 built-in patterns + AI-discovered chains |
+| **Public Exploit Search** | ExploitDB, GitHub, sploitscan integration |
+| **WAF Bypass Mutation** | Evolving AI mutation engine for adaptive bypass |
+| **False Positive Filtering** | AI-assisted validation reduces noise |
+| **Remediation Guidance** | AI-generated code fixes and best practices |
+| **Executive Summaries** | AI-written C-level security reports |
 
 ---
 
@@ -151,10 +251,13 @@ cyberm4fia-scanner/
 ├── scanner.py              # main orchestrator
 ├── api_server.py           # FastAPI REST API
 ├── modules/                # 40+ scanning modules
-├── utils/                  # HTTP client, WAF detection, auth, etc.
+├── utils/                  # HTTP client, WAF detection, auth, AI engine
+│   ├── ai.py               # dual-model AI client (WhiteRabbitNeo + Qwen3-Coder)
+│   ├── ai_exploit_agent.py  # autonomous exploit agent + chain detector
+│   └── exploit_finder.py   # ExploitDB, GitHub PoC, sploitscan search
 ├── payloads/               # XSS, SQLi, LFI, SSRF, CMDi payload files
 ├── wordlists/              # fuzzer wordlists
-├── tests/                  # pytest test suite
+├── tests/                  # pytest test suite (247 tests)
 ├── .github/workflows/      # CI/CD pipelines
 ├── .env.example            # environment variable template
 └── requirements.txt        # dependencies
@@ -170,7 +273,15 @@ Copy `.env.example` to `.env` and set your values:
 cp .env.example .env
 ```
 
-Available settings: `SHODAN_API_KEY`, `DEFAULT_THREADS`, `DEFAULT_DELAY`, `VERIFY_SSL`, `HTTP_PROXY`
+| Variable | Description |
+|---|---|
+| `OLLAMA_URL` | Ollama API URL (default: `http://127.0.0.1:11434`) |
+| `GITHUB_TOKEN` | GitHub API token for higher rate limits on PoC search |
+| `SHODAN_API_KEY` | Shodan API key for OSINT enrichment |
+| `DEFAULT_THREADS` | Default thread count |
+| `DEFAULT_DELAY` | Default request delay |
+| `VERIFY_SSL` | SSL verification toggle |
+| `HTTP_PROXY` | Proxy URL |
 
 ---
 
@@ -194,3 +305,4 @@ pytest tests/ -v
 ## License
 
 This project is licensed under the MIT License. See the LICENSE file for more details.
+

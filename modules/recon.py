@@ -469,40 +469,43 @@ def run_recon(url, deep=False):
     if info.get("waf"):
         log_warning(f"WAF Detected: {info['waf']}")
 
-    # Port scan
-    ports_to_scan = EXTENDED_PORTS if deep else WEB_PORTS
-    label = "extended" if deep else "web"
-    log_info(f"Scanning {label} ports: {len(ports_to_scan)} ports (Async/Fast)...")
-
-    try:
-        # Use a high concurrency value to make it "RustScan" speed
-        open_ports = asyncio.run(
-            run_async_scanner(ip, ports_to_scan, concurrency=2000, timeout=1.0)
+    open_ports = []
+    if deep:
+        ports_to_scan = EXTENDED_PORTS
+        log_info(
+            f"Scanning extended ports: {len(ports_to_scan)} ports (Async/Fast)..."
         )
-    except Exception as e:
-        log_warning(f"Async port scan failed ({e}), falling back to slow scan...")
-        open_ports = []
-        with ThreadPoolExecutor(max_workers=50) as executor:
-            futures = {
-                executor.submit(scan_port, ip, port): port for port in ports_to_scan
-            }
-            for future in as_completed(futures):
-                result = future.result()
-                if result:
-                    open_ports.append(result)
 
-    # Sort and display
-    open_ports.sort(key=lambda x: x["port"])
-    for p in open_ports:
-        banner_str = f" | {p['banner']}" if p.get("banner") else ""
-        log_success(f"Port {p['port']}: OPEN ({p['service']}){banner_str}")
+        try:
+            # Use a high concurrency value to make it "RustScan" speed
+            open_ports = asyncio.run(
+                run_async_scanner(ip, ports_to_scan, concurrency=2000, timeout=1.0)
+            )
+        except Exception as e:
+            log_warning(f"Async port scan failed ({e}), falling back to slow scan...")
+            with ThreadPoolExecutor(max_workers=50) as executor:
+                futures = {
+                    executor.submit(scan_port, ip, port): port for port in ports_to_scan
+                }
+                for future in as_completed(futures):
+                    result = future.result()
+                    if result:
+                        open_ports.append(result)
 
-        # Warn about dangerous ports
-        if p["port"] in DANGEROUS_PORTS:
-            log_warning(f"  ⚠ {DANGEROUS_PORTS[p['port']]}")
+        # Sort and display
+        open_ports.sort(key=lambda x: x["port"])
+        for p in open_ports:
+            banner_str = f" | {p['banner']}" if p.get("banner") else ""
+            log_success(f"Port {p['port']}: OPEN ({p['service']}){banner_str}")
 
-    if not open_ports:
-        log_info("No open ports found")
+            # Warn about dangerous ports
+            if p["port"] in DANGEROUS_PORTS:
+                log_warning(f"  ⚠ {DANGEROUS_PORTS[p['port']]}")
+
+        if not open_ports:
+            log_info("No open ports found")
+    else:
+        log_info("Light recon only: skipping port scan. Use --recon for deep recon.")
 
     # ──── DEEP RECON ────
     if deep:
@@ -580,14 +583,11 @@ def run_recon(url, deep=False):
     print(f"{Colors.BOLD}{'=' * 50}{Colors.END}\n")
 
     result = {"ip": ip, "info": info, "open_ports": open_ports}
-
-    # Add header audit data if deep recon was run
-    if deep:
-        headers = info.get("all_headers", {})
-        sec_results = check_security_headers(headers)
-        result["missing_headers"] = sum(
-            1 for r in sec_results if r["status"] == "missing"
-        )
-        result["total_headers"] = len(sec_results)
+    headers = info.get("all_headers", {})
+    sec_results = check_security_headers(headers)
+    result["missing_headers"] = sum(
+        1 for r in sec_results if r["status"] == "missing"
+    )
+    result["total_headers"] = len(sec_results)
 
     return result

@@ -234,7 +234,7 @@ Each scan creates results under `scans/<target>/`:
 | `--cmdi` | Enable Command Injection scan |
 | `--dom-xss` | Enable DOM XSS scan |
 | `--secrets` | Scan for Secrets & API Keys in JS/HTML |
-| `--recon` | Enable Server Recon |
+| `--recon` | Enable deep server recon (extended port/DNS/TLS checks) |
 | `--subdomain` | Enable Subdomain scan |
 | `--fuzz` | Enable High-Speed API/Directory Fuzzer |
 | `--ssrf` | Enable SSRF scan |

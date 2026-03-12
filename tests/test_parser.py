@@ -222,3 +222,116 @@ class TestParser:
         assert scan_calls[0]["delay"] == 0.05
         assert scan_calls[0]["options"]["proxy_url"] == "http://override:8080"
         assert scan_calls[0]["runtime_options"]["proxy_url"] == "http://override:8080"
+
+    def test_main_target_list_uses_target_specific_session_files(
+        self, monkeypatch, tmp_path
+    ):
+        target_list = tmp_path / "targets.txt"
+        target_list.write_text("example.com\napi.example.com\n")
+        session_path = tmp_path / "scan.json"
+
+        scan_calls = []
+
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "scanner.py",
+                "-l",
+                str(target_list),
+                "--session",
+                str(session_path),
+                "--xss",
+            ],
+        )
+        monkeypatch.setattr(scanner, "print_gradient_banner", lambda: None)
+        monkeypatch.setattr(
+            scanner,
+            "scan_target",
+            lambda url, mode, delay, options, runtime_options, **kwargs: scan_calls.append(
+                {
+                    "url": url,
+                    "session_file": kwargs["session"].session_file,
+                    "options": dict(options),
+                }
+            ),
+        )
+
+        scanner.main()
+
+        assert [call["url"] for call in scan_calls] == [
+            "http://example.com",
+            "http://api.example.com",
+        ]
+        assert scan_calls[0]["session_file"].endswith("scan__example_com.json")
+        assert scan_calls[1]["session_file"].endswith("scan__api_example_com.json")
+        assert scan_calls[0]["options"]["session"].endswith("scan__example_com.json")
+        assert scan_calls[1]["options"]["session"].endswith(
+            "scan__api_example_com.json"
+        )
+
+    def test_main_target_list_resume_restores_target_specific_sessions(
+        self, monkeypatch, tmp_path
+    ):
+        target_list = tmp_path / "targets.txt"
+        target_list.write_text("example.com\napi.example.com\n")
+        resume_path = tmp_path / "resume.json"
+        (tmp_path / "resume__example_com.json").write_text(
+            json.dumps(
+                {
+                    "target": "http://example.com",
+                    "mode": "stealth",
+                    "options": {"xss": True, "threads": 1},
+                }
+            )
+        )
+        (tmp_path / "resume__api_example_com.json").write_text(
+            json.dumps(
+                {
+                    "target": "http://api.example.com",
+                    "mode": "lab",
+                    "options": {"sqli": True, "threads": 30},
+                }
+            )
+        )
+
+        scan_calls = []
+
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "scanner.py",
+                "-l",
+                str(target_list),
+                "--resume",
+                str(resume_path),
+            ],
+        )
+        monkeypatch.setattr(scanner, "print_gradient_banner", lambda: None)
+        monkeypatch.setattr(
+            scanner,
+            "scan_target",
+            lambda url, mode, delay, options, runtime_options, **kwargs: scan_calls.append(
+                {
+                    "url": url,
+                    "mode": mode,
+                    "options": dict(options),
+                }
+            ),
+        )
+
+        scanner.main()
+
+        assert scan_calls[0]["url"] == "http://example.com"
+        assert scan_calls[0]["mode"] == "stealth"
+        assert scan_calls[0]["options"]["xss"] is True
+        assert scan_calls[0]["options"]["resume"].endswith(
+            "resume__example_com.json"
+        )
+        assert scan_calls[1]["url"] == "http://api.example.com"
+        assert scan_calls[1]["mode"] == "lab"
+        assert scan_calls[1]["options"]["sqli"] is True
+        assert scan_calls[1]["options"]["resume"].endswith(
+            "resume__api_example_com.json"
+        )

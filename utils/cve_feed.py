@@ -202,6 +202,40 @@ def enrich_with_cves(tech_results: list[dict]) -> list[dict]:
 
     if findings:
         log_success(f"🛡️ CVE Intel: {len(findings)} relevant CVE(s) from SiberAdar")
+
+        # ── Public Exploit Search ──
+        # For CVEs that have known exploits, search for actual PoC code
+        try:
+            from utils.exploit_finder import find_exploits, build_exploit_context
+
+            exploit_cves = [f for f in findings if f.get("has_exploit")]
+            if exploit_cves:
+                log_info(f"🔍 Searching public exploit databases for {len(exploit_cves)} exploitable CVE(s)...")
+
+                for finding in exploit_cves[:5]:  # limit to top 5 to avoid slowdown
+                    cve_id = finding.get("payload", "")
+                    if not cve_id or not cve_id.startswith("CVE-"):
+                        continue
+
+                    search_result = find_exploits(cve_id)
+                    if search_result.has_exploits:
+                        best = search_result.best_exploit
+                        finding["public_exploit_url"] = best.url if best else ""
+                        finding["public_exploit_source"] = best.source if best else ""
+                        finding["public_exploit_count"] = search_result.total_found
+                        finding["exploit_context"] = build_exploit_context(search_result)
+
+                        if best and best.verified:
+                            log_warning(
+                                f"  ⚡ {cve_id}: VERIFIED exploit on {best.source} → {best.url}"
+                            )
+                        elif best:
+                            log_success(
+                                f"  💀 {cve_id}: PoC found on {best.source} → {best.url}"
+                            )
+        except ImportError:
+            pass
+
     else:
         log_info("No relevant CVEs found for detected technologies.")
 

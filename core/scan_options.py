@@ -148,6 +148,10 @@ ALL_ENABLED_OPTION_KEYS = frozenset(
     }
 ) - {"wordlist", "sarif", "ai", "proxy_listen", "exploit"}
 
+API_MODULE_OPTION_KEYS = (
+    REGISTRY_OPTION_KEYS | {"recon"}
+) - {"html", "sarif", "ai"}
+
 PROFILE_PRESETS = {
     "1": frozenset({"recon", "subdomain", "fuzz", "tech", "passive"}),
     "2": frozenset(
@@ -339,7 +343,10 @@ PARSER_ARGUMENT_SPECS = (
     ),
     ArgumentSpec(
         ("--recon",),
-        {"action": "store_true", "help": "Enable Server Recon"},
+        {
+            "action": "store_true",
+            "help": "Enable deep server recon (extended port/DNS/TLS checks)",
+        },
     ),
     ArgumentSpec(
         ("--subdomain",),
@@ -615,7 +622,11 @@ INTERACTIVE_CUSTOM_PROMPT_GROUPS = (
     (
         "Custom Selection",
         (
-            InteractivePromptSpec("recon", "[?] Run Server Recon? (Y/n)", "Y"),
+            InteractivePromptSpec(
+                "recon",
+                "[?] Enable deep server recon? (Y/n)",
+                "Y",
+            ),
             InteractivePromptSpec("subdomain", "[?] Run Subdomain Scan? (y/N)", "N"),
             InteractivePromptSpec("fuzz", "[?] Run Directory Fuzzer? (y/N)", "N"),
             InteractivePromptSpec("crawl", "[?] Crawl site? (y/N)", "N"),
@@ -990,6 +1001,68 @@ def build_cli_scan_options(args, threads: int):
     options["json_output"] = bool(getattr(args, "json", False) or use_all)
     options["threads"] = threads
     options["ai_model"] = getattr(args, "ai_model", DEFAULT_AI_MODEL)
+    return normalize_runtime_options(options)
+
+
+def build_api_scan_options(
+    modules: list[str] | None,
+    *,
+    threads: int,
+    exploit: bool = False,
+    api_spec: str = "",
+    cookie: str = "",
+    proxy_url: str = "",
+    scope: str = "",
+    exclude: str = "",
+    max_requests: int = 0,
+    request_timeout: float | None = None,
+    max_host_concurrency: int = 0,
+    path_blacklist: str = "",
+):
+    """Build API scan options using the same registry-driven flags as CLI scans."""
+    requested_modules = [
+        module.strip().lower().replace("-", "_")
+        for module in (modules or ["all"])
+        if module and module.strip()
+    ]
+    if not requested_modules:
+        requested_modules = ["all"]
+
+    unknown_modules = sorted(
+        set(requested_modules) - (API_MODULE_OPTION_KEYS | {"all"})
+    )
+    if unknown_modules:
+        raise ValueError(
+            f"Unknown API modules: {', '.join(unknown_modules)}"
+        )
+
+    use_all = "all" in requested_modules
+    options = build_default_scan_options(threads=threads, ai_model=DEFAULT_AI_MODEL)
+
+    if use_all:
+        for key in API_MODULE_OPTION_KEYS:
+            options[key] = True
+    else:
+        for key in requested_modules:
+            if key != "all":
+                options[key] = True
+
+    options["api_spec"] = api_spec or ""
+    options["cookie"] = cookie or ""
+    options["proxy_url"] = normalize_proxy_url(proxy_url or "")
+    options["scope"] = scope or ""
+    options["exclude"] = exclude or ""
+    options["exploit"] = bool(exploit)
+    options["max_requests"] = int(max_requests or 0)
+    options["request_timeout"] = float(
+        request_timeout or get_default_timeout()
+    )
+    options["max_host_concurrency"] = int(max_host_concurrency or 0)
+    options["path_blacklist"] = path_blacklist or ""
+    options["json_output"] = True
+    options["html"] = True
+    options["sarif"] = True
+    options["threads"] = threads
     return normalize_runtime_options(options)
 
 

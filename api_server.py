@@ -43,10 +43,8 @@ from utils.request import (
     ScanCancelled,
     get_default_timeout,
     get_path_blacklist,
-    smart_request,
 )
-from core.scan_context import ScanContext
-from core.scan_options import get_scan_mode_runtime
+from core.scan_options import build_api_scan_options, get_scan_mode_runtime
 
 
 # ─── Pydantic Models ───
@@ -62,6 +60,10 @@ class ScanRequest(BaseModel):
         default=["all"],
         description="List of modules to run",
         examples=[["xss", "sqli", "lfi"]],
+    )
+    api_spec: str = Field(
+        default="",
+        description="Optional local OpenAPI spec path used by the API scanner module",
     )
     mode: str = Field(
         default="normal",
@@ -161,141 +163,43 @@ def _check_cancelled(scan: dict):
 # ─── Background Scan Worker ───
 
 
-def _run_scan_job(scan_id: str, url: str, options: dict):
+def _run_scan_job(scan_id: str, url: str, mode: str, options: dict):
     """Background scan worker."""
-    from bs4 import BeautifulSoup
-    from modules.xss import scan_xss
-    from modules.sqli import scan_sqli
-    from modules.lfi import scan_lfi
-    from modules.rfi import scan_rfi
-    from modules.cmdi import scan_cmdi
-    from modules.ssrf import scan_ssrf
-    from modules.cors import scan_cors
-    from modules.header_inject import scan_header_inject
-    from modules.report import generate_html_report, generate_json_report
-    from core.output import save_findings_json, save_sarif
-    from utils.finding import build_scan_artifacts
+    from scanner import scan_target
 
     scan = SCANS[scan_id]
     _update_scan(scan_id, status="running", started_at=str(datetime.now()))
 
-    mode = options.get("mode", "normal")
-    mode, delay, _ = get_scan_mode_runtime(mode)
-    modules = options.get("modules", [])
-    use_all = "all" in modules
-    scan_ctx = ScanContext(
-        url,
-        mode,
-        delay,
-        options={
-            "json_output": True,
-            "exploit": bool(options.get("exploit")),
-            "max_requests": int(options.get("max_requests", 0) or 0),
-            "request_timeout": float(
-                options.get("request_timeout", get_default_timeout())
-                or get_default_timeout()
-            ),
-            "max_host_concurrency": int(
-                options.get("max_host_concurrency", 0) or 0
-            ),
-            "path_blacklist": options.get("path_blacklist", ""),
-            "cancel_event": scan.get("cancel_event"),
-        },
-        scan_suffix=scan_id[:8],
-    )
-
-    selected_steps = [
-        name
-        for name in ("cors", "header_inject", "fetch_forms", "xss", "sqli", "lfi", "rfi", "cmdi", "ssrf")
-        if name == "fetch_forms" or use_all or name in modules
-    ]
-    all_vulns = []
-
     try:
-        with scan_ctx.activate():
-            forms = []
-            total_steps = len(selected_steps)
-            completed_steps = 0
-
-            if use_all or "cors" in modules:
-                _check_cancelled(scan)
-                _set_scan_progress(scan_id, "cors", completed_steps, total_steps, "Running CORS checks")
-                all_vulns.extend(scan_cors(url))
-                completed_steps += 1
-
-            if use_all or "header_inject" in modules:
-                _check_cancelled(scan)
-                _set_scan_progress(scan_id, "header_inject", completed_steps, total_steps, "Running header injection checks")
-                all_vulns.extend(scan_header_inject(url, delay))
-                completed_steps += 1
-
-            _check_cancelled(scan)
-            _set_scan_progress(scan_id, "fetch_forms", completed_steps, total_steps, "Fetching target and extracting forms")
-            resp = smart_request(
-                "get",
-                url,
-                timeout=options.get("request_timeout", get_default_timeout()),
-            )
-            soup = BeautifulSoup(resp.content, "lxml")
-            forms = soup.find_all("form")
-            completed_steps += 1
-
-            for step_name, runner in (
-                ("xss", scan_xss),
-                ("sqli", scan_sqli),
-                ("lfi", scan_lfi),
-                ("rfi", scan_rfi),
-                ("cmdi", scan_cmdi),
-                ("ssrf", scan_ssrf),
-            ):
-                if not (use_all or step_name in modules):
-                    continue
-                _check_cancelled(scan)
-                _set_scan_progress(
-                    scan_id,
-                    step_name,
-                    completed_steps,
-                    total_steps,
-                    f"Running {step_name.upper()} checks",
-                )
-                all_vulns.extend(runner(url, forms, delay))
-                completed_steps += 1
-
-            artifacts = build_scan_artifacts(all_vulns)
-            stats = scan_ctx.collect_stats(len(artifacts["findings"]))
-            _set_scan_progress(scan_id, "reporting", completed_steps, total_steps, "Generating reports")
-            generate_json_report(
-                all_vulns,
-                url,
-                mode,
-                stats,
-                scan_ctx.scan_dir,
-                artifacts=artifacts,
-            )
-            generate_html_report(all_vulns, url, mode, scan_ctx.scan_dir, stats=stats)
-            save_findings_json(
-                all_vulns,
-                scan_ctx.scan_dir,
-                url,
-                mode,
-                stats,
-                artifacts=artifacts,
-            )
-            save_sarif(all_vulns, scan_ctx.scan_dir)
+        _set_scan_progress(scan_id, "running", 0, 0, "Running scan")
+        _, delay, _ = get_scan_mode_runtime(mode)
+        runtime_options = dict(options)
+        runtime_options["cancel_event"] = scan.get("cancel_event")
+        result = scan_target(
+            url,
+            mode,
+            delay,
+            dict(options),
+            runtime_options,
+            wordlist_file=options.get("wordlist_file", "wordlists/api_endpoints.txt"),
+            prompt_input=lambda prompt, default="N": default or "N",
+            summary_printer=None,
+            persist_console_log=False,
+        )
 
         _update_scan(
             scan_id,
             status="completed",
             completed_at=str(datetime.now()),
-            vulns=all_vulns,
-            observations=[obs.to_dict() for obs in artifacts["observations"]],
-            findings=[finding.to_dict() for finding in artifacts["findings"]],
-            attack_paths=[path.to_dict() for path in artifacts["attack_paths"]],
-            stats=stats,
-            scan_dir=scan_ctx.scan_dir,
-            total_vulns=len(artifacts["findings"]),
+            vulns=result["vulnerabilities"],
+            observations=result["observations"],
+            findings=result["findings"],
+            attack_paths=result["attack_paths"],
+            stats=result["stats"],
+            scan_dir=result["scan_dir"],
+            total_vulns=result["total_vulns"],
         )
-        _set_scan_progress(scan_id, "completed", total_steps, total_steps, "Scan completed")
+        _set_scan_progress(scan_id, "completed", 1, 1, "Scan completed")
 
     except ScanCancelled as exc:
         _update_scan(
@@ -340,21 +244,29 @@ async def start_scan(scan_req: ScanRequest):
     if not url.startswith(("http://", "https://")):
         url = "http://" + url
 
+    mode, _, threads = get_scan_mode_runtime(scan_req.mode)
+    try:
+        options = build_api_scan_options(
+            scan_req.modules,
+            threads=threads,
+            exploit=scan_req.exploit,
+            api_spec=scan_req.api_spec,
+            max_requests=scan_req.max_requests,
+            request_timeout=scan_req.request_timeout,
+            max_host_concurrency=scan_req.max_host_concurrency,
+            path_blacklist=scan_req.path_blacklist,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     scan_id = str(uuid.uuid4())[:12]
-    options = {
-        "modules": scan_req.modules,
-        "mode": scan_req.mode,
-        "exploit": scan_req.exploit,
-        "max_requests": scan_req.max_requests,
-        "request_timeout": scan_req.request_timeout,
-        "max_host_concurrency": scan_req.max_host_concurrency,
-        "path_blacklist": scan_req.path_blacklist,
-    }
 
     SCANS[scan_id] = {
         "id": scan_id,
         "url": url,
         "options": options,
+        "requested_modules": scan_req.modules,
+        "mode": mode,
         "status": "queued",
         "created_at": str(datetime.now()),
         "vulns": [],
@@ -371,7 +283,7 @@ async def start_scan(scan_req: ScanRequest):
 
     # Run in background thread
     t = threading.Thread(
-        target=_run_scan_job, args=(scan_id, url, options), daemon=True
+        target=_run_scan_job, args=(scan_id, url, mode, options), daemon=True
     )
     t.start()
 
