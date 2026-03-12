@@ -143,7 +143,7 @@ FEATURE_DOC_SPECS = (
     FeatureDocSpec(
         "Network & Infrastructure",
         "Recon",
-        "Async port scan, banner grabbing, DNS, TLS, and header intelligence.",
+        "Deep port, DNS, and TLS recon. Lightweight server and header intel runs on every scan.",
         option_key="recon",
     ),
     FeatureDocSpec(

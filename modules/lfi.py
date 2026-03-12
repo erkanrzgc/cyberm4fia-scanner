@@ -289,4 +289,39 @@ def scan_lfi(url, forms, delay, threads=None):
             except Exception:
                 pass
 
+    # ── AI Exploit Agent (Final Escalation) ──
+    if not vulns and params:
+        try:
+            from utils.ai_exploit_agent import get_exploit_agent, ExploitContext
+            agent = get_exploit_agent()
+            if agent and agent.available:
+                from utils.waf import waf_detector
+                waf_name = getattr(waf_detector, "detected_waf", "") or ""
+
+                for param in params:
+                    ctx = ExploitContext(
+                        url=url,
+                        param=param,
+                        vuln_type="LFI",
+                        waf=waf_name,
+                        http_method="GET",
+                    )
+                    result = agent.exploit_lfi(ctx)
+                    if result and result.success:
+                        increment_vulnerability_count()
+                        log_vuln(f"LFI in: {param} [🤖 AI Agent Gen-{result.iteration}]")
+                        vulns.append({
+                            "type": "LFI_Param",
+                            "param": param,
+                            "payload": result.payload,
+                            "url": url,
+                            "source": f"🤖 AI Agent (confidence: {result.confidence:.0f}%)",
+                            "evidence": result.evidence[:200],
+                            "ai_curl": result.curl_command,
+                            "ai_poc_script": result.python_script,
+                        })
+                        break
+        except ImportError:
+            pass
+
     return vulns

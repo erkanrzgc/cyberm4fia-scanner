@@ -71,7 +71,7 @@ from utils.colors import console, save_console_log
 from rich.table import Table
 from rich.panel import Panel
 from rich.markup import escape
-from utils.ai import init_ai  # noqa: E402
+from utils.ai import init_ai, init_dual_ai  # noqa: E402
 from modules.compare import (  # noqa: E402
     compare_scans,
     print_comparison,
@@ -551,8 +551,64 @@ def print_summary(vulns, recon_data=None, stats=None):
     console.print(vuln_table)
 
 
-def scan_target(url, mode, delay, options, runtime_options, session=None, wordlist_file="wordlists/api_endpoints.txt"):
+def _load_target_urls(target_list_path):
+    """Load target URLs from a file, normalizing missing schemes."""
+    target_urls = []
+    if not target_list_path:
+        return target_urls
+
+    try:
+        with open(target_list_path, "r") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if not line.startswith(("http://", "https://")):
+                    line = "http://" + line
+                target_urls.append(line)
+    except FileNotFoundError:
+        log_error(f"Target list not found: {target_list_path}")
+        sys.exit(1)
+
+    log_info(f"Loaded {len(target_urls)} targets from {target_list_path}")
+    return target_urls
+
+
+def _target_session_file(session_file, url):
+    """Derive a target-specific session filename for multi-target scans."""
+    root, ext = os.path.splitext(session_file)
+    if not ext:
+        ext = ".json"
+
+    parsed = urlparse(url)
+    host = parsed.hostname or parsed.netloc.split(":")[0] or "target"
+    safe_host = host.replace(".", "_").replace(":", "_")
+    return f"{root}__{safe_host}{ext}"
+
+
+def _session_has_saved_state(session):
+    """Return whether a session contains persisted target data."""
+    return bool(
+        session.data.get("target")
+        or session.data.get("options")
+        or session.data.get("scanned_urls")
+    )
+
+
+def scan_target(
+    url,
+    mode,
+    delay,
+    options,
+    runtime_options,
+    session=None,
+    wordlist_file="wordlists/api_endpoints.txt",
+    prompt_input=None,
+    summary_printer=print_summary,
+    persist_console_log=True,
+):
     """Run the full scan pipeline for a single target with isolated runtime state."""
+    prompt_input = prompt_input or get_input
     scan_ctx = ScanContext(
         url,
         mode,
@@ -585,7 +641,7 @@ def scan_target(url, mode, delay, options, runtime_options, session=None, wordli
             "recon_data": None,
             "all_vulns": [],
             "wordlist_file": wordlist_file,
-            "summary_printer": print_summary,
+            "summary_printer": summary_printer,
             "report_stats_factory": scan_ctx.report_stats,
             "summary_stats_factory": scan_ctx.collect_stats,
         }
@@ -674,7 +730,7 @@ def scan_target(url, mode, delay, options, runtime_options, session=None, wordli
                     "xss_vulns": xss_vulns,
                     "sqli_vulns": sqli_vulns,
                     "cmdi_vulns": cmdi_vulns,
-                    "prompt_input": get_input,
+                    "prompt_input": prompt_input,
                     "all_vulns": list(all_vulns),
                 }
                 all_vulns.extend(
@@ -715,7 +771,27 @@ def scan_target(url, mode, delay, options, runtime_options, session=None, wordli
         )
 
         log_success(f"Log saved: {log_file}")
-        save_console_log()
+        if persist_console_log:
+            save_console_log()
+
+        from utils.finding import build_scan_artifacts
+
+        artifacts = phase_state.get("scan_artifacts") or build_scan_artifacts(all_vulns)
+        finding_count = phase_state.get("finding_count", len(artifacts["findings"]))
+        stats = scan_ctx.collect_stats(finding_count)
+        return {
+            "url": url,
+            "mode": mode,
+            "scan_dir": scan_dir,
+            "log_file": log_file,
+            "vulnerabilities": all_vulns,
+            "observations": [obs.to_dict() for obs in artifacts["observations"]],
+            "findings": [finding.to_dict() for finding in artifacts["findings"]],
+            "attack_paths": [path.to_dict() for path in artifacts["attack_paths"]],
+            "recon_data": phase_state.get("recon_data"),
+            "stats": stats,
+            "total_vulns": finding_count,
+        }
 
 
 def main():
@@ -751,23 +827,22 @@ def main():
         start_proxy(listen_port=args.proxy_listen, scope=args.scope_proxy)
         return
 
-    if args.url or args.resume:
+    provided_dests = getattr(args, "_provided_dests", set())
+
+    if args.url or args.resume or getattr(args, "target_list", None):
         url = args.url or ""
         if url and not url.startswith(("http://", "https://")):
             url = "http://" + url
 
-        provided_dests = getattr(args, "_provided_dests", set())
         mode, delay, threads = get_scan_mode_runtime(args.mode)
 
         if args.threads:
             threads = args.threads
 
-        # --all flag enables everything
-        use_all = getattr(args, "all", False)
-
         options = build_cli_scan_options(args, threads)
+        target_urls = _load_target_urls(getattr(args, "target_list", ""))
 
-        if options.get("resume"):
+        if options.get("resume") and not target_urls:
             session = ScanSession.load(options["resume"])
             restored_target, mode, delay, options = restore_resume_scan_state(
                 session,
@@ -785,6 +860,12 @@ def main():
         else:
             session = None
 
+        if not target_urls:
+            if not url:
+                log_error("No target URL provided.")
+                sys.exit(1)
+            target_urls = [url]
+
     else:
         try:
             url, mode, delay, options = interactive_menu()
@@ -792,6 +873,7 @@ def main():
             print(f"\n{Colors.YELLOW}[!] Cancelled{Colors.END}")
             sys.exit(0)
         session = None
+        target_urls = [url]
 
     set_json_output_enabled(options.get("json_output"))
 
@@ -816,26 +898,31 @@ def main():
         scope = ScopeFilter(include=include, exclude=exclude)
         set_scope(scope)
 
+    multi_target = len(target_urls) > 1
+
     # Initialize session (resume or new)
-    if session is None and options.get("resume"):
+    if not multi_target and session is None and options.get("resume"):
         session = ScanSession.load(options["resume"])
         if session.data.get("target"):
             url = session.data["target"]
             log_info(f"Resuming scan on {url}")
-    elif session is None and options.get("session"):
+    elif not multi_target and session is None and options.get("session"):
         session = ScanSession(options["session"])
 
     # Initialize AI logic globally if enabled (CLI or Interactive)
     if options.get("ai"):
         init_ai(model=options.get("ai_model", DEFAULT_AI_MODEL))
+        # Initialize dual-model system (WhiteRabbitNeo + Qwen3-Coder)
+        init_dual_ai()
 
     # If proxy_listen was enabled interactively, start it in the background
     if options.get("proxy_listen"):
         from urllib.parse import urlparse
         import threading
         from modules.proxy_interceptor import start_proxy
-        
-        scope = urlparse(url).netloc.split(':')[0]
+
+        proxy_target = target_urls[0] if target_urls else url
+        scope = urlparse(proxy_target).netloc.split(":")[0]
         port = 8081
         t = threading.Thread(target=start_proxy, args=(port, scope), daemon=True)
         t.start()
@@ -843,43 +930,57 @@ def main():
         import time
         time.sleep(1)
 
-    # Multi-target support: build URL list
-    target_urls = []
-    if hasattr(args, "target_list") and args.target_list:
-        try:
-            with open(args.target_list, "r") as f:
-                for line in f:
-                    line = line.strip()
-                    if line and not line.startswith("#"):
-                        if not line.startswith(("http://", "https://")):
-                            line = "http://" + line
-                        target_urls.append(line)
-            log_info(f"Loaded {len(target_urls)} targets from {args.target_list}")
-        except FileNotFoundError:
-            log_error(f"Target list not found: {args.target_list}")
-            sys.exit(1)
-    else:
-        target_urls = [url]
-
-    runtime_options = dict(options)
-
-    if runtime_options.get("proxy_url"):
-        log_info(f"Proxy set: {runtime_options['proxy_url']}")
+    if options.get("proxy_url"):
+        log_info(f"Proxy set: {options['proxy_url']}")
 
     # Run scan for each target
-    for target_idx, url in enumerate(target_urls):
+    mode_override = args.mode if "mode" in provided_dests else None
+    for target_idx, current_url in enumerate(target_urls):
+        current_mode = mode
+        current_delay = delay
+        current_options = dict(options)
+        current_session = session
+
+        if multi_target and options.get("resume"):
+            resume_path = _target_session_file(options["resume"], current_url)
+            current_session = ScanSession.load(resume_path)
+            if _session_has_saved_state(current_session):
+                (
+                    restored_target,
+                    current_mode,
+                    current_delay,
+                    current_options,
+                ) = restore_resume_scan_state(
+                    current_session,
+                    dict(options),
+                    provided_dests=provided_dests,
+                    mode_override=mode_override,
+                )
+                if restored_target:
+                    current_url = restored_target
+            current_options["resume"] = current_session.session_file or resume_path
+            current_options["session"] = ""
+        elif multi_target and options.get("session"):
+            current_session = ScanSession(
+                _target_session_file(options["session"], current_url)
+            )
+            current_options["session"] = current_session.session_file or ""
+            current_options["resume"] = ""
+
+        runtime_options = dict(current_options)
+
         if len(target_urls) > 1:
             console.print(
-                f"\n[bold magenta]━━━ Target {target_idx + 1}/{len(target_urls)}: {url} ━━━[/bold magenta]"
+                f"\n[bold magenta]━━━ Target {target_idx + 1}/{len(target_urls)}: {current_url} ━━━[/bold magenta]"
             )
         scan_target(
-            url,
-            mode,
-            delay,
-            options,
+            current_url,
+            current_mode,
+            current_delay,
+            current_options,
             runtime_options,
-            session=session,
-            wordlist_file=options.get(
+            session=current_session,
+            wordlist_file=current_options.get(
                 "wordlist_file",
                 getattr(args, "wordlist_file", "wordlists/api_endpoints.txt"),
             ),

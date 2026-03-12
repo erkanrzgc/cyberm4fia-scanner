@@ -250,7 +250,36 @@ def analyze_chains(vulnerabilities):
                 else:
                     log_info(f"  🟡 [{severity}] {chain_str}")
                 log_info(f"     └─ {chain['description']}")
-    else:
+
+    # ── AI-Powered Chain Discovery ──
+    try:
+        from utils.ai_exploit_agent import get_chain_detector
+        detector = get_chain_detector()
+        if (
+            detector.client
+            and getattr(detector.client, "available", False)
+            and hasattr(detector.client, "generate")
+        ):
+            ai_chains = detector.detect_chains(vulnerabilities)
+            if ai_chains:
+                log_success(f"🤖 AI discovered {len(ai_chains)} additional attack chain(s):")
+                for ac in ai_chains:
+                    chain_name = ac.get("chain_name", "Unknown")
+                    sev = ac.get("severity", "High")
+                    desc = ac.get("description", "")
+                    log_warning(f"  🔴 [{sev}] {chain_name}")
+                    if desc:
+                        log_info(f"     └─ {desc}")
+                    chains.append({
+                        "chain": chain_name,
+                        "severity": sev,
+                        "description": desc,
+                        "ai_discovered": True,
+                    })
+    except ImportError:
+        pass
+
+    if not chains:
         log_info("No attack chains identified.")
 
     return chains

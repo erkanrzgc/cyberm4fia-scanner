@@ -91,7 +91,7 @@ class TestAPIServer:
         resp = await self._request(
             "POST",
             "/api/scan",
-            json={"url": "http://example.com", "modules": ["xss"], "mode": "quick"},
+            json={"url": "http://example.com", "modules": ["ssti"], "mode": "quick"},
         )
         assert resp.status_code == 201
         data = resp.json()
@@ -100,6 +100,21 @@ class TestAPIServer:
         assert data["url"] == "http://example.com"
         assert data["scan_id"] in api_server.SCANS
         assert api_server.SCANS[data["scan_id"]]["status"] == "queued"
+        assert api_server.SCANS[data["scan_id"]]["mode"] == "normal"
+        assert api_server.SCANS[data["scan_id"]]["options"]["ssti"] is True
+        assert api_server.SCANS[data["scan_id"]]["options"]["html"] is True
+        assert api_server.SCANS[data["scan_id"]]["options"]["sarif"] is True
+
+    @pytest.mark.asyncio
+    async def test_start_scan_rejects_unknown_module(self):
+        resp = await self._request(
+            "POST",
+            "/api/scan",
+            json={"url": "http://example.com", "modules": ["not-a-module"]},
+        )
+
+        assert resp.status_code == 422
+        assert "Unknown API modules" in resp.text
 
     @pytest.mark.asyncio
     async def test_report_nonexistent(self):
@@ -217,3 +232,55 @@ class TestAPIServer:
         assert data["findings"][0]["id"] == "finding_1"
         assert data["observations"][0]["id"] == "obs_1"
         assert data["attack_paths"][0]["id"] == "path_1"
+
+    def test_run_scan_job_uses_shared_scanner_pipeline(self, monkeypatch, tmp_path):
+        import scanner as scanner_mod
+
+        api_server.SCANS["scan123"] = {
+            "id": "scan123",
+            "url": "http://example.com",
+            "status": "queued",
+            "created_at": "now",
+            "progress": {},
+            "cancel_event": threading.Event(),
+        }
+
+        captured = {}
+
+        def fake_scan_target(url, mode, delay, options, runtime_options, **kwargs):
+            captured["url"] = url
+            captured["mode"] = mode
+            captured["delay"] = delay
+            captured["options"] = dict(options)
+            captured["runtime_options"] = dict(runtime_options)
+            captured["kwargs"] = kwargs
+            return {
+                "vulnerabilities": [{"type": "SSTI", "url": url}],
+                "observations": [{"id": "obs_1"}],
+                "findings": [{"id": "finding_1"}],
+                "attack_paths": [{"id": "path_1"}],
+                "stats": {"total_requests": 3},
+                "scan_dir": str(tmp_path),
+                "total_vulns": 1,
+            }
+
+        monkeypatch.setattr(scanner_mod, "scan_target", fake_scan_target)
+
+        api_server._run_scan_job(
+            "scan123",
+            "http://example.com",
+            "stealth",
+            {"ssti": True, "html": True, "sarif": True, "json_output": True},
+        )
+
+        assert captured["mode"] == "stealth"
+        assert captured["delay"] == 3
+        assert captured["options"]["ssti"] is True
+        assert (
+            captured["runtime_options"]["cancel_event"]
+            is api_server.SCANS["scan123"]["cancel_event"]
+        )
+        assert captured["kwargs"]["summary_printer"] is None
+        assert captured["kwargs"]["persist_console_log"] is False
+        assert api_server.SCANS["scan123"]["status"] == "completed"
+        assert api_server.SCANS["scan123"]["total_vulns"] == 1

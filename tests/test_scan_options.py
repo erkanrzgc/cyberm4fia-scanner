@@ -6,16 +6,20 @@ import os
 import sys
 from types import SimpleNamespace
 
+import pytest
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.scan_options import (
     ATTACK_PROFILE_SPECS,
     ALL_ENABLED_OPTION_KEYS,
+    API_MODULE_OPTION_KEYS,
     DEFAULT_AI_MODEL,
     InteractivePromptSpec,
     SCAN_MODE_SPECS,
     apply_profile_preset,
     apply_interactive_prompt_specs,
+    build_api_scan_options,
     build_cli_scan_options,
     build_default_scan_options,
     get_attack_profile_recommended_prompt_specs,
@@ -172,6 +176,39 @@ class TestScanOptions:
         options = build_cli_scan_options(args, threads=10)
 
         assert options["proxy_url"] == "http://127.0.0.1:8080"
+
+    def test_api_builder_supports_registry_modules_and_report_outputs(self):
+        options = build_api_scan_options(
+            ["ssti", "xxe", "recon"],
+            threads=15,
+            exploit=True,
+            api_spec="openapi.yaml",
+            max_requests=25,
+            request_timeout=4.5,
+            max_host_concurrency=3,
+            path_blacklist="/logout,/checkout",
+        )
+
+        assert options["ssti"] is True
+        assert options["xxe"] is True
+        assert options["recon"] is True
+        assert options["exploit"] is True
+        assert options["api_spec"] == "openapi.yaml"
+        assert options["json_output"] is True
+        assert options["html"] is True
+        assert options["sarif"] is True
+        assert options["threads"] == 15
+        assert options["max_requests"] == 25
+        assert options["request_timeout"] == 4.5
+        assert options["max_host_concurrency"] == 3
+        assert options["path_blacklist"] == "/logout,/checkout"
+
+    def test_api_builder_rejects_unknown_modules(self):
+        with pytest.raises(ValueError, match="Unknown API modules"):
+            build_api_scan_options(["nope"], threads=10)
+
+        assert "ssti" in API_MODULE_OPTION_KEYS
+        assert "recon" in API_MODULE_OPTION_KEYS
 
     def test_interactive_prompt_resolution_preserves_yes_no_defaults(self):
         yes_default = InteractivePromptSpec("recon", "Recon?", "Y")

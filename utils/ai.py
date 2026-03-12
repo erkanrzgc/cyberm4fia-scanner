@@ -73,6 +73,16 @@ def resolve_ollama_base(explicit_url: str | None = None) -> str:
 
 OLLAMA_BASE = resolve_ollama_base()
 DEFAULT_MODEL = "WhiteRabbitNeo/Llama-3.1-WhiteRabbitNeo-2-8B"
+CODER_MODEL = "qwen3-coder:30b"
+
+# Model roles — which model to use for which task
+MODEL_ROLES = {
+    "exploit":     DEFAULT_MODEL,   # payload crafting, WAF bypass, exploit strategy
+    "analysis":    DEFAULT_MODEL,   # vuln analysis, false positive detection
+    "code":        CODER_MODEL,     # PoC script generation, code analysis
+    "remediation": CODER_MODEL,     # code fix generation, secure code examples
+    "summary":     DEFAULT_MODEL,   # executive summary, reporting
+}
 
 
 class OllamaClient:
@@ -148,6 +158,107 @@ class OllamaClient:
         except Exception as e:
             log_warning(f"AI error: {e}")
             return ""
+
+
+# ─── Dual-Model AI System ──────────────────────────────────────────────────
+
+class DualModelAI:
+    """Dual-model AI system using WhiteRabbitNeo + Qwen3-Coder.
+
+    WhiteRabbitNeo: Exploit strategy, payload generation, WAF bypass
+    Qwen3-Coder:   Code generation, PoC scripting, remediation code
+
+    Falls back gracefully if one model is unavailable.
+    """
+
+    def __init__(self, base_url: str = None):
+        self.base_url = resolve_ollama_base(base_url)
+        self.exploit_client: OllamaClient | None = None
+        self.coder_client: OllamaClient | None = None
+        self._available_models: list[str] = []
+        self._init_models()
+
+    def _init_models(self):
+        """Initialize both model clients."""
+        # Check which models are available
+        try:
+            resp = httpx.get(f"{self.base_url}/api/tags", timeout=5)
+            if resp.status_code == 200:
+                self._available_models = [
+                    m["name"] for m in resp.json().get("models", [])
+                ]
+        except Exception:
+            self._available_models = []
+
+        # Init WhiteRabbitNeo (exploit/strategy)
+        has_wrn = any(DEFAULT_MODEL in m for m in self._available_models)
+        if has_wrn:
+            self.exploit_client = OllamaClient(
+                model=DEFAULT_MODEL, base_url=self.base_url
+            )
+
+        # Init Qwen3-Coder (code generation)
+        has_qwen = any(CODER_MODEL in m for m in self._available_models)
+        if has_qwen:
+            self.coder_client = OllamaClient(
+                model=CODER_MODEL, base_url=self.base_url
+            )
+
+        # Log status
+        models_active = []
+        if self.exploit_client and self.exploit_client.available:
+            models_active.append(f"🐇 WhiteRabbitNeo (exploit)")
+        if self.coder_client and self.coder_client.available:
+            models_active.append(f"🧠 Qwen3-Coder (code)")
+
+        if models_active:
+            log_success(f"Dual AI: {' + '.join(models_active)}")
+        elif self._available_models:
+            log_warning(
+                f"Neither {DEFAULT_MODEL} nor {CODER_MODEL} found. "
+                f"Available: {', '.join(self._available_models[:5])}"
+            )
+
+    @property
+    def available(self) -> bool:
+        """True if at least one model is available."""
+        return bool(
+            (self.exploit_client and self.exploit_client.available)
+            or (self.coder_client and self.coder_client.available)
+        )
+
+    def get_client_for_role(self, role: str) -> OllamaClient | None:
+        """Get the best client for a given role.
+
+        Roles: 'exploit', 'analysis', 'code', 'remediation', 'summary'
+        Falls back to whichever model is available.
+        """
+        preferred_model = MODEL_ROLES.get(role, DEFAULT_MODEL)
+
+        # Try preferred model first
+        if preferred_model == CODER_MODEL:
+            if self.coder_client and self.coder_client.available:
+                return self.coder_client
+            # Fallback to exploit model
+            if self.exploit_client and self.exploit_client.available:
+                return self.exploit_client
+        else:
+            if self.exploit_client and self.exploit_client.available:
+                return self.exploit_client
+            # Fallback to coder model
+            if self.coder_client and self.coder_client.available:
+                return self.coder_client
+
+        return None
+
+    def generate(
+        self, prompt: str, system: str = "", temperature: float = 0.3, role: str = "exploit"
+    ) -> str:
+        """Generate using the appropriate model for the role."""
+        client = self.get_client_for_role(role)
+        if not client:
+            return ""
+        return client.generate(prompt, system=system, temperature=temperature)
 
 
 # ─── Security Analysis Prompts ──────────────────────────────────────────────
@@ -262,6 +373,13 @@ def generate_remediation(client: OllamaClient, vulns: list) -> list:
     if not client.available or not vulns:
         return []
 
+    # Use coder model for remediation if available (better code generation)
+    dual = get_dual_ai()
+    if dual and dual.available:
+        coder = dual.get_client_for_role("remediation")
+        if coder and coder.available:
+            client = coder
+
     # We don't need AI to verify missing headers or debug info over and over
     skip_types = ["Missing_Security_Header", "Debug_Info", "Tech_Fingerprint", "Recon"]
     filtered_vulns = [
@@ -337,8 +455,6 @@ Example format: ["payload1", "payload2", "payload3"]"""
     return []
 
 
-import re
-
 
 class EvolvingWAFBypassEngine:
     """Stateful AI Mutation Engine for bypassing advanced HTTP WAFs."""
@@ -353,7 +469,7 @@ class EvolvingWAFBypassEngine:
     def tokenize_payload(self, payload: str) -> list:
         """Splits an injection payload into logical semantic tokens."""
         # Split on common SQL/XSS delimiters (spaces, tags, quotes)
-        tokens = re.split(r'(<[^>]+>|[\'"(\s)])', payload)
+        tokens = re.split(r'(<[^>]+>|[\'\"(\s)])', payload)
         return [t.strip() for t in tokens if t and t.strip()]
 
     def analyze_failure(self, failed_payload: str):
@@ -456,21 +572,34 @@ Keep it professional and suitable for a C-level audience."""
     return client.generate(prompt, system=SECURITY_SYSTEM_PROMPT)
 
 
-# ─── Global Client ───────────────────────────────────────────────────────────
+# ─── Global Clients ─────────────────────────────────────────────────────────
 
 _ai_client = None
+_dual_ai = None
 
 
 def init_ai(model: str = None) -> OllamaClient:
-    """Initialize the AI client."""
+    """Initialize the primary AI client."""
     global _ai_client
     _ai_client = OllamaClient(model=model)
     return _ai_client
 
 
 def get_ai() -> OllamaClient:
-    """Get the current AI client (or create one)."""
+    """Get the current primary AI client (or create one)."""
     global _ai_client
     if _ai_client is None:
         _ai_client = OllamaClient()
     return _ai_client
+
+
+def init_dual_ai(base_url: str = None) -> DualModelAI:
+    """Initialize the dual-model AI system."""
+    global _dual_ai
+    _dual_ai = DualModelAI(base_url=base_url)
+    return _dual_ai
+
+
+def get_dual_ai() -> DualModelAI | None:
+    """Get the dual-model AI system (if initialized)."""
+    return _dual_ai
