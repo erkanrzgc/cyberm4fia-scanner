@@ -542,6 +542,30 @@ VULN_REGISTRY = {
         "title": "CVE Threat Intelligence (SiberAdar)",
         "remediation": "Review CVE details and apply vendor patches.",
     },
+    # CSP Bypass
+    "CSP_Bypass": {
+        "severity": "high",
+        "cvss": 6.1,
+        "cwe": "CWE-693",
+        "title": "Content Security Policy Bypass",
+        "remediation": "Remove 'unsafe-inline'/'unsafe-eval' from CSP. Use nonces or hashes. Restrict script-src to trusted domains only.",
+    },
+    # Cookie Security
+    "Insecure_Cookie": {
+        "severity": "medium",
+        "cvss": 5.3,
+        "cwe": "CWE-614",
+        "title": "Insecure Cookie Configuration",
+        "remediation": "Set Secure, HttpOnly, and SameSite flags on all cookies. Use narrow Domain/Path scopes.",
+    },
+    # HSTS
+    "Weak_HSTS": {
+        "severity": "medium",
+        "cvss": 4.3,
+        "cwe": "CWE-319",
+        "title": "Weak HSTS Configuration",
+        "remediation": "Set Strict-Transport-Security with max-age>=31536000, includeSubDomains, and preload.",
+    },
 }
 
 # Default for unknown types
@@ -573,7 +597,11 @@ def _extract_request_details(vuln_dict):
         "headers": vuln_dict.get("request_headers"),
         "body": vuln_dict.get("request_body"),
     }
-    request_fields = {key: value for key, value in request_fields.items() if value not in (None, "", {}, [])}
+    request_fields = {
+        key: value
+        for key, value in request_fields.items()
+        if value not in (None, "", {}, [])
+    }
     return request_fields or None
 
 
@@ -642,7 +670,9 @@ def _infer_surface(vuln_dict):
 
     if vuln_type.startswith("api_") or "/api/" in url:
         return "api"
-    if any(token in vuln_type for token in ("cloud", "takeover", "bucket", "subdomain")):
+    if any(
+        token in vuln_type for token in ("cloud", "takeover", "bucket", "subdomain")
+    ):
         return "infrastructure"
     if any(token in vuln_type for token in ("header", "cors", "csrf")):
         return "http"
@@ -767,7 +797,9 @@ def normalize_vuln(vuln_dict: dict) -> Finding:
     severity = observation.severity
     evidence_items = _coerce_evidence_items(raw)
     verification_state = _infer_verification_state(raw, observation.confidence)
-    replay_recipe = _build_replay_recipe(raw, observation.request, observation.repro_steps)
+    replay_recipe = _build_replay_recipe(
+        raw, observation.request, observation.repro_steps
+    )
 
     return Finding(
         title=registry["title"],
@@ -856,11 +888,17 @@ def deduplicate_findings(vuln_list: list) -> list:
         evidence = vuln.get("evidence", "")
 
         from urllib.parse import urlparse
+
         host = urlparse(url).netloc
 
-        # Site-wide issues only need to be reported once per host, 
+        # Site-wide issues only need to be reported once per host,
         # so we strip the path/query parameters.
-        if vuln_type in ["Missing_Security_Header", "Debug_Info", "Tech_Fingerprint", "CVE_Intel"]:
+        if vuln_type in [
+            "Missing_Security_Header",
+            "Debug_Info",
+            "Tech_Fingerprint",
+            "CVE_Intel",
+        ]:
             sig = f"{vuln_type}::{host}::{evidence}"
         else:
             # For injection/XSS, we need exact URL, param, and payload to match
@@ -873,7 +911,9 @@ def deduplicate_findings(vuln_list: list) -> list:
     return unique_vulns
 
 
-def _normalize_with_observations(vuln_list: list) -> tuple[list[Observation], list[Finding]]:
+def _normalize_with_observations(
+    vuln_list: list,
+) -> tuple[list[Observation], list[Finding]]:
     """Normalize legacy results while preserving their raw observation layer."""
     observations = []
     normalized = []
@@ -881,7 +921,9 @@ def _normalize_with_observations(vuln_list: list) -> tuple[list[Observation], li
         if isinstance(vuln, Finding):
             normalized.append(vuln)
             observation_refs = vuln.observation_refs or [
-                _stable_id("obs", vuln.finding_type or vuln.module, vuln.url, vuln.param)
+                _stable_id(
+                    "obs", vuln.finding_type or vuln.module, vuln.url, vuln.param
+                )
             ]
             observations.append(
                 Observation(
@@ -957,9 +999,8 @@ def build_attack_paths(findings: list[Finding]) -> list[AttackPath]:
         source_url = raw_path.get("source_url")
         for finding in findings:
             if (
-                (finding.finding_type or finding.module) == source_vuln
-                and finding.url == source_url
-            ):
+                finding.finding_type or finding.module
+            ) == source_vuln and finding.url == source_url:
                 finding_refs.append(finding.id)
                 refs = list(finding.attack_path_refs or [])
                 if path_id not in refs:

@@ -15,10 +15,13 @@ from core.module_registry import (
     run_phase_modules,
 )
 
+
 class TestModuleRegistry:
     def test_canonicalize_scan_url_strips_fragments_and_noise_params(self):
         assert (
-            canonicalize_scan_url("https://example.com/login?_rsc=abc123&from=%2Fdash#hero")
+            canonicalize_scan_url(
+                "https://example.com/login?_rsc=abc123&from=%2Fdash#hero"
+            )
             == "https://example.com/login?from=%2Fdash"
         )
 
@@ -191,7 +194,10 @@ class TestModuleRegistry:
             dynamic_mod,
             "run_dynamic_spider",
             lambda url, delay=0: {
-                "links": ["http://example.com/app#hero", "http://example.com/app?_rsc=1"],
+                "links": [
+                    "http://example.com/app#hero",
+                    "http://example.com/app?_rsc=1",
+                ],
                 "forms": [{"action": "/submit"}],
                 "endpoints": [
                     ("GET", "http://example.com/data"),
@@ -232,6 +238,8 @@ class TestModuleRegistry:
         import modules.csrf as csrf_mod
         import modules.passive as passive_mod
         import modules.secrets_scanner as secrets_mod
+        import modules.csp_bypass as csp_mod
+        import modules.cookie_hsts_audit as cookie_mod
 
         monkeypatch.setattr(
             passive_mod,
@@ -248,6 +256,18 @@ class TestModuleRegistry:
             "scan_secrets",
             lambda scan_url, response_text: [
                 {"type": "Secret_Exposure", "url": scan_url, "body": response_text}
+            ],
+        )
+        monkeypatch.setattr(
+            csp_mod,
+            "scan_csp_bypass",
+            lambda scan_url, response=None: [{"type": "CSP_Bypass", "url": scan_url}],
+        )
+        monkeypatch.setattr(
+            cookie_mod,
+            "scan_cookie_hsts",
+            lambda scan_url, response=None: [
+                {"type": "Insecure_Cookie", "url": scan_url}
             ],
         )
 
@@ -271,6 +291,8 @@ class TestModuleRegistry:
             "Passive",
             "Secret_Exposure",
             "CSRF",
+            "CSP_Bypass",
+            "Insecure_Cookie",
         ]
 
         state["forms"] = []
@@ -279,7 +301,12 @@ class TestModuleRegistry:
             {"passive": True, "secrets": True, "csrf": True},
             state,
         )
-        assert [item["type"] for item in findings] == ["Passive", "Secret_Exposure"]
+        assert [item["type"] for item in findings] == [
+            "Passive",
+            "Secret_Exposure",
+            "CSP_Bypass",
+            "Insecure_Cookie",
+        ]
 
     def test_post_scan_registry_runs_side_effect_and_result_modules(
         self, monkeypatch, tmp_path
@@ -451,11 +478,17 @@ class TestModuleRegistry:
                 {"type": "Noise", "url": "http://example.com"},
             ],
             "options": {"ai": True, "html": True, "sarif": True, "json_output": True},
-            "summary_printer": lambda findings, recon_data=None, stats=None: rendered.append(
-                f"summary:{len(findings)}"
+            "summary_printer": lambda findings, recon_data=None, stats=None: (
+                rendered.append(f"summary:{len(findings)}")
             ),
             "report_stats_factory": lambda count: {"vulns": count},
-            "summary_stats_factory": lambda count: {"total_requests": 10, "waf_blocks": 1, "errors": 0, "retries": 2, "duration_seconds": 3.5},
+            "summary_stats_factory": lambda count: {
+                "total_requests": 10,
+                "waf_blocks": 1,
+                "errors": 0,
+                "retries": 2,
+                "duration_seconds": 3.5,
+            },
         }
 
         run_phase_modules("analysis", {"ai": True}, state)
@@ -504,7 +537,9 @@ class TestModuleRegistry:
         monkeypatch.setattr(
             sqli_exploit_mod,
             "run_sqli_exploit",
-            lambda vuln: calls["sqli_exploit"].append(vuln["type"]) or {"database": "app"},
+            lambda vuln: (
+                calls["sqli_exploit"].append(vuln["type"]) or {"database": "app"}
+            ),
         )
         monkeypatch.setattr(
             sqli_mod,
