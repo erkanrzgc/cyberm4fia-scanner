@@ -393,6 +393,18 @@ def _run_csrf_hook(state):
     return scan_csrf(state["scan_url"], state["forms"], state["delay"])
 
 
+def _run_csp_bypass_hook(state):
+    from modules.csp_bypass import scan_csp_bypass
+
+    return scan_csp_bypass(state["scan_url"], response=state["response"])
+
+
+def _run_cookie_hsts_hook(state):
+    from modules.cookie_hsts_audit import scan_cookie_hsts
+
+    return scan_cookie_hsts(state["scan_url"], response=state["response"])
+
+
 def _run_xss_postprocess(state):
     from modules.xss_exploit import run_xss_exploit, run_xss_exploit_interactive
     from utils.colors import Colors, log_info
@@ -460,9 +472,7 @@ def _run_sqli_postprocess(state):
     log_info("Running Time-Based Blind SQLi checks...")
     blind_vulns = scan_blind_sqli(state["scan_url"], state["forms"], state["delay"])
     if blind_vulns:
-        log_info(
-            f"Found {len(blind_vulns)} Blind SQLi vulns. Attempting exploit..."
-        )
+        log_info(f"Found {len(blind_vulns)} Blind SQLi vulns. Attempting exploit...")
         for vuln in blind_vulns:
             if "exploit_data" not in vuln:
                 exploit_data = run_sqli_exploit(vuln)
@@ -523,7 +533,9 @@ def _run_wordlist_generation(state):
     from utils.wordlist_gen import generate_wordlist
 
     output_file = os.path.join(state["scan_dir"], "wordlist.txt")
-    generate_wordlist(state["url"], depth=2, output_file=output_file, delay=state["delay"])
+    generate_wordlist(
+        state["url"], depth=2, output_file=output_file, delay=state["delay"]
+    )
     return []
 
 
@@ -651,9 +663,7 @@ def _run_scan_summary(state):
     if summary_printer:
         stats_factory = state.get("summary_stats_factory")
         stats = (
-            stats_factory(len(state.get("all_vulns", [])))
-            if stats_factory
-            else None
+            stats_factory(len(state.get("all_vulns", []))) if stats_factory else None
         )
         summary_printer(
             state.get("all_vulns", []),
@@ -737,7 +747,9 @@ def _run_json_report(state):
         state["all_vulns"],
         state["url"],
         state["mode"],
-        state["report_stats_factory"](state.get("finding_count", len(state["all_vulns"]))),
+        state["report_stats_factory"](
+            state.get("finding_count", len(state["all_vulns"]))
+        ),
         state["scan_dir"],
         state.get("scan_artifacts"),
     )
@@ -762,7 +774,9 @@ def _run_findings_json(state):
         state["scan_dir"],
         state["url"],
         state["mode"],
-        state["report_stats_factory"](state.get("finding_count", len(state["all_vulns"]))),
+        state["report_stats_factory"](
+            state.get("finding_count", len(state["all_vulns"]))
+        ),
         state.get("scan_artifacts"),
     )
     return []
@@ -910,6 +924,24 @@ PHASE_MODULES = (
         requires_forms=True,
         collect_results=True,
         runner=_run_csrf_hook,
+    ),
+    PhaseModuleSpec(
+        id="csp_bypass",
+        option_key="passive",
+        name="CSP Bypass",
+        phase="page_hooks",
+        requires_forms=False,
+        collect_results=True,
+        runner=_run_csp_bypass_hook,
+    ),
+    PhaseModuleSpec(
+        id="cookie_hsts",
+        option_key="passive",
+        name="Cookie & HSTS Audit",
+        phase="page_hooks",
+        requires_forms=False,
+        collect_results=True,
+        runner=_run_cookie_hsts_hook,
     ),
     PhaseModuleSpec(
         id="xss_postprocess",
