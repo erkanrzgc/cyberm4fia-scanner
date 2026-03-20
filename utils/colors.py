@@ -3,6 +3,7 @@ cyberm4fia-scanner - Color and Logging Utilities
 """
 
 from rich.console import Console
+from utils.request import ScanExceptions
 
 console = Console(record=True)
 
@@ -69,7 +70,7 @@ def save_console_log():
                 raw_text = console.export_text(clear=False)
                 clean_text = re.sub(r'\x1b\[[0-9;]*m', '', raw_text)
                 f.write(clean_text)
-        except Exception:
+        except ScanExceptions:
             pass
 
 def _write_log(level, msg):

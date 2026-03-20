@@ -9,11 +9,6 @@ Improvements:
   - Baseline comparison to reduce false positives
 """
 
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from utils.colors import log_info, log_success, log_vuln, log_warning
 from utils.request import (
     get_thread_count,
@@ -22,8 +17,7 @@ from utils.request import (
 )
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse, urljoin
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import httpx
-
+from utils.request import ScanExceptions
 
 # RFI Payloads — multiple bypass techniques
 RFI_PAYLOADS = [
@@ -78,7 +72,6 @@ RFI_PARAM_NAMES = [
     "src",
 ]
 
-
 def _check_url_include(url):
     """
     Try to detect if allow_url_include is enabled.
@@ -105,11 +98,10 @@ def _check_url_include(url):
                 # Fallback text check
                 if "allow_url_include" in resp.text and "On" in resp.text:
                     return True, "ON"
-        except Exception:
+        except ScanExceptions:
             pass
 
     return None, "UNKNOWN"  # Can't determine
-
 
 def detect_rfi(text, baseline_text=""):
     """Check if response indicates successful RFI with baseline comparison."""
@@ -123,15 +115,13 @@ def detect_rfi(text, baseline_text=""):
 
     return False, None
 
-
 def _get_baseline(url):
     """Get baseline response for comparison."""
     try:
         resp = smart_request("get", url, delay=0)
         return resp.text
-    except Exception:
+    except ScanExceptions:
         return ""
-
 
 def _test_rfi_param(param, params, parsed, delay, baseline_text):
     """Test a single param for RFI."""
@@ -154,10 +144,9 @@ def _test_rfi_param(param, params, parsed, delay, baseline_text):
                     "signature": sig,
                     "url": test_url,
                 }
-        except Exception:
+        except ScanExceptions:
             pass
     return None
-
 
 def _test_rfi_form_input(
     inp, inputs, hidden_data, method, target, delay, baseline_text
@@ -190,10 +179,9 @@ def _test_rfi_form_input(
                     "url": target,
                     "method": method,
                 }
-        except Exception:
+        except ScanExceptions:
             pass
     return None
-
 
 def scan_rfi(url, forms, delay, threads=None):
     """Scan for Remote File Inclusion vulnerabilities (threaded)."""
@@ -272,7 +260,7 @@ def scan_rfi(url, forms, delay, threads=None):
                 result = future.result()
                 if result:
                     vulns.append(result)
-            except Exception:
+            except ScanExceptions:
                 pass
 
     return vulns

@@ -2,11 +2,6 @@
 Tests for utils/tamper.py — Tamper Script Engine
 """
 
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from utils.tamper import (
     TamperChain,
     BUILTIN_TAMPERS,
@@ -21,7 +16,6 @@ from utils.tamper import (
     _concat,
     _multiline,
 )
-
 
 class TestBuiltinTampers:
     """Test individual tamper functions."""
@@ -60,7 +54,6 @@ class TestBuiltinTampers:
     def test_multiline(self):
         result = _multiline("SELECT * FROM users")
         assert "\n" in result
-
 
 class TestTamperChain:
     """Test TamperChain class."""
@@ -111,7 +104,6 @@ class TestTamperChain:
         original = ["<script>alert(1)</script>"]
         result = chain.apply_list(original)
         assert original[0] in result  # Original preserved
-
 
 class TestTamperRegistry:
     """Test tamper registry and listing."""

@@ -3,15 +3,10 @@ cyberm4fia-scanner - CORS Misconfiguration Module
 Detects overly permissive CORS configurations
 """
 
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from urllib.parse import urlparse
 from utils.colors import log_info, log_success, log_vuln
 from utils.request import increment_vulnerability_count, smart_request
-
+from utils.request import ScanExceptions
 
 # Test origins to send as Origin header
 def _generate_test_origins(target_url):
@@ -30,7 +25,6 @@ def _generate_test_origins(target_url):
         "http://localhost",
         "http://127.0.0.1",
     ]
-
 
 def scan_cors(url):
     """Scan for CORS misconfigurations."""
@@ -97,7 +91,7 @@ def scan_cors(url):
                 )
                 break  # Found one, enough
 
-        except Exception:
+        except ScanExceptions:
             pass
 
     if not vulns:
@@ -109,7 +103,7 @@ def scan_cors(url):
                 log_info(f"CORS configured: ACAO={acao} (no misconfiguration found)")
             else:
                 log_info("No CORS headers detected")
-        except Exception:
+        except ScanExceptions:
             pass
 
     return vulns

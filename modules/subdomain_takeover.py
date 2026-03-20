@@ -5,16 +5,12 @@ Inspired by Subzy, Can-I-Take-Over-XYZ
 """
 
 from urllib.parse import urlparse
-import sys
-import os
 import socket
-import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from utils.colors import log_info, log_success, log_warning, log_error
+from utils.colors import log_info, log_success, log_warning
 from utils.request import smart_request
+from utils.request import ScanExceptions
 
 # ─────────────────────────────────────────────────────
 # Fingerprint database - services vulnerable to takeover
@@ -180,7 +176,6 @@ FINGERPRINTS = [
     },
 ]
 
-
 def resolve_cname(subdomain):
     """Resolve CNAME for a subdomain using DNS."""
     try:
@@ -194,9 +189,8 @@ def resolve_cname(subdomain):
         )
         cname = result.stdout.strip().rstrip(".")
         return cname if cname else None
-    except Exception:
+    except ScanExceptions:
         return None
-
 
 def check_nxdomain(subdomain):
     """Check if a domain resolves to NXDOMAIN (no DNS record)."""
@@ -205,7 +199,6 @@ def check_nxdomain(subdomain):
         return False  # Resolves — not NXDOMAIN
     except socket.gaierror:
         return True  # NXDOMAIN
-
 
 def check_subdomain_takeover(subdomain, delay=0):
     """Check a single subdomain for potential takeover."""
@@ -268,11 +261,10 @@ def check_subdomain_takeover(subdomain, delay=0):
                                 }
                             )
                             return findings
-            except Exception:
+            except ScanExceptions:
                 pass
 
     return findings
-
 
 def discover_subdomains(domain):
     """Use crt.sh to discover subdomains for takeover testing."""
@@ -291,14 +283,13 @@ def discover_subdomains(domain):
                     sub = sub.strip().lower()
                     if sub.endswith(domain) and "*" not in sub:
                         subdomains.add(sub)
-    except Exception:
+    except ScanExceptions:
         log_warning("crt.sh lookup failed. Using only provided domain.")
 
     if not subdomains:
         subdomains.add(domain)
 
     return list(subdomains)
-
 
 def scan_subdomain_takeover(url, delay=0, threads=10):
     """Main entry point for subdomain takeover scanning."""
@@ -330,7 +321,7 @@ def scan_subdomain_takeover(url, delay=0, threads=10):
         }
 
         for future in as_completed(futures):
-            sub = futures[future]
+            _ = futures[future]
             try:
                 results = future.result()
                 for finding in results:
@@ -345,7 +336,7 @@ def scan_subdomain_takeover(url, delay=0, threads=10):
                             f"[POTENTIAL TAKEOVER] {finding['subdomain']} → "
                             f"{finding['service']}"
                         )
-            except Exception:
+            except ScanExceptions:
                 pass
 
     log_success(

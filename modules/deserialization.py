@@ -4,16 +4,12 @@ Detects serialized objects in cookies/responses and tests for exploitation.
 Targets: PHP (unserialize), Java (ObjectInputStream), Python (pickle), .NET.
 """
 
-import sys
-import os
 import re
 import base64
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from utils.colors import log_info, log_success, log_warning
 from utils.request import smart_request
-
+from utils.request import ScanExceptions
 
 # ─────────────────────────────────────────────────────
 # Serialization Signatures
@@ -110,7 +106,6 @@ SERIALIZED_PARAMS = [
     "prefs",
 ]
 
-
 def _decode_value(value):
     """Try to decode a value that might be base64-encoded serialized data."""
     raw = value
@@ -118,7 +113,7 @@ def _decode_value(value):
     try:
         decoded = base64.b64decode(value + "==")
         return decoded, raw
-    except Exception:
+    except ScanExceptions:
         pass
     # Try URL-decoded base64
     try:
@@ -127,10 +122,9 @@ def _decode_value(value):
         unquoted = urllib.parse.unquote(value)
         decoded = base64.b64decode(unquoted + "==")
         return decoded, raw
-    except Exception:
+    except ScanExceptions:
         pass
     return value.encode() if isinstance(value, str) else value, raw
-
 
 def _detect_serialization(text, source="response"):
     """Detect serialized objects in text using signatures."""
@@ -155,7 +149,6 @@ def _detect_serialization(text, source="response"):
                 break  # One match per language is enough
 
     return findings
-
 
 def _scan_cookies(url, delay=0):
     """Scan cookies for serialized objects."""
@@ -201,11 +194,10 @@ def _scan_cookies(url, delay=0):
                                         }
                                     )
 
-    except Exception:
+    except ScanExceptions:
         pass
 
     return findings
-
 
 def _scan_response_body(url, delay=0):
     """Scan response body for serialized object patterns."""
@@ -236,11 +228,10 @@ def _scan_response_body(url, delay=0):
                 )
                 findings.extend(decoded_findings)
 
-    except Exception:
+    except ScanExceptions:
         pass
 
     return findings
-
 
 def _test_deserialization_injection(url, delay=0):
     """Send probe payloads to test if deserialization is exploitable."""
@@ -306,11 +297,10 @@ def _test_deserialization_injection(url, delay=0):
                         )
                         break
 
-            except Exception:
+            except ScanExceptions:
                 pass
 
     return findings
-
 
 def scan_deserialization(url, delay=0):
     """

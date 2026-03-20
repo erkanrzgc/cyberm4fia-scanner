@@ -4,15 +4,11 @@ Detects logic flaws: price manipulation, quantity abuse, role escalation,
 duplicate actions, negative values, and parameter tampering.
 """
 
-import sys
-import os
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.colors import log_info, log_success
 from utils.request import smart_request
-
+from utils.request import ScanExceptions
 
 # ─────────────────────────────────────────────────────
 # Business Logic Test Patterns
@@ -52,7 +48,6 @@ ZERO_VALUES = ["0", "0.00", "0.001"]
 OVERFLOW_VALUES = ["999999999", "2147483647", "99999.99"]
 ROLE_VALUES = ["admin", "administrator", "root", "superuser", "staff", "moderator"]
 IDOR_VALUES = ["1", "0", "2", "admin", "root"]
-
 
 def _detect_form_params(forms):
     """Analyze forms to find interesting parameters for logic testing."""
@@ -100,7 +95,6 @@ def _detect_form_params(forms):
 
     return targets
 
-
 def _detect_url_params(url):
     """Detect interesting parameters in URL query string."""
     targets = []
@@ -134,7 +128,6 @@ def _detect_url_params(url):
             )
 
     return targets
-
 
 def _test_price_manipulation(url, param_name, method="GET", form_data=None, delay=0):
     """Test if price can be manipulated to negative or zero."""
@@ -187,11 +180,10 @@ def _test_price_manipulation(url, param_name, method="GET", form_data=None, dela
                     log_success(f"💰 Price manipulation! {param_name}={value} accepted")
                     return findings  # One is enough
 
-        except Exception:
+        except ScanExceptions:
             pass
 
     return findings
-
 
 def _test_quantity_abuse(url, param_name, method="GET", form_data=None, delay=0):
     """Test quantity for negative, zero, and overflow values."""
@@ -249,11 +241,10 @@ def _test_quantity_abuse(url, param_name, method="GET", form_data=None, delay=0)
                     log_success(f"📦 {vuln_type}! {param_name}={value}")
                     return findings
 
-        except Exception:
+        except ScanExceptions:
             pass
 
     return findings
-
 
 def _test_role_escalation(url, param_name, method="GET", form_data=None, delay=0):
     """Test if role/privilege can be escalated."""
@@ -303,11 +294,10 @@ def _test_role_escalation(url, param_name, method="GET", form_data=None, delay=0
                     log_success(f"👑 Role escalation! {param_name}={value}")
                     return findings
 
-        except Exception:
+        except ScanExceptions:
             pass
 
     return findings
-
 
 def _test_idor(url, param_name, method="GET", form_data=None, delay=0):
     """Test for Insecure Direct Object Reference."""
@@ -319,7 +309,7 @@ def _test_idor(url, param_name, method="GET", form_data=None, delay=0):
             "get" if method == "GET" else "post", url, delay=delay, timeout=5
         )
         baseline_len = len(baseline.text)
-    except Exception:
+    except ScanExceptions:
         return findings
 
     for value in IDOR_VALUES:
@@ -352,11 +342,10 @@ def _test_idor(url, param_name, method="GET", form_data=None, delay=0):
                 log_success(f"🔓 IDOR detected! {param_name}={value}")
                 return findings
 
-        except Exception:
+        except ScanExceptions:
             pass
 
     return findings
-
 
 def _test_mass_assignment(url, delay=0):
     """Test for mass assignment by sending extra parameters."""
@@ -410,11 +399,10 @@ def _test_mass_assignment(url, delay=0):
                     log_success(f"⚡ Mass assignment: {key}={value}")
                     break
 
-    except Exception:
+    except ScanExceptions:
         pass
 
     return findings
-
 
 def scan_business_logic(url, forms=None, delay=0):
     """

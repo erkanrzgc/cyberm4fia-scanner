@@ -7,6 +7,7 @@ Usage:
 
     results = async_scan_urls(urls, callback, delay=0.3)
 """
+from utils.request import ScanExceptions
 
 import asyncio
 import random
@@ -150,7 +151,7 @@ async def async_scan_urls(urls, scan_callback, concurrency=20, delay=None):
                     result = await scan_callback(session, url)
                     if result:
                         all_vulns.extend(result)
-                except Exception:
+                except ScanExceptions:
                     pass
 
         tasks = [asyncio.create_task(_bounded_scan(u)) for u in urls]

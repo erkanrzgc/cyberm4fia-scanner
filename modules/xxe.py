@@ -3,15 +3,9 @@ cyberm4fia-scanner - XML External Entity (XXE) Scanner
 Tests for XXE injection in XML-accepting endpoints
 """
 
-import sys
-import os
-import re
-from urllib.parse import urlparse, parse_qs
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from utils.colors import log_info, log_success, log_warning, log_error
+from utils.colors import log_info, log_success, log_warning
 from utils.request import smart_request
+from utils.request import ScanExceptions
 
 # ─────────────────────────────────────────────────────
 # XXE Payloads
@@ -64,7 +58,6 @@ LINUX_SIGNATURES = ["root:x:0:0", "bin/bash", "sbin/nologin", "/home/"]
 WINDOWS_SIGNATURES = ["[fonts]", "[extensions]", "for 16-bit app support"]
 AWS_SIGNATURES = ["ami-id", "instance-id", "local-ipv4"]
 
-
 def detect_xml_endpoints(url, delay=0):
     """Discover endpoints that accept XML input."""
     xml_endpoints = []
@@ -108,7 +101,7 @@ def detect_xml_endpoints(url, delay=0):
                         in resp.headers.get("content-type", "").lower(),
                     }
                 )
-        except Exception:
+        except ScanExceptions:
             pass
 
     # Also test the main URL
@@ -129,11 +122,10 @@ def detect_xml_endpoints(url, delay=0):
                     "accepts_xml": True,
                 }
             )
-    except Exception:
+    except ScanExceptions:
         pass
 
     return xml_endpoints
-
 
 def test_xxe_payload(url, payload, delay=0):
     """Send an XXE payload and analyze the response."""
@@ -150,9 +142,8 @@ def test_xxe_payload(url, payload, delay=0):
             timeout=10,
         )
         return resp.text, resp.status_code
-    except Exception:
+    except ScanExceptions:
         return None, None
-
 
 def scan_xxe(url, delay=0):
     """Main XXE scanner entry point."""

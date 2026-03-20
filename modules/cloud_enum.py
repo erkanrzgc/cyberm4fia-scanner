@@ -3,17 +3,12 @@ cyberm4fia-scanner - Cloud Storage Enumeration Module
 Discovers exposed AWS S3, Azure Blob, and GCP Buckets
 """
 
-import sys
-import os
-import itertools
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlparse
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from utils.colors import log_info, log_success, log_warning, log_error
+from utils.colors import log_info, log_success, log_warning
 from utils.request import smart_request
-
+from utils.request import ScanExceptions
 
 # ─────────────────────────────────────────────────────
 # Permutation Engine
@@ -80,7 +75,6 @@ PROVIDERS = {
     },
 }
 
-
 def generate_bucket_names(domain):
     """Generate permutations of bucket names from target domain."""
     parsed = urlparse(domain)
@@ -102,7 +96,6 @@ def generate_bucket_names(domain):
             bucket_names.add(perm.format(base=base))
 
     return list(bucket_names)
-
 
 def check_bucket(bucket_name, provider_key, provider_info, delay):
     """Check if a cloud storage bucket exists and is accessible."""
@@ -168,11 +161,10 @@ def check_bucket(bucket_name, provider_key, provider_info, delay):
                 break  # No need to try other regions
 
             # If 404 / NoSuchBucket → skip
-        except Exception:
+        except ScanExceptions:
             pass
 
     return results
-
 
 def try_upload(url, delay):
     """Attempt a PUT upload to check write permissions."""
@@ -182,10 +174,9 @@ def try_upload(url, delay):
         resp = smart_request("put", test_url, data=test_content, delay=delay, timeout=5)
         if resp.status_code in (200, 201):
             return True
-    except Exception:
+    except ScanExceptions:
         pass
     return False
-
 
 def scan_cloud_storage(url, delay=0, threads=15):
     """Main entry point for cloud storage enumeration."""
@@ -230,7 +221,7 @@ def scan_cloud_storage(url, delay=0, threads=15):
                                 f"{finding['provider']}: "
                                 f"{finding['bucket']} → {finding['access']}"
                             )
-                except Exception:
+                except ScanExceptions:
                     pass
 
     # Try write test on open buckets

@@ -2,11 +2,6 @@
 Tests for utils/finding.py and modules/passive.py
 """
 
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from utils.finding import (
     AttackPath,
     Finding,
@@ -18,7 +13,6 @@ from utils.finding import (
     VULN_REGISTRY,
 )
 from modules.passive import scan_passive, SECURITY_HEADERS, SECRET_PATTERNS
-
 
 class TestFinding:
     """Tests for Finding dataclass."""
@@ -80,7 +74,6 @@ class TestFinding:
             == "https://example.com/login"
         )
 
-
 class TestVulnRegistry:
     """Tests for CVSS/CWE registry."""
 
@@ -110,7 +103,6 @@ class TestVulnRegistry:
 
     def test_minimum_registry_size(self):
         assert len(VULN_REGISTRY) >= 35
-
 
 class TestNormalizeVuln:
     """Tests for normalize_vuln."""
@@ -205,7 +197,6 @@ class TestNormalizeVuln:
         assert artifacts["attack_paths"]
         assert isinstance(artifacts["attack_paths"][0], AttackPath)
 
-
 class TestSARIF:
     """Tests for SARIF output generation."""
 
@@ -249,7 +240,6 @@ class TestSARIF:
         assert len(sarif["runs"][0]["results"]) == 2
         rules = sarif["runs"][0]["tool"]["driver"]["rules"]
         assert len(rules) == 2
-
 
 class TestPassiveScanner:
     """Tests for passive scanning module."""

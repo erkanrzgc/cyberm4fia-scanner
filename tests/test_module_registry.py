@@ -3,9 +3,6 @@ Tests for core/module_registry.py
 """
 
 import os
-import sys
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.module_registry import (
     canonicalize_scan_url,
@@ -14,7 +11,6 @@ from core.module_registry import (
     iter_phase_module_specs,
     run_phase_modules,
 )
-
 
 class TestModuleRegistry:
     def test_canonicalize_scan_url_strips_fragments_and_noise_params(self):

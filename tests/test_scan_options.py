@@ -2,13 +2,9 @@
 Tests for core/scan_options.py
 """
 
-import os
-import sys
 from types import SimpleNamespace
 
 import pytest
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.scan_options import (
     ATTACK_PROFILE_SPECS,
@@ -28,7 +24,6 @@ from core.scan_options import (
     get_scan_mode_runtime,
     resolve_interactive_prompt_value,
 )
-
 
 def _make_args(**overrides):
     base = {
@@ -79,7 +74,6 @@ def _make_args(**overrides):
     }
     base.update(overrides)
     return SimpleNamespace(**base)
-
 
 class TestScanOptions:
     def test_default_options_include_expected_runtime_defaults(self):
@@ -305,6 +299,7 @@ class TestScanOptions:
             "session",
             "exploit",
             "ai",
+            "ollama_url",
             "proxy_listen",
             "html",
             "sarif",
@@ -316,6 +311,7 @@ class TestScanOptions:
             "exclude",
             "exploit",
             "ai",
+            "ollama_url",
             "proxy_listen",
             "html",
             "sarif",

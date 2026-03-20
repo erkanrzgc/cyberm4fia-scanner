@@ -3,15 +3,10 @@ cyberm4fia-scanner - DOM XSS Module
 DOM-based Cross-Site Scripting detection using Selenium
 """
 
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 from utils.colors import log_info, log_success, log_warning, log_error, log_vuln
 from utils.request import increment_vulnerability_count
-
+from utils.request import ScanExceptions
 
 DOM_XSS_PAYLOADS = [
     '<img src=x onerror=alert("DOMXSS")>',
@@ -20,7 +15,6 @@ DOM_XSS_PAYLOADS = [
     "'-alert('DOMXSS')-'",
     "javascript:alert('DOMXSS')",
 ]
-
 
 def scan_dom_xss(url):
     """Scan for DOM-based XSS using Playwright headless browser"""
@@ -45,7 +39,7 @@ def scan_dom_xss(url):
                 headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"]
             )
             context = browser.new_context(viewport={"width": 1920, "height": 1080})
-        except Exception as e:
+        except ScanExceptions as e:
             log_error(f"Playwright browser error: {e}")
             log_warning("Ensure browsers are installed: playwright install chromium")
             return []
@@ -70,7 +64,7 @@ def scan_dom_xss(url):
                     page.wait_for_timeout(1000)
                 except PlaywrightTimeoutError:
                     pass
-                except Exception:
+                except ScanExceptions:
                     pass
 
                 if alert_triggered[0]:
@@ -110,7 +104,7 @@ def scan_dom_xss(url):
                         page.wait_for_timeout(1000)
                     except PlaywrightTimeoutError:
                         pass
-                    except Exception:
+                    except ScanExceptions:
                         pass
 
                     if alert_triggered_param[0]:

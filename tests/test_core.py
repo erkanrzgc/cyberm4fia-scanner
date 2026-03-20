@@ -2,16 +2,12 @@
 Tests for core/scope.py and core/session.py
 """
 
-import sys
 import os
 import json
 import tempfile
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from core.scope import ScopeFilter
 from core.session import ScanSession
-
 
 class TestScopeFilter:
     """Tests for URL scope filtering."""
@@ -73,7 +69,6 @@ class TestScopeFilter:
         assert not ScopeFilter().active
         assert ScopeFilter(include=["*.example.com"]).active
         assert ScopeFilter(exclude=["/logout"]).active
-
 
 class TestScanSession:
     """Tests for scan session save/resume."""

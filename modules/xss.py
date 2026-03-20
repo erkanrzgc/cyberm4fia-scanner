@@ -3,11 +3,6 @@ cyberm4fia-scanner - XSS Module
 Cross-Site Scripting detection
 """
 
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from utils.colors import log_info, log_success, log_vuln, log_warning
 from utils.request import (
     get_oob_client,
@@ -15,12 +10,14 @@ from utils.request import (
     smart_request,
 )
 from modules.payloads import XSS_FLAT_PAYLOADS
+from utils.payload_filter import PayloadFilter
 from modules.smart_payload import probe_xss_context
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse, urljoin
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import re
-
+from typing import Any, Optional
+from utils.request import ScanExceptions
 
 def analyze_context(soup, payload):
     """Analyze where payload appears in page"""
@@ -62,7 +59,6 @@ def analyze_context(soup, payload):
 
     return list(dict.fromkeys(contexts))
 
-
 def is_valid_xss_reflection(payload, contexts):
     """Apply conservative validation to reduce false positives."""
     ctx = set(contexts)
@@ -95,8 +91,7 @@ def is_valid_xss_reflection(payload, contexts):
 
     return is_valid
 
-
-def scan_xss_param(url, param, original_params, payloads, delay):
+def scan_xss_param(url: str, param: str, original_params: dict, payloads: list, delay: float, target_context: Optional[dict] = None) -> list:
     """Scan a single parameter for XSS"""
     vulns = []
 
@@ -111,6 +106,9 @@ def scan_xss_param(url, param, original_params, payloads, delay):
         all_payloads = smart_payloads + [p for p in payloads if p not in smart_payloads]
     else:
         all_payloads = list(payloads)
+
+    if target_context:
+        all_payloads = PayloadFilter.filter_payloads(all_payloads, target_context)
 
     oob_client = get_oob_client()
     if oob_client and oob_client.ready:
@@ -296,11 +294,10 @@ def scan_xss_param(url, param, original_params, payloads, delay):
                                         vulns.append(vuln_found)
                                         break
 
-        except Exception:
+        except ScanExceptions:
             pass  # Individual payload failure is expected
 
     return vulns
-
 
 def _check_xss_reflection(
     resp, payload, target_name, url_or_action, smart_payloads, source=None
@@ -325,8 +322,7 @@ def _check_xss_reflection(
             }
     return None
 
-
-def scan_xss_form(form, url, payloads, delay):
+def scan_xss_form(form: Any, url: str, payloads: list, delay: float, target_context: Optional[dict] = None) -> list:
     """Scan a form for XSS"""
     vulns = []
     action = form.get("action") or url
@@ -350,6 +346,9 @@ def scan_xss_form(form, url, payloads, delay):
             ]
         else:
             all_payloads = payloads
+
+        if target_context:
+            all_payloads = PayloadFilter.filter_payloads(all_payloads, target_context)
 
         for payload in all_payloads:
             data = {n: "test" for n in input_names}
@@ -579,15 +578,17 @@ def scan_xss_form(form, url, payloads, delay):
                                             vulns.append(vuln_found)
                                             break
 
-            except Exception:
+            except ScanExceptions:
                 pass  # Individual payload failure is expected
 
     return vulns
 
-
-def scan_xss(url, forms, delay, threads=10):
+def scan_xss(url: str, forms: list, delay: float, options: Optional[dict] = None, threads: int = 10) -> list:
     """Main XSS scanning function"""
     from utils.tamper import get_tamper_chain
+    
+    options = options or {}
+    target_context = options.get("target_context")
 
     payloads = XSS_FLAT_PAYLOADS
     # Apply global tamper chain if set manually
@@ -615,18 +616,19 @@ def scan_xss(url, forms, delay, threads=10):
                         {k: v[0] for k, v in params.items()},
                         payloads,
                         delay,
-                    )
+                        target_context
+                    )  # pyre-ignore
                 )
 
             for future in as_completed(futures):
                 try:
                     all_vulns.extend(future.result())
-                except Exception:
+                except ScanExceptions:
                     pass  # Individual future result failure
 
     # Scan forms
     for form in forms:
-        vulns = scan_xss_form(form, url, payloads, delay)
+        vulns = scan_xss_form(form, url, payloads, delay, target_context)
         all_vulns.extend(vulns)
 
     # ── AI Exploit Agent (Final Escalation) ──

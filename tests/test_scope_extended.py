@@ -3,13 +3,7 @@ Extended edge-case tests for core/scope.py ScopeFilter.
 Complements the basic tests already in test_core.py.
 """
 
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from core.scope import ScopeFilter, get_scope, set_scope
-
 
 class TestProtocolAndPort:
     """URL scheme and port edge cases."""
@@ -31,7 +25,6 @@ class TestProtocolAndPort:
         scope = ScopeFilter(include=["*.example.com"])
         assert scope.is_allowed("https://api.example.com:3000/v1/users")
 
-
 class TestQueryAndFragment:
     """Query string and fragment identifier handling."""
 
@@ -49,7 +42,6 @@ class TestQueryAndFragment:
         """Path exclusion should still work when URL has query params."""
         scope = ScopeFilter(exclude=["/logout"])
         assert not scope.is_allowed("https://example.com/logout?redirect=/home")
-
 
 class TestPathPatterns:
     """Path exclusion and pattern matching edge cases."""
@@ -77,7 +69,6 @@ class TestPathPatterns:
         assert not scope.is_allowed("https://example.com/style.css")
         assert not scope.is_allowed("https://example.com/app.js")
         assert not scope.is_allowed("https://example.com/photo.png")
-
 
 class TestEdgeCases:
     """Boundary and malformed input handling."""
@@ -108,7 +99,6 @@ class TestEdgeCases:
         long_path = "/a" * 5000
         result = scope.is_allowed(f"https://app.example.com{long_path}")
         assert result is True
-
 
 class TestStatsAccuracy:
     """Verify stat counters track correctly."""
@@ -144,7 +134,6 @@ class TestStatsAccuracy:
         assert s1.stats["blocked_scope"] == 0
         assert s2.stats["allowed"] == 0
         assert s2.stats["blocked_scope"] == 1
-
 
 class TestGlobalScopeFunctions:
     """Tests for module-level get_scope / set_scope."""

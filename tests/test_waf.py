@@ -2,13 +2,7 @@
 Tests for utils/waf.py — WAF fingerprint detection
 """
 
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from utils.waf import WAFDetector
-
 
 class TestWAFDetector:
     """Tests for WAF fingerprinting engine."""

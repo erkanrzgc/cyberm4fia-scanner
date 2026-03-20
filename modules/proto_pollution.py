@@ -4,16 +4,12 @@ Detects JavaScript prototype pollution via URL parameters and JSON bodies.
 Targets Node.js/Express applications with merge/extend patterns.
 """
 
-import sys
-import os
 import json
 from urllib.parse import urlparse
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from utils.colors import log_info, log_success
 from utils.request import increment_vulnerability_count, smart_request
-
+from utils.request import ScanExceptions
 
 # ─────────────────────────────────────────────────────
 # Prototype Pollution Payloads
@@ -75,7 +71,6 @@ MERGE_ENDPOINTS = [
     "/preferences",
 ]
 
-
 def _test_url_params(url, delay=0):
     """Test prototype pollution via URL query parameters."""
     findings = []
@@ -86,7 +81,7 @@ def _test_url_params(url, delay=0):
         baseline_text = baseline.text
         baseline_status = baseline.status_code
         baseline_len = len(baseline_text)
-    except Exception:
+    except ScanExceptions:
         return findings
 
     for param_name, param_value in URL_PAYLOADS:
@@ -144,11 +139,10 @@ def _test_url_params(url, delay=0):
                 log_success(f"🧬 Prototype Pollution! {param_name}={param_value}")
                 return findings  # One is enough to confirm
 
-        except Exception:
+        except ScanExceptions:
             pass
 
     return findings
-
 
 def _test_json_body(url, delay=0):
     """Test prototype pollution via JSON request body."""
@@ -168,7 +162,7 @@ def _test_json_body(url, delay=0):
         )
         baseline_text = baseline.text
         baseline_status = baseline.status_code
-    except Exception:
+    except ScanExceptions:
         return findings
 
     for payload in JSON_PAYLOADS:
@@ -209,11 +203,10 @@ def _test_json_body(url, delay=0):
                 log_success(f"🧬 JSON Prototype Pollution! {payload_str}")
                 return findings
 
-        except Exception:
+        except ScanExceptions:
             pass
 
     return findings
-
 
 def _test_merge_endpoints(base_url, delay=0):
     """Test common API endpoints that likely use object merge/extend."""
@@ -237,7 +230,6 @@ def _test_merge_endpoints(base_url, delay=0):
             break  # Found one, stop
 
     return findings
-
 
 def scan_proto_pollution(url, forms=None, delay=0):
     """

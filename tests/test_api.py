@@ -2,11 +2,6 @@
 Tests for api_server.py — FastAPI endpoint tests.
 """
 
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import pytest
 import threading
 
@@ -18,7 +13,6 @@ try:
     HAS_API_DEPS = True
 except ImportError:
     HAS_API_DEPS = False
-
 
 class _NoopThread:
     """Thread stub used to avoid background network activity in tests."""
@@ -32,7 +26,6 @@ class _NoopThread:
 
     def start(self):
         self.started = True
-
 
 @pytest.mark.skipif(not HAS_API_DEPS, reason="FastAPI/httpx not installed")
 class TestAPIServer:

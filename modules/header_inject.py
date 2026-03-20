@@ -3,14 +3,9 @@ cyberm4fia-scanner - Header Injection Module
 HTTP Header injection and Host header attacks
 """
 
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from utils.colors import log_info, log_success, log_vuln
 from utils.request import increment_vulnerability_count, smart_request
-
+from utils.request import ScanExceptions
 
 # Header injection payloads
 HEADER_PAYLOADS = {
@@ -58,7 +53,6 @@ HEADER_SIGNATURES = {
     ],
 }
 
-
 def _check_host_header(url, delay):
     """Test Host header injection/override."""
     vulns = []
@@ -66,7 +60,7 @@ def _check_host_header(url, delay):
     # Warm up connection
     try:
         smart_request("get", url, delay=delay)
-    except Exception:
+    except ScanExceptions:
         return vulns
 
     for header_dict in HEADER_PAYLOADS["host_override"]:
@@ -113,11 +107,10 @@ def _check_host_header(url, delay):
                     )
                     return vulns
 
-        except Exception:
+        except ScanExceptions:
             pass
 
     return vulns
-
 
 def _check_ip_spoof(url, delay):
     """Test IP spoofing via headers."""
@@ -133,7 +126,7 @@ def _check_ip_spoof(url, delay):
         natural_variance = abs(len(baseline1.text) - len(baseline2.text))
         # Threshold = natural variance + 30% of page size (minimum 500 chars)
         threshold = max(natural_variance * 3, baseline_len * 0.3, 500)
-    except Exception:
+    except ScanExceptions:
         return vulns
 
     for header_dict in HEADER_PAYLOADS["ip_spoof"]:
@@ -164,11 +157,10 @@ def _check_ip_spoof(url, delay):
                 )
                 break
 
-        except Exception:
+        except ScanExceptions:
             pass
 
     return vulns
-
 
 def _check_crlf(url, delay):
     """Test CRLF injection in headers."""
@@ -196,11 +188,10 @@ def _check_crlf(url, delay):
                         }
                     )
                     return vulns
-        except Exception:
+        except ScanExceptions:
             pass
 
     return vulns
-
 
 def scan_header_inject(url, delay=0.3):
     """Scan for header injection vulnerabilities."""

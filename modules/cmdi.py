@@ -3,11 +3,6 @@ cyberm4fia-scanner - Command Injection Module
 OS Command Injection detection (Threaded)
 """
 
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import time
 import re
 from utils.colors import log_info, log_success, log_vuln
@@ -18,11 +13,11 @@ from utils.request import (
     smart_request,
 )
 from modules.payloads import CMDI_PAYLOADS, CMDI_SIGNATURES
+from utils.payload_filter import PayloadFilter
 from modules.smart_payload import probe_cmdi_context
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse, urljoin
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import httpx
-
+from utils.request import ScanExceptions
 
 def _match_standalone_output_line(text, candidates):
     """Return matched token only when it appears as a clean output line."""
@@ -34,7 +29,6 @@ def _match_standalone_output_line(text, candidates):
         if cleaned in normalized:
             return cleaned
     return None
-
 
 def detect_cmdi(text):
     """Check response for high-confidence command execution indicators."""
@@ -64,8 +58,7 @@ def detect_cmdi(text):
 
     return None, None
 
-
-def _test_cmdi_param(param, params, parsed, delay):
+def _test_cmdi_param(param, params, parsed, delay, target_context=None):
     """Test a single param for CMDi - error-based only (helper for threading)"""
     flat_params = {k: v[0] if isinstance(v, list) else v for k, v in params.items()}
     probe = probe_cmdi_context(
@@ -76,6 +69,9 @@ def _test_cmdi_param(param, params, parsed, delay):
         all_payloads = smart + [p for p in CMDI_PAYLOADS if p not in smart]
     else:
         all_payloads = list(CMDI_PAYLOADS)
+
+    if target_context:
+        all_payloads = PayloadFilter.filter_payloads(all_payloads, target_context)
 
     oob_client = get_oob_client()
     if oob_client and oob_client.ready:
@@ -105,12 +101,11 @@ def _test_cmdi_param(param, params, parsed, delay):
                     "cmd_type": cmd_type,
                     "url": test_url,
                 }
-        except Exception:
+        except ScanExceptions:
             pass
     return None
 
-
-def _test_cmdi_form_input(inp, inputs, hidden_data, method, target, delay):
+def _test_cmdi_form_input(inp, inputs, hidden_data, method, target, delay, target_context=None):
     """Test a single form input for CMDi - error-based only (helper for threading)"""
     form_data = {n: "127.0.0.1" for n in inputs}
     if hidden_data:
@@ -123,6 +118,9 @@ def _test_cmdi_form_input(inp, inputs, hidden_data, method, target, delay):
         all_payloads = smart + [p for p in CMDI_PAYLOADS if p not in smart]
     else:
         all_payloads = list(CMDI_PAYLOADS)
+
+    if target_context:
+        all_payloads = PayloadFilter.filter_payloads(all_payloads, target_context)
 
     oob_client = get_oob_client()
     if oob_client and oob_client.ready:
@@ -161,15 +159,16 @@ def _test_cmdi_form_input(inp, inputs, hidden_data, method, target, delay):
                     "method": method,
                     "hidden_data": hidden_data,
                 }
-        except Exception:
+        except ScanExceptions:
             pass
     return None
 
-
-def _test_blind_cmdi_sequential(url, forms, delay):
+def _test_blind_cmdi_sequential(url, forms, delay, target_context=None):
     """Test blind CMDi (time-based) - runs sequentially for accurate timing"""
     vulns = []
     sleep_payloads = [p for p in CMDI_PAYLOADS if "sleep" in p.lower()]
+    if target_context:
+        sleep_payloads = PayloadFilter.filter_payloads(sleep_payloads, target_context)
 
     parsed = urlparse(url)
     params = parse_qs(parsed.query)
@@ -217,7 +216,7 @@ def _test_blind_cmdi_sequential(url, forms, delay):
                         log_info(
                             f"Ignored false positive on {param} (Network delay detected: {base_elapsed:.2f}s)"
                         )
-            except Exception:
+            except ScanExceptions:
                 pass
 
     # Forms
@@ -292,18 +291,20 @@ def _test_blind_cmdi_sequential(url, forms, delay):
                             log_info(
                                 f"Ignored false positive on {inp} (Network delay detected: {base_elapsed:.2f}s)"
                             )
-                except Exception:
+                except ScanExceptions:
                     pass
 
     return vulns
 
-
-def scan_cmdi(url, forms, delay, threads=None):
+def scan_cmdi(url, forms, delay, options=None, threads=None):
     """Scan for Command Injection vulnerabilities (threaded)"""
     from utils.tamper import get_tamper_chain
 
     if threads is None:
         threads = get_thread_count()
+        
+    options = options or {}
+    target_context = options.get("target_context")
 
     # Apply tamper chain for WAF bypass variants
     chain = get_tamper_chain()
@@ -324,7 +325,7 @@ def scan_cmdi(url, forms, delay, threads=None):
         params = parse_qs(parsed.query)
         for param in params.keys():
             futures.append(
-                executor.submit(_test_cmdi_param, param, params, parsed, delay)
+                executor.submit(_test_cmdi_param, param, params, parsed, delay, target_context)
             )
 
         for form in forms:
@@ -359,6 +360,7 @@ def scan_cmdi(url, forms, delay, threads=None):
                         method,
                         target,
                         delay,
+                        target_context
                     )
                 )
 
@@ -367,11 +369,11 @@ def scan_cmdi(url, forms, delay, threads=None):
                 result = future.result()
                 if result:
                     vulns.append(result)
-            except Exception:
+            except ScanExceptions:
                 pass
 
     # 2. Blind CMDi (sequential - timing accuracy)
-    blind_vulns = _test_blind_cmdi_sequential(url, forms, delay)
+    blind_vulns = _test_blind_cmdi_sequential(url, forms, delay, target_context)
     vulns.extend(blind_vulns)
 
     # ── AI Exploit Agent (Final Escalation) ──

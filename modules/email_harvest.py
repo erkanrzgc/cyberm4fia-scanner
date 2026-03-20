@@ -3,16 +3,12 @@ cyberm4fia-scanner - Email Harvester
 Collects email addresses associated with a target domain
 """
 
-import sys
-import os
 import re
 from urllib.parse import urlparse, urljoin, quote
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from utils.colors import log_info, log_success
 from utils.request import smart_request
-
+from utils.request import ScanExceptions
 
 def harvest_from_page(url, delay=0):
     """Extract emails from a single page."""
@@ -25,10 +21,9 @@ def harvest_from_page(url, delay=0):
             body,
         )
         emails.update(e.lower() for e in found)
-    except Exception:
+    except ScanExceptions:
         pass
     return emails
-
 
 def harvest_from_google(domain, delay=0.5):
     """Search Google for emails (passive, no API key needed)."""
@@ -58,11 +53,10 @@ def harvest_from_google(domain, delay=0.5):
             )
             domain_emails = [e.lower() for e in found if domain in e.lower()]
             emails.update(domain_emails)
-        except Exception:
+        except ScanExceptions:
             pass
 
     return emails
-
 
 def harvest_from_hunter(domain, api_key=None):
     """Use Hunter.io API if api_key is provided."""
@@ -79,10 +73,9 @@ def harvest_from_hunter(domain, api_key=None):
             data = resp.json()
             for entry in data.get("data", {}).get("emails", []):
                 emails.add(entry.get("value", "").lower())
-    except Exception:
+    except ScanExceptions:
         pass
     return emails
-
 
 def harvest_from_pgp(domain, delay=0):
     """Search PGP key servers for emails."""
@@ -95,10 +88,9 @@ def harvest_from_pgp(domain, delay=0):
             resp.text,
         )
         emails.update(e.lower() for e in found)
-    except Exception:
+    except ScanExceptions:
         pass
     return emails
-
 
 def harvest_from_github(domain, delay=0.5):
     """Search GitHub for emails associated with domain."""
@@ -122,10 +114,9 @@ def harvest_from_github(domain, delay=0.5):
                     text,
                 )
                 emails.update(e.lower() for e in found)
-    except Exception:
+    except ScanExceptions:
         pass
     return emails
-
 
 def scan_email_harvest(url, delay=0):
     """Main email harvester entry point."""

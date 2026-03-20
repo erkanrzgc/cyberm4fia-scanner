@@ -3,18 +3,12 @@ Tests for utils/ai.py — Ollama AI Integration
 Tests run without requiring Ollama to be installed.
 """
 
-import os
-import sys
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from utils.ai import (
     OllamaClient,
     generate_scan_summary,
     generate_smart_payloads,
     resolve_ollama_base,
 )
-
 
 class TestOllamaClientInit:
     """Test OllamaClient initialization (without real Ollama)."""
@@ -54,7 +48,6 @@ class TestOllamaClientInit:
         monkeypatch.setenv("OLLAMA_URL", "http://127.0.0.1:11434")
 
         assert resolve_ollama_base("http://10.0.0.5:11434") == "http://10.0.0.5:11434"
-
 
 class TestAIFunctions:
     """Test AI analysis functions with mocked client."""
@@ -108,7 +101,6 @@ class TestAIFunctions:
         )
         assert "Executive summary" in result
 
-
 class TestFalsePositiveFilter:
     """Test false positive detection logic."""
 
@@ -149,7 +141,6 @@ class TestFalsePositiveFilter:
         client = self._make_mock_client("{}")
         result = detect_false_positives(client, [])
         assert result == []
-
 
 class TestAIModule:
     """Test module-level configuration."""

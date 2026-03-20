@@ -4,17 +4,13 @@ Detects CL.TE, TE.CL, and TE.TE desync vulnerabilities.
 Can bypass WAFs, poison caches, and hijack sessions.
 """
 
-import sys
-import os
 import socket
 import ssl
 import time
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from urllib.parse import urlparse
 from utils.colors import log_info, log_success, log_warning
-
+from utils.request import ScanExceptions
 
 # ─────────────────────────────────────────────────────
 # Raw HTTP Request Sender
@@ -47,9 +43,8 @@ def _send_raw(host, port, data, use_ssl=False, timeout=10):
         sock.close()
         return response.decode("utf-8", errors="ignore")
 
-    except Exception as e:
+    except ScanExceptions as e:
         return f"ERROR: {e}"
-
 
 # ─────────────────────────────────────────────────────
 # CL.TE Detection (Frontend uses Content-Length, Backend uses Transfer-Encoding)
@@ -109,7 +104,6 @@ def _test_cl_te(host, port, use_ssl, path="/"):
 
     return findings
 
-
 # ─────────────────────────────────────────────────────
 # TE.CL Detection (Frontend uses Transfer-Encoding, Backend uses Content-Length)
 # ─────────────────────────────────────────────────────
@@ -160,7 +154,6 @@ def _test_te_cl(host, port, use_ssl, path="/"):
         )
 
     return findings
-
 
 # ─────────────────────────────────────────────────────
 # Transfer-Encoding Obfuscation (TE.TE)
@@ -222,7 +215,6 @@ def _test_te_te(host, port, use_ssl, path="/"):
 
     return findings
 
-
 # ─────────────────────────────────────────────────────
 # Header Injection via Smuggling
 # ─────────────────────────────────────────────────────
@@ -256,7 +248,6 @@ def _test_header_smuggle(host, port, use_ssl, path="/"):
         )
 
     return findings
-
 
 # ─────────────────────────────────────────────────────
 # Main Scanner

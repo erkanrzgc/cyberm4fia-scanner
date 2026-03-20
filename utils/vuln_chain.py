@@ -3,13 +3,8 @@ cyberm4fia-scanner - Vulnerability Chaining Engine
 Analyzes scan findings and builds potential attack paths
 """
 
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from utils.colors import log_info, log_success, log_warning
-
+from utils.request import ScanExceptions
 
 # ─────────────────────────────────────────────────────
 # Chain Rules: how vuln A can escalate to vuln B
@@ -180,7 +175,6 @@ CHAIN_RULES = [
     },
 ]
 
-
 def analyze_chains(vulnerabilities):
     """
     Analyze a list of vulnerabilities and find potential attack chains.
@@ -216,7 +210,7 @@ def analyze_chains(vulnerabilities):
                             "chain": f"{vtype} → {rule['to']}",
                         }
                         chains.append(chain)
-                except Exception:
+                except ScanExceptions:
                     pass
 
     # Build multi-step chains

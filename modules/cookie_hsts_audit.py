@@ -20,6 +20,7 @@ from urllib.parse import urlparse
 
 from utils.colors import log_info, log_warning, log_success, log_vuln
 from utils.request import increment_vulnerability_count
+from utils.request import ScanExceptions
 
 
 # Known session cookie names (case-insensitive matching)
@@ -337,7 +338,7 @@ def scan_cookie_hsts(url: str, response=None) -> list:
         try:
             resp = smart_request("get", url)
             headers = resp.headers
-        except Exception:
+        except ScanExceptions:
             log_warning("Failed to fetch target for Cookie/HSTS audit")
             return []
 

@@ -3,15 +3,12 @@ cyberm4fia-scanner - Report Module
 HTML, JSON, and Markdown report generation with CVSS/CWE enrichment
 """
 
-import sys
 import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import json
 import html as html_module
 from datetime import datetime
-from utils.colors import log_success, log_info, log_error
+from utils.colors import log_success, log_error
 from utils.finding import (
     VULN_REGISTRY,
     _DEFAULT_VULN,
@@ -19,7 +16,7 @@ from utils.finding import (
     normalize_all,
 )
 from utils.request import get_runtime_stats
-
+from utils.request import ScanExceptions
 
 def _resolve_report_stats(stats=None):
     """Resolve runtime metrics, preferring explicit scan-context stats over globals."""
@@ -38,7 +35,6 @@ def _resolve_report_stats(stats=None):
     resolved.setdefault("retries", runtime_stats["retries"])
     return resolved
 
-
 def get_severity(vuln_type):
     """Get severity level for a vulnerability type"""
     if vuln_type in VULN_REGISTRY:
@@ -50,12 +46,11 @@ def get_severity(vuln_type):
 
     return _DEFAULT_VULN["severity"]
 
-
 def generate_html_report(vulns, url, mode, scan_dir, stats=None):
     """Generate HTML vulnerability report with CVSS & CWE enrichment"""
     try:
         os.makedirs(scan_dir, exist_ok=True)
-    except Exception as e:
+    except ScanExceptions as e:
         log_error(f"Could not create report directory: {e}")
         return None
 
@@ -119,7 +114,7 @@ def generate_html_report(vulns, url, mode, scan_dir, stats=None):
 
             if "data" in data:
                 for table, content in data["data"].items():
-                    exploit_html += f"<div style='margin-top: 10px; border-top: 1px solid #333; padding-top: 5px;'>"
+                    exploit_html += "<div style='margin-top: 10px; border-top: 1px solid #333; padding-top: 5px;'>"
                     exploit_html += f"<h5 style='color: #0abde3; margin: 5px 0;'>Table: {html_module.escape(str(table))}</h5>"
                     if "columns" in content:
                         exploit_html += f"<div style='margin-bottom: 5px;'><span style='color: #888;'>Columns:</span> <code style='color: #5f27cd'>{html_module.escape(', '.join(content['columns']))}</code></div>"
@@ -365,12 +360,11 @@ def generate_html_report(vulns, url, mode, scan_dir, stats=None):
     log_success(f"HTML Report saved: {filename}")
     return filename
 
-
 def generate_json_report(vulns, url, mode, stats, scan_dir, artifacts=None):
     """Generate JSON report"""
     try:
         os.makedirs(scan_dir, exist_ok=True)
-    except:
+    except ScanExceptions:
         pass
 
     filename = os.path.join(scan_dir, "scan.json")
@@ -393,19 +387,18 @@ def generate_json_report(vulns, url, mode, stats, scan_dir, artifacts=None):
     log_success(f"JSON saved: {filename}")
     return filename
 
-
 def generate_payload_report(scan_dir, url, vulns):
     """Generate text-based payload report"""
     try:
         os.makedirs(scan_dir, exist_ok=True)
-    except:
+    except ScanExceptions:
         pass
 
     filename = os.path.join(scan_dir, "payloads.txt")
     findings = normalize_all(vulns)
 
     with open(filename, "w") as f:
-        f.write(f"# cyberm4fia-scanner Vulnerability Report\n")
+        f.write("# cyberm4fia-scanner Vulnerability Report\n")
         f.write(f"# Target: {url}\n")
         f.write(f"# Date: {datetime.now()}\n")
         f.write(f"# Total Vulnerabilities: {len(findings)}\n\n")
@@ -431,21 +424,20 @@ def generate_payload_report(scan_dir, url, vulns):
                         if "columns" in content:
                             f.write(f"  Columns: {', '.join(content['columns'])}\n")
                         if "rows" in content:
-                            f.write(f"  Rows:\n")
+                            f.write("  Rows:\n")
                             for row in content["rows"]:
                                 f.write(f"    {row}\n")
 
-            f.write(f"\n")
+            f.write("\n")
 
     log_success(f"Payload report saved: {filename}")
     return filename
-
 
 def generate_markdown_report(vulns, url, mode, scan_dir, stats=None):
     """Generate Professional Markdown Report for Bug Bounty Platforms."""
     try:
         os.makedirs(scan_dir, exist_ok=True)
-    except Exception as e:
+    except ScanExceptions as e:
         log_error(f"Could not create report directory: {e}")
         return None
 

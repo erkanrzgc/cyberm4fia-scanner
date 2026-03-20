@@ -13,6 +13,7 @@ Detects:
 import re
 
 from utils.colors import log_info, log_warning, log_success
+from utils.request import ScanExceptions
 
 
 # ──────────────────────────────────────────────
@@ -146,7 +147,7 @@ def scan_passive(url: str, response=None, headers=None, body=None, delay=0):
         headers = dict(response.headers) if hasattr(response, "headers") else {}
         try:
             body = response.text if hasattr(response, "text") else str(response.content)
-        except Exception:
+        except ScanExceptions:
             body = ""
     else:
         headers = headers or {}

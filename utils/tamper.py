@@ -16,6 +16,7 @@ Custom tampers can be added to the same directory.
 import os
 import importlib.util
 from utils.colors import log_info, log_warning, log_success
+from utils.request import ScanExceptions
 
 
 # ──────────────────────────────────────────────
@@ -273,7 +274,7 @@ class TamperChain:
         for fn in self.functions:
             try:
                 payload = fn(payload)
-            except Exception:
+            except ScanExceptions:
                 pass  # Skip failed tamper, use untampered
         return payload
 
@@ -326,7 +327,7 @@ def _load_custom_tamper(name: str):
         else:
             log_warning(f"Custom tamper {name}.py has no tamper() function")
             return None
-    except Exception as e:
+    except ScanExceptions as e:
         log_warning(f"Failed to load custom tamper {name}: {e}")
         return None
 

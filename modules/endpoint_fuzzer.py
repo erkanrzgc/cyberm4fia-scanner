@@ -4,17 +4,14 @@ High-speed asynchronous directory and API endpoint discovery tool.
 """
 
 import sys
-import os
 import asyncio
 import httpx
-from urllib.parse import urlparse, urljoin
 import string
 import random
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from utils.colors import log_info, log_success, log_warning, log_error
 from utils.request import get_global_headers, get_proxy, is_ssl_verification_enabled
+from utils.request import ScanExceptions
 
 class EndpointFuzzer:
     def __init__(self, target_url, wordlist_path, delay=0, threads=50):
@@ -53,7 +50,7 @@ class EndpointFuzzer:
                     # Save the response length or hash as a signature
                     content_length = len(resp.text)
                     self.soft_404_signatures.append(content_length)
-            except Exception:
+            except ScanExceptions:
                 pass
                 
         if self.soft_404_signatures:
@@ -100,7 +97,7 @@ class EndpointFuzzer:
                             "size": len(resp.content)
                         })
                         
-            except Exception:
+            except ScanExceptions:
                 pass  # Ignore connection errors during fuzzing
                 
             finally:

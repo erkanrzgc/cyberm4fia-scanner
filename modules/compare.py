@@ -3,14 +3,10 @@ cyberm4fia-scanner - Scan Comparison Module
 Compare two scan results and show differences
 """
 
-import sys
 import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import json
 from utils.colors import Colors, log_success, log_warning
-
 
 def _vuln_key(v):
     """Create a unique key for a vulnerability."""
@@ -19,7 +15,6 @@ def _vuln_key(v):
         v.get("param", v.get("field", "")),
         v.get("payload", "")[:50],
     )
-
 
 def load_scan(scan_dir):
     """Load scan results from a scan directory."""
@@ -30,7 +25,6 @@ def load_scan(scan_dir):
 
     with open(json_path, "r") as f:
         return json.load(f)
-
 
 def compare_scans(scan_dir_1, scan_dir_2):
     """Compare two scan results.
@@ -79,7 +73,6 @@ def compare_scans(scan_dir_1, scan_dir_2):
         "new": new,
         "unchanged": unchanged,
     }
-
 
 def print_comparison(result):
     """Pretty-print comparison results."""
@@ -150,7 +143,6 @@ def print_comparison(result):
     else:
         print("📊 Same number of vulnerabilities")
     print()
-
 
 def save_comparison_json(result, output_path):
     """Save comparison result as JSON."""

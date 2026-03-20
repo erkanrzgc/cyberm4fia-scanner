@@ -4,16 +4,14 @@ Web spider that extracts HTML links, forms, and hidden API endpoints from JS fil
 Returns both URLs and forms for downstream scanning modules.
 """
 
-import sys
 import os
 import re
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from urllib.parse import urlparse, urlunparse, urljoin
 from bs4 import BeautifulSoup
 from utils.colors import log_info, log_success, log_warning
 from utils.request import smart_request
+from utils.request import ScanExceptions
 
 # Regex to find endpoints in JS files (Katana/LinkFinder style)
 JS_PATH_REGEX = re.compile(
@@ -34,7 +32,6 @@ INTERESTING_EXTENSIONS = {
     ".rb",
     ".cfm",
 }
-
 
 def _extract_js_endpoints(js_content, base_url):
     """Extract paths from raw JS content."""
@@ -61,7 +58,6 @@ def _extract_js_endpoints(js_content, base_url):
         full_url = urljoin(base_url, path)
         links.add(full_url)
     return links
-
 
 def _extract_forms(soup, page_url):
     """Extract all forms with their inputs from a page."""
@@ -93,7 +89,6 @@ def _extract_forms(soup, page_url):
 
     return forms
 
-
 def _extract_comments(html):
     """Extract HTML comments that might reveal hidden info."""
     comments = re.findall(r"<!--(.*?)-->", html, re.DOTALL)
@@ -114,7 +109,6 @@ def _extract_comments(html):
         if any(kw in comment_lower for kw in keywords):
             interesting.append(comment.strip()[:200])
     return interesting
-
 
 def crawl_site(start_url, max_pages=50):
     """
@@ -216,7 +210,7 @@ def crawl_site(start_url, max_pages=50):
                         if parsed_link.netloc == base_domain:
                             api_endpoints.add(link)
 
-        except Exception:
+        except ScanExceptions:
             pass
 
     # Deduplicate forms by action URL
