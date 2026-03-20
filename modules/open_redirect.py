@@ -3,16 +3,12 @@ cyberm4fia-scanner - Open Redirect Scanner
 Detects URL redirect vulnerabilities for phishing and auth bypass
 """
 
-import sys
-import os
-import re
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from utils.colors import log_info, log_success, log_warning, log_error
+from utils.colors import log_info, log_success
 from utils.request import smart_request
+from utils.request import ScanExceptions, BlockedTargetPath
 
 # ─────────────────────────────────────────────────────
 # Open Redirect Payloads
@@ -101,7 +97,6 @@ REDIRECT_PATHS = [
 
 CANARY_DOMAIN = "evil.com"
 
-
 def test_redirect(url, param, payload, delay):
     """Test a single redirect payload."""
     parsed = urlparse(url)
@@ -154,10 +149,11 @@ def test_redirect(url, param, payload, delay):
                         ),
                     }
 
-    except Exception:
+    except ScanExceptions:
+        pass
+    except BlockedTargetPath:
         pass
     return None
-
 
 def scan_open_redirect(url, delay=0):
     """Main Open Redirect scanner entry point."""
@@ -194,7 +190,9 @@ def scan_open_redirect(url, delay=0):
                             f"[REDIRECT] {result['type']} via '{param_name}' → "
                             f"{result.get('redirect_to', result['payload'])}"
                         )
-            except Exception:
+            except ScanExceptions:
+                pass
+            except BlockedTargetPath:
                 pass
 
     # Also test common redirect paths
@@ -222,7 +220,9 @@ def scan_open_redirect(url, delay=0):
                     }
                 )
                 log_success(f"[REDIRECT] at path {path}")
-        except Exception:
+        except ScanExceptions:
+            pass
+        except BlockedTargetPath:
             pass
 
     log_success(f"Open Redirect scan complete. Found {len(findings)} redirect(s).")

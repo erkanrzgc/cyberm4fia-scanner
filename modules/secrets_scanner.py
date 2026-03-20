@@ -2,6 +2,7 @@
 cyberm4fia-scanner - Secrets & API Key Scanner
 Scans HTML and Javascript files for hardcoded sensitive information like AWS keys, Stripe tokens, etc.
 """
+from utils.request import ScanExceptions
 
 import re
 import urllib.parse
@@ -138,9 +139,9 @@ def scan_secrets(url, response_text):
                 js_found = scan_text_for_secrets(resp.text, full_url)
                 if js_found:
                     vulns.extend(js_found)
-            except Exception:
+            except ScanExceptions:
                 pass
-    except Exception:
+    except ScanExceptions:
         pass
 
     # Reporting

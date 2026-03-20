@@ -3,17 +3,13 @@ cyberm4fia-scanner - Shodan Integration & Whois/ASN Lookup
 OSINT enrichment for target reconnaissance
 """
 
-import sys
-import os
 import re
 import socket
 from urllib.parse import urlparse
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from utils.colors import log_info, log_success, log_warning, log_error
 from utils.request import smart_request
-
+from utils.request import ScanExceptions
 
 def shodan_lookup(ip, api_key=None):
     """
@@ -54,7 +50,7 @@ def shodan_lookup(ip, api_key=None):
             return result
         elif resp.status_code == 404:
             log_info("No Shodan data available for this IP")
-    except Exception as e:
+    except ScanExceptions as e:
         log_warning(f"Shodan InternetDB lookup failed: {e}")
 
     # If API key provided, use full Shodan API
@@ -84,11 +80,10 @@ def shodan_lookup(ip, api_key=None):
                     log_warning(
                         f"Known CVEs ({len(result['vulns'])}): {', '.join(result['vulns'][:5])}"
                     )
-        except Exception:
+        except ScanExceptions:
             pass
 
     return result
-
 
 def whois_lookup(domain):
     """Perform WHOIS lookup for a domain."""
@@ -143,11 +138,10 @@ def whois_lookup(domain):
         log_warning("whois command not found. Install with: apt install whois")
     except subprocess.TimeoutExpired:
         log_warning("WHOIS lookup timed out")
-    except Exception as e:
+    except ScanExceptions as e:
         log_warning(f"WHOIS lookup failed: {e}")
 
     return result
-
 
 def asn_lookup(ip):
     """Get ASN (Autonomous System Number) information for an IP."""
@@ -172,7 +166,7 @@ def asn_lookup(ip):
 
                     log_success(f"ASN: {result['asn']} | {result['description']}")
                     log_info(f"IP Range: {result['ip_range']}")
-    except Exception:
+    except ScanExceptions:
         pass
 
     # Fallback: BGPView API
@@ -190,11 +184,10 @@ def asn_lookup(ip):
                     result["rir"] = prefixes.get("rir_name", "Unknown")
                     result["prefix"] = prefixes.get("prefix", "")
                     log_info(f"RIR: {result.get('rir', 'Unknown')}")
-        except Exception:
+        except ScanExceptions:
             pass
 
     return result
-
 
 def scan_osint(url, shodan_api_key=None, delay=0):
     """Main OSINT enrichment entry point."""

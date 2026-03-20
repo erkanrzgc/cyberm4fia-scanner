@@ -4,13 +4,10 @@ Default credential testing for SSH, FTP, MySQL, PostgreSQL, Redis, MongoDB
 Integrates with port scanner results
 """
 
-import sys
-import os
 import socket
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from utils.colors import log_info, log_success, log_warning
+from utils.request import ScanExceptions
 
 # ─────────────────────────────────────────────────────
 # Default Credentials Database
@@ -109,7 +106,6 @@ DEFAULT_CREDS = {
     },
 }
 
-
 def try_ftp(host, port, username, password, timeout=5):
     """Try FTP login."""
     try:
@@ -120,9 +116,8 @@ def try_ftp(host, port, username, password, timeout=5):
         ftp.login(username, password)
         ftp.quit()
         return True
-    except Exception:
+    except ScanExceptions:
         return False
-
 
 def try_ssh(host, port, username, password, timeout=5):
     """Try SSH login using paramiko if available, else socket banner."""
@@ -148,9 +143,8 @@ def try_ssh(host, port, username, password, timeout=5):
             "paramiko not installed. SSH brute force skipped. (pip install paramiko)"
         )
         return False
-    except Exception:
+    except ScanExceptions:
         return False
-
 
 def try_mysql(host, port, username, password, timeout=5):
     """Try MySQL login."""
@@ -171,9 +165,8 @@ def try_mysql(host, port, username, password, timeout=5):
             "pymysql not installed. MySQL brute force skipped. (pip install pymysql)"
         )
         return False
-    except Exception:
+    except ScanExceptions:
         return False
-
 
 def try_redis(host, port, username, password, timeout=5):
     """Try Redis connection."""
@@ -192,10 +185,9 @@ def try_redis(host, port, username, password, timeout=5):
 
         if "+PONG" in resp or "+OK" in resp:
             return True
-    except Exception:
+    except ScanExceptions:
         pass
     return False
-
 
 def try_mongodb(host, port, username, password, timeout=5):
     """Try MongoDB connection (no auth check)."""
@@ -209,10 +201,9 @@ def try_mongodb(host, port, username, password, timeout=5):
                 sock.close()
                 return True
         sock.close()
-    except Exception:
+    except ScanExceptions:
         pass
     return False
-
 
 # Map service names to login functions
 LOGIN_FUNCTIONS = {
@@ -222,7 +213,6 @@ LOGIN_FUNCTIONS = {
     "redis": try_redis,
     "mongodb": try_mongodb,
 }
-
 
 def spray_service(host, service, port=None, timeout=5):
     """Spray default credentials against a specific service."""
@@ -265,11 +255,10 @@ def spray_service(host, service, port=None, timeout=5):
                     f"{cred_display} @ {host}:{actual_port}"
                 )
                 return findings  # One valid cred is enough
-        except Exception:
+        except ScanExceptions:
             pass
 
     return findings
-
 
 def scan_spray(host, open_ports=None, timeout=5):
     """

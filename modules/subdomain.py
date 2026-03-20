@@ -3,18 +3,14 @@ cyberm4fia-scanner - Subdomain Scanner Module v2
 Passive Subdomain Enumeration via Multiple Public APIs
 """
 
-import sys
-import os
 import re
 import socket
 from urllib.parse import urlparse
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import httpx
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from utils.colors import log_info, log_success, log_warning, log_error
-
+from utils.request import ScanExceptions
 
 def _normalize_domain(domain):
     """Normalize input into a clean hostname for passive subdomain APIs."""
@@ -24,7 +20,6 @@ def _normalize_domain(domain):
         value = parsed.hostname or value
     value = value.split("/")[0].split(":")[0].strip(".")
     return value
-
 
 def _query_crtsh(domain):
     """Query Certificate Transparency logs via crt.sh."""
@@ -38,10 +33,9 @@ def _query_crtsh(domain):
                     sub = sub.strip().lower().lstrip("*.").strip(".")
                     if sub.endswith(domain) and sub != domain:
                         subs.add(sub)
-    except Exception:
+    except ScanExceptions:
         pass
     return subs
-
 
 def _query_hackertarget(domain):
     """Query HackerTarget host search."""
@@ -56,10 +50,9 @@ def _query_hackertarget(domain):
                     sub = parts[0].strip().lower().lstrip("*.").strip(".")
                     if sub.endswith(domain) and sub != domain:
                         subs.add(sub)
-    except Exception:
+    except ScanExceptions:
         pass
     return subs
-
 
 def _query_alienvault(domain):
     """Query AlienVault OTX passive DNS."""
@@ -80,10 +73,9 @@ def _query_alienvault(domain):
                 hostname = entry.get("hostname", "").lower()
                 if hostname.endswith(domain) and hostname != domain:
                     subs.add(hostname)
-    except Exception:
+    except ScanExceptions:
         pass
     return subs
-
 
 def _query_urlscan(domain):
     """Query urlscan.io for subdomains."""
@@ -97,10 +89,9 @@ def _query_urlscan(domain):
                 hostname = page.get("domain", "").lower()
                 if hostname.endswith(domain) and hostname != domain:
                     subs.add(hostname)
-    except Exception:
+    except ScanExceptions:
         pass
     return subs
-
 
 def _query_rapiddns(domain):
     """Query RapidDNS for subdomains."""
@@ -116,10 +107,9 @@ def _query_rapiddns(domain):
                 sub = sub.lower().strip(".")
                 if sub != domain:
                     subs.add(sub)
-    except Exception:
+    except ScanExceptions:
         pass
     return subs
-
 
 def _query_threatcrowd(domain):
     """Query ThreatCrowd API."""
@@ -133,10 +123,9 @@ def _query_threatcrowd(domain):
                 sub = sub.strip().lower()
                 if sub.endswith(domain) and sub != domain:
                     subs.add(sub)
-    except Exception:
+    except ScanExceptions:
         pass
     return subs
-
 
 def _resolve_subdomain(sub):
     """Try to resolve a subdomain to check if it's live."""
@@ -145,7 +134,6 @@ def _resolve_subdomain(sub):
         return (sub, ip)
     except socket.gaierror:
         return (sub, None)
-
 
 def scan_subdomains(domain):
     """Scan for subdomains using multiple passive sources."""
@@ -181,7 +169,7 @@ def scan_subdomains(domain):
                     log_success(f"{source_name}: +{len(subs)} subdomains")
                 else:
                     log_info(f"{source_name}: no results")
-            except Exception:
+            except ScanExceptions:
                 log_warning(f"{source_name}: query failed")
 
     if not all_subs:

@@ -3,9 +3,6 @@ Tests for core/scan_context.py
 """
 
 import os
-import sys
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import utils.colors as color_utils
 from core.scan_context import ScanContext
@@ -20,7 +17,6 @@ from utils.request import (
     set_cookie,
     snapshot_runtime_state,
 )
-
 
 class TestScanContext:
     def setup_method(self):
@@ -142,12 +138,15 @@ class TestScanContext:
         class DummyOOB:
             instances = []
 
-            def __init__(self, listener_port=9999):
+            def __init__(self, listener_port=8081):
                 self.listener_port = listener_port
-                self.ready = True
+                self.ready = False
                 self.stopped = False
                 self.poll_calls = 0
                 DummyOOB.instances.append(self)
+
+            def start(self):
+                self.ready = True
 
             def poll(self):
                 self.poll_calls += 1

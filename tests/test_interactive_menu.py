@@ -3,14 +3,11 @@ Tests for interactive menu prompt generation.
 """
 
 import json
-import os
-import sys
 
 import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import scanner
+from core import interactive as interactive_mod
 from core.scan_options import (
     API_SPEC_PROMPT,
     INTERACTIVE_CUSTOM_PROMPT_GROUPS,
@@ -18,13 +15,11 @@ from core.scan_options import (
     get_interactive_runtime_prompt_specs,
 )
 
-
 @pytest.fixture(autouse=True)
 def reset_json_output():
     original = scanner.Config.JSON_OUTPUT
     yield
     scanner.Config.JSON_OUTPUT = original
-
 
 class TestInteractiveMenu:
     def test_profile_preset_applies_recommended_extras(self, monkeypatch):
@@ -46,7 +41,7 @@ class TestInteractiveMenu:
             prompt_log.append(prompt)
             return answers.get(prompt, default)
 
-        monkeypatch.setattr(scanner, "get_input", fake_get_input)
+        monkeypatch.setattr(interactive_mod, "get_input", fake_get_input)
         monkeypatch.setattr(scanner.console, "print", lambda *args, **kwargs: None)
 
         _, _, _, options = scanner.interactive_menu()
@@ -99,10 +94,10 @@ class TestInteractiveMenu:
             return answers.get(prompt, default)
 
         summary_calls = []
-        monkeypatch.setattr(scanner, "get_input", fake_get_input)
+        monkeypatch.setattr(interactive_mod, "get_input", fake_get_input)
         monkeypatch.setattr(scanner.console, "print", lambda *args, **kwargs: None)
         monkeypatch.setattr(
-            scanner,
+            interactive_mod,
             "print_restored_config_summary",
             lambda target, mode, options, provided_dests=None: summary_calls.append(
                 {
@@ -157,7 +152,7 @@ class TestInteractiveMenu:
             prompt_log.append(prompt)
             return answers.get(prompt, default)
 
-        monkeypatch.setattr(scanner, "get_input", fake_get_input)
+        monkeypatch.setattr(interactive_mod, "get_input", fake_get_input)
         monkeypatch.setattr(scanner.console, "print", lambda *args, **kwargs: None)
 
         url, mode, delay, options = scanner.interactive_menu()
@@ -198,7 +193,7 @@ class TestInteractiveMenu:
             prompt_log.append(prompt)
             return answers.get(prompt, default)
 
-        monkeypatch.setattr(scanner, "get_input", fake_get_input)
+        monkeypatch.setattr(interactive_mod, "get_input", fake_get_input)
         monkeypatch.setattr(scanner.console, "print", lambda *args, **kwargs: None)
 
         _, _, _, options = scanner.interactive_menu()

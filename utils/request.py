@@ -3,12 +3,26 @@ cyberm4fia-scanner - HTTP Request Utilities
 """
 
 import os
+import json
 import fnmatch
 import httpx
 import time
 import random
 import threading
 from urllib.parse import urlparse
+
+# Standard scanning exceptions for graceful generic fallbacks instead of bare except Exception:
+ScanExceptions = (
+    httpx.RequestError,
+    httpx.HTTPStatusError,
+    httpx.TimeoutException,
+    json.JSONDecodeError,
+    ValueError,
+    KeyError,
+    TypeError,
+    IndexError,
+    UnicodeError,
+)
 
 # Load .env file if python-dotenv is available
 try:
@@ -18,8 +32,8 @@ try:
 except ImportError:
     pass
 
-from utils.auth import auth_manager
-from utils.waf import waf_detector
+from utils.auth import auth_manager  # noqa: E402
+from utils.waf import waf_detector  # noqa: E402
 
 # Thread-local storage for sessions
 _thread_local = threading.local()

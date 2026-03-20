@@ -4,7 +4,7 @@ Tests for core/engine.py — Async scan engine module orchestration.
 
 import asyncio
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import patch
 from core.engine import _run_module, run_modules_async_impl, run_modules_async
 
 
@@ -81,12 +81,12 @@ class TestRunModulesAsyncImpl:
             mock_xss.return_value = [{"type": "XSS_Param", "url": "http://t.com"}]
 
             # We need to patch the lazy import inside run_modules_async_impl
-            options = {"xss": True}
+            options = {"xss": True}  # noqa: F841
 
             # Patch the import inside the function
             import core.engine as engine_mod
 
-            original_func = engine_mod.run_modules_async_impl
+            original_func = engine_mod.run_modules_async_impl  # noqa: F841
 
             async def patched_impl(
                 scan_url, forms, delay, options, progress_callback=None

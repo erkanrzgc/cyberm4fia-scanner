@@ -20,7 +20,9 @@ import json
 import os
 import re
 import httpx
+from typing import Optional
 from utils.colors import log_info, log_success, log_warning, log_error
+from utils.request import ScanExceptions
 
 
 def _extract_json(text: str, expect_array: bool = False):
@@ -71,6 +73,7 @@ def resolve_ollama_base(explicit_url: str | None = None) -> str:
     return f"http://{raw.rstrip('/')}"
 
 
+# Backward-compatible snapshot used by tests and older imports.
 OLLAMA_BASE = resolve_ollama_base()
 DEFAULT_MODEL = "WhiteRabbitNeo/Llama-3.1-WhiteRabbitNeo-2-8B"
 CODER_MODEL = "qwen3-coder:30b"
@@ -88,7 +91,7 @@ MODEL_ROLES = {
 class OllamaClient:
     """Client for Ollama local LLM API."""
 
-    def __init__(self, model: str = None, base_url: str = None):
+    def __init__(self, model: Optional[str] = None, base_url: Optional[str] = None):
         self.model = model or DEFAULT_MODEL
         self.base_url = resolve_ollama_base(base_url)
         self.available = False
@@ -113,17 +116,17 @@ class OllamaClient:
                     )
             else:
                 log_warning(f"Ollama API not responding at {self.base_url}")
-        except Exception as exc:
+        except ScanExceptions:
             self.available = False
             log_warning(
                 f"Ollama not reachable at {self.base_url}. "
                 "If Ollama runs on another machine, set OLLAMA_URL=http://HOST:11434"
             )
 
-    def generate(self, prompt: str, system: str = "", temperature: float = 0.3) -> str:
+    def _prompt_ollama(self, model: str, prompt: str, system: str = "", base_url: Optional[str] = None, expect_json: bool = False, temperature: float = 0.3) -> Optional[dict]:
         """Generate a response from the LLM using chat API."""
         if not self.available:
-            return ""
+            return None
 
         try:
             messages = []
@@ -132,7 +135,7 @@ class OllamaClient:
             messages.append({"role": "user", "content": prompt})
 
             payload = {
-                "model": self.model,
+                "model": model,
                 "messages": messages,
                 "stream": False,
                 "options": {
@@ -142,22 +145,40 @@ class OllamaClient:
             }
 
             resp = httpx.post(
-                f"{self.base_url}/api/chat",
+                f"{base_url or self.base_url}/api/chat",
                 json=payload,
                 timeout=300,
             )
 
             if resp.status_code == 200:
-                return resp.json().get("message", {}).get("content", "").strip()
+                content = resp.json().get("message", {}).get("content", "").strip()
+                if expect_json:
+                    return _extract_json(content)
+                return content
             else:
                 log_error(f"Ollama error: {resp.status_code}")
-                return ""
+                return None
         except httpx.TimeoutException:
             log_warning("AI response timed out (300s)")
-            return ""
-        except Exception as e:
+            return None
+        except ScanExceptions as e:
             log_warning(f"AI error: {e}")
+            return None
+
+    def generate(self, prompt: str, system: str = "", temperature: float = 0.3) -> str:
+        """Generate a response from the LLM using chat API."""
+        if not getattr(self, "available", False):
             return ""
+
+        response = self._prompt_ollama(
+            getattr(self, "model", DEFAULT_MODEL),
+            prompt,
+            system,
+            getattr(self, "base_url", resolve_ollama_base()),
+            False,
+            temperature,
+        )
+        return str(response) if response is not None else ""
 
 
 # ─── Dual-Model AI System ──────────────────────────────────────────────────
@@ -187,7 +208,7 @@ class DualModelAI:
                 self._available_models = [
                     m["name"] for m in resp.json().get("models", [])
                 ]
-        except Exception:
+        except ScanExceptions:
             self._available_models = []
 
         # Init WhiteRabbitNeo (exploit/strategy)
@@ -207,9 +228,9 @@ class DualModelAI:
         # Log status
         models_active = []
         if self.exploit_client and self.exploit_client.available:
-            models_active.append(f"🐇 WhiteRabbitNeo (exploit)")
+            models_active.append("🐇 WhiteRabbitNeo (exploit)")
         if self.coder_client and self.coder_client.available:
-            models_active.append(f"🧠 Qwen3-Coder (code)")
+            models_active.append("🧠 Qwen3-Coder (code)")
 
         if models_active:
             log_success(f"Dual AI: {' + '.join(models_active)}")
@@ -490,7 +511,7 @@ class EvolvingWAFBypassEngine:
         context = f"A strict {self.waf_name} firewall repeatedly blocked this {self.vuln_type} payload: `{blocked_payload}`\n"
 
         if self.failed_attempts and iteration > 1:
-            context += f"\nPrevious failed bypasses:\n" + "\n".join(
+            context += "\nPrevious failed bypasses:\n" + "\n".join(
                 f"- {p}" for p in self.failed_attempts[-3:]
             )
             if self.known_bad_tokens:
@@ -519,7 +540,7 @@ Example: ["bypass1", "bypass2", "bypass3", "bypass4", "bypass5"]"""
             if result and isinstance(result, list):
                 payloads = [str(p).strip() for p in result if p and str(p).strip()]
                 return payloads[:5]
-        except Exception:
+        except ScanExceptions:
             pass
 
         return []
@@ -578,22 +599,25 @@ _ai_client = None
 _dual_ai = None
 
 
-def init_ai(model: str = None) -> OllamaClient:
+def init_ai(
+    model: Optional[str] = None,
+    base_url: Optional[str] = None,
+) -> OllamaClient:
     """Initialize the primary AI client."""
     global _ai_client
-    _ai_client = OllamaClient(model=model)
+    _ai_client = OllamaClient(model=model, base_url=base_url)
     return _ai_client
 
 
-def get_ai() -> OllamaClient:
+def get_ai(base_url: Optional[str] = None) -> OllamaClient:
     """Get the current primary AI client (or create one)."""
     global _ai_client
     if _ai_client is None:
-        _ai_client = OllamaClient()
+        _ai_client = OllamaClient(base_url=base_url)
     return _ai_client
 
 
-def init_dual_ai(base_url: str = None) -> DualModelAI:
+def init_dual_ai(base_url: Optional[str] = None) -> DualModelAI:
     """Initialize the dual-model AI system."""
     global _dual_ai
     _dual_ai = DualModelAI(base_url=base_url)

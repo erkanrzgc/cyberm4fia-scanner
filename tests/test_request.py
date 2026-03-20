@@ -1,12 +1,9 @@
 """
 Tests for utils/request.py — Config, Stats, session management, User-Agent pool
 """
+from utils.request import ScanExceptions
 
-import sys
-import os
 import threading
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest
 
@@ -28,13 +25,11 @@ from utils.request import (
     smart_request,
 )
 
-
 @pytest.fixture(autouse=True)
 def reset_request_runtime():
     state = snapshot_runtime_state()
     yield
     restore_runtime_state(state)
-
 
 class TestConfig:
     """Tests for Config class defaults and .env integration."""
@@ -64,7 +59,6 @@ class TestConfig:
         assert Config.DEFAULT_TIMEOUT > 0
         assert isinstance(Config.PATH_BLACKLIST, tuple)
 
-
 class TestStats:
     """Tests for Stats class thread-safety."""
 
@@ -85,7 +79,7 @@ class TestStats:
                 for _ in range(100):
                     with lock:
                         Stats.total_requests += 1
-            except Exception as e:
+            except ScanExceptions as e:
                 errors.append(e)
 
         threads = [threading.Thread(target=increment) for _ in range(10)]
@@ -96,7 +90,6 @@ class TestStats:
 
         assert len(errors) == 0
         assert Stats.total_requests == 1000
-
 
 class TestUserAgents:
     """Tests for User-Agent pool."""
@@ -124,7 +117,6 @@ class TestUserAgents:
     def test_no_duplicates(self):
         assert len(USER_AGENTS) == len(set(USER_AGENTS)), "Duplicate User-Agents found"
 
-
 class TestSession:
     """Tests for _get_session cache invalidation."""
 
@@ -143,7 +135,6 @@ class TestSession:
         assert s1 is not s2
         # Cleanup
         _get_session(verify=False)
-
 
 class TestRequestControls:
     def test_normalize_proxy_url_adds_http_scheme(self):

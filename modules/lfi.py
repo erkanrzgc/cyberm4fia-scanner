@@ -3,10 +3,6 @@ cyberm4fia-scanner - LFI Module
 Local File Inclusion detection (Threaded)
 """
 
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.colors import Colors, log_info, log_success, log_vuln
 from utils.request import (
@@ -15,13 +11,13 @@ from utils.request import (
     smart_request,
 )
 from modules.payloads import LFI_PAYLOADS, LFI_SIGNATURES
+from utils.payload_filter import PayloadFilter
 from modules.smart_payload import probe_lfi_context
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse, urljoin
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import httpx
 import base64
 import re
-
+from utils.request import ScanExceptions
 
 def _detect_php_wrapper_output(response_text, payload):
     """Detect and decode PHP wrapper (base64/rot13) output from response."""
@@ -52,10 +48,9 @@ def _detect_php_wrapper_output(response_text, payload):
                 ]
             ):
                 return decoded
-        except Exception:
+        except ScanExceptions:
             continue
     return None
-
 
 def detect_lfi(text, baseline_text=None):
     """Check if response indicates successful LFI, optionally ignoring baseline signatures."""
@@ -72,8 +67,7 @@ def detect_lfi(text, baseline_text=None):
                 return os_type, sig
     return None, None
 
-
-def _test_lfi_param(param, params, parsed, delay):
+def _test_lfi_param(param, params, parsed, delay, target_context=None):
     """Test a single param for LFI (helper for threading)"""
     flat_params = {k: v[0] if isinstance(v, list) else v for k, v in params.items()}
     probe = probe_lfi_context(
@@ -84,13 +78,16 @@ def _test_lfi_param(param, params, parsed, delay):
         all_payloads = smart + [p for p in LFI_PAYLOADS if p not in smart]
     else:
         all_payloads = LFI_PAYLOADS
+        
+    if target_context:
+        all_payloads = PayloadFilter.filter_payloads(all_payloads, target_context)
 
     # 1. Fetch Baseline to prevent False Positives
     baseline_url = urlunparse(parsed._replace(query=urlencode(params, doseq=True)))
     try:
         baseline_resp = smart_request("get", baseline_url, delay=delay)
         baseline_text = baseline_resp.text
-    except Exception:
+    except ScanExceptions:
         baseline_text = ""
 
     for payload in all_payloads:
@@ -144,12 +141,11 @@ def _test_lfi_param(param, params, parsed, delay):
                     "url": test_url,
                     "wrapper_content": wrapper_content,
                 }
-        except Exception:
+        except ScanExceptions:
             pass
     return None
 
-
-def _test_lfi_form_input(inp, inputs, method, target, delay):
+def _test_lfi_form_input(inp, inputs, method, target, delay, target_context=None):
     """Test a single form input for LFI (helper for threading)"""
     form_data = {n: "test" for n in inputs}
     probe = probe_lfi_context(
@@ -160,6 +156,9 @@ def _test_lfi_form_input(inp, inputs, method, target, delay):
         all_payloads = smart + [p for p in LFI_PAYLOADS if p not in smart]
     else:
         all_payloads = LFI_PAYLOADS
+        
+    if target_context:
+        all_payloads = PayloadFilter.filter_payloads(all_payloads, target_context)
 
     # 1. Fetch Baseline
     baseline_data = {n: "test" for n in inputs}
@@ -172,7 +171,7 @@ def _test_lfi_form_input(inp, inputs, method, target, delay):
             delay=delay,
         )
         baseline_text = baseline_resp.text
-    except Exception:
+    except ScanExceptions:
         baseline_text = ""
 
     for payload in all_payloads:
@@ -232,17 +231,19 @@ def _test_lfi_form_input(inp, inputs, method, target, delay):
                     "method": method,
                     "wrapper_content": wrapper_content,
                 }
-        except Exception:
+        except ScanExceptions:
             pass
     return None
 
-
-def scan_lfi(url, forms, delay, threads=None):
+def scan_lfi(url, forms, delay, options=None, threads=None):
     """Scan for Local File Inclusion vulnerabilities (threaded)"""
     from utils.tamper import get_tamper_chain
 
     if threads is None:
         threads = get_thread_count()
+        
+    options = options or {}
+    target_context = options.get("target_context")
 
     # Apply tamper chain for WAF bypass variants
     chain = get_tamper_chain()
@@ -261,7 +262,7 @@ def scan_lfi(url, forms, delay, threads=None):
         params = parse_qs(parsed.query)
         for param in params.keys():
             futures.append(
-                executor.submit(_test_lfi_param, param, params, parsed, delay)
+                executor.submit(_test_lfi_param, param, params, parsed, delay, target_context)
             )
 
         # Forms
@@ -277,7 +278,7 @@ def scan_lfi(url, forms, delay, threads=None):
             for inp in inputs:
                 futures.append(
                     executor.submit(
-                        _test_lfi_form_input, inp, inputs, method, target, delay
+                        _test_lfi_form_input, inp, inputs, method, target, delay, target_context
                     )
                 )
 
@@ -286,7 +287,7 @@ def scan_lfi(url, forms, delay, threads=None):
                 result = future.result()
                 if result:
                     vulns.append(result)
-            except Exception:
+            except ScanExceptions:
                 pass
 
     # ── AI Exploit Agent (Final Escalation) ──

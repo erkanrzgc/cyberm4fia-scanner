@@ -2,15 +2,10 @@
 Tests for modules/api_scanner.py — OpenAPI/Swagger import support.
 """
 
-import sys
-import os
 import json
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from modules import api_scanner
 from utils.auth import auth_manager
-
 
 SAMPLE_OPENAPI = """
 openapi: 3.0.3
@@ -110,7 +105,6 @@ paths:
               $ref: '#/components/schemas/UploadPayload'
 """
 
-
 class _FakeResponse:
     def __init__(self, status_code=404, headers=None, text="", payload=None):
         self.status_code = status_code
@@ -120,7 +114,6 @@ class _FakeResponse:
 
     def json(self):
         return self._payload
-
 
 class TestAPISpecImport:
     def test_load_api_spec_yaml(self, tmp_path):

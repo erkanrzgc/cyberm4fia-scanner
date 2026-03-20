@@ -280,6 +280,7 @@ Each scan creates results under `scans/<target>/`:
 | `--proxy PROXY_URL` | Proxy URL (http/socks5, e.g. socks5://127.0.0.1:9050) |
 | `--ai` | Enable AI analysis (Ollama, local & free). Requires Ollama running. |
 | `--ai-model AI_MODEL` | Ollama model (default: WhiteRabbitNeo-Llama-3.1-8B) |
+| `--ollama-url OLLAMA_URL` | Ollama server URL (default: http://127.0.0.1:11434) |
 
 ### Service Modes
 | Flag | Description |

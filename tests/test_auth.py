@@ -2,15 +2,9 @@
 Tests for utils/auth.py — explicit auth and placeholder auth injection.
 """
 
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import pytest
 
 from utils.auth import auth_manager
-
 
 @pytest.fixture(autouse=True)
 def reset_auth_manager():
@@ -19,7 +13,6 @@ def reset_auth_manager():
     yield
     auth_manager.clear_auth()
     auth_manager.clear_placeholder_auth()
-
 
 class TestAuthChain:
     def test_placeholder_auth_injects_headers_cookies_and_query(self):

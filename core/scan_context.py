@@ -1,6 +1,7 @@
 """
 cyberm4fia-scanner - Scan runtime context helpers.
 """
+from utils.request import ScanExceptions
 
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -101,8 +102,9 @@ class ScanContext:
             auth_manager.set_placeholder_auth(placeholder_auth)
 
         if self.options.get("oob"):
-            listener_port = int(self.options.get("oob_listener_port", 9999))
+            listener_port = int(self.options.get("oob_listener_port", 8081))
             self._owned_oob_client = OOBClient(listener_port=listener_port)
+            self._owned_oob_client.start()
             set_oob_client(self._owned_oob_client)
         else:
             set_oob_client(None)
@@ -165,7 +167,7 @@ class ScanContext:
         if self._owned_oob_client and get_oob_client() is self._owned_oob_client:
             try:
                 self._owned_oob_client.stop()
-            except Exception:
+            except ScanExceptions:
                 pass
         self._owned_oob_client = None
 
@@ -205,10 +207,9 @@ class ScanContext:
             "retries": runtime_stats["retries"],
         }
 
-        if runtime_stats["start_time"]:
-            stats["duration_seconds"] = round(
-                time.time() - runtime_stats["start_time"], 2
-            )
+        start_time = runtime_stats.get("start_time")
+        if start_time:
+            stats["duration_seconds"] = round(time.time() - float(start_time), 2)
 
         return stats
 

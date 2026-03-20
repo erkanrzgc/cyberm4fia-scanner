@@ -16,6 +16,7 @@ Detects:
 
 from utils.colors import log_info, log_warning, log_success, log_vuln
 from utils.request import increment_vulnerability_count
+from utils.request import ScanExceptions
 
 
 # ──────────────────────────────────────────────
@@ -212,7 +213,7 @@ def _verify_with_playwright(url: str, weaknesses: list) -> list:
                 args=["--no-sandbox", "--disable-dev-shm-usage"],
             )
             context = browser.new_context(viewport={"width": 1920, "height": 1080})
-        except Exception as e:
+        except ScanExceptions as e:
             log_warning(f"Playwright launch failed: {e}")
             return weaknesses
 
@@ -244,7 +245,7 @@ def _verify_with_playwright(url: str, weaknesses: list) -> list:
                     page.wait_for_timeout(1500)
                 except PlaywrightTimeoutError:
                     pass
-                except Exception:
+                except ScanExceptions:
                     pass
 
                 if alert_triggered[0]:
@@ -294,7 +295,7 @@ def _check_nonce_leak(url: str) -> dict | None:
                     "verified": True,
                     "nonces": nonces,
                 }
-        except Exception:
+        except ScanExceptions:
             pass
 
     return None
@@ -321,7 +322,7 @@ def scan_csp_bypass(url: str, response=None) -> list:
         try:
             resp = smart_request("get", url)
             headers = {k.lower(): v for k, v in resp.headers.items()}
-        except Exception:
+        except ScanExceptions:
             log_warning("Failed to fetch target for CSP analysis")
             return []
 

@@ -2,11 +2,7 @@
 Tests for documentation generation and sync.
 """
 
-import os
-import sys
 from pathlib import Path
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.documentation import (  # noqa: E402
     DOC_TARGETS,
@@ -18,14 +14,12 @@ from core.documentation import (  # noqa: E402
 )
 from core.scan_options import SCAN_MODE_SPECS
 
-
 def _extract_generated_section(text: str, section_name: str):
     start_marker = f"<!-- BEGIN GENERATED: {section_name} -->"
     end_marker = f"<!-- END GENERATED: {section_name} -->"
     start = text.index(start_marker) + len(start_marker)
     end = text.index(end_marker)
     return text[start:end].strip()
-
 
 class TestDocumentation:
     def test_feature_tables_include_registry_and_auto_features(self):

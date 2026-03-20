@@ -2,13 +2,7 @@
 Tests for modules/recon.py
 """
 
-import os
-import sys
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import modules.recon as recon_mod
-
 
 class TestRecon:
     def test_light_recon_skips_port_scan(self, monkeypatch):

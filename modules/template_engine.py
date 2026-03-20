@@ -3,28 +3,23 @@ cyberm4fia-scanner - Nuclei-Style Template Engine
 Parses and executes community YAML templates for vulnerability scanning.
 """
 
-import sys
 import os
 import yaml
 import re
 from urllib.parse import urlparse, urljoin
-import traceback
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from utils.colors import log_info, log_success, log_warning, log_error, log_vuln
+from utils.colors import log_info, log_success, log_warning, log_vuln
 from utils.request import increment_vulnerability_count, smart_request
+from utils.request import ScanExceptions
 
 TEMPLATE_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates"
 )
 
-
 def ensure_template_dir():
     if not os.path.exists(TEMPLATE_DIR):
         os.makedirs(TEMPLATE_DIR)
         _create_sample_template()
-
 
 def _create_sample_template():
     sample = {
@@ -49,7 +44,6 @@ def _create_sample_template():
     with open(os.path.join(TEMPLATE_DIR, "cve-2021-41773.yaml"), "w") as f:
         yaml.dump(sample, f)
 
-
 def load_templates():
     ensure_template_dir()
     templates = []
@@ -61,10 +55,9 @@ def load_templates():
                         tpl = yaml.safe_load(f)
                         if tpl and "id" in tpl and "requests" in tpl:
                             templates.append(tpl)
-                except Exception as e:
+                except ScanExceptions as e:
                     log_warning(f"Error loading template {file}: {e}")
     return templates
-
 
 def _match_response(resp, matchers):
     """Evaluate response against a list of matchers (AND logic between matchers)."""
@@ -116,7 +109,6 @@ def _match_response(resp, matchers):
                 return False
 
     return True
-
 
 def run_templates(url, delay=0):
     """Run all loaded YAML templates against the target URL."""
@@ -178,7 +170,7 @@ def run_templates(url, delay=0):
                         # Usually break after first successful path per request block
                         break
 
-                except Exception as e:
+                except ScanExceptions:
                     pass
 
     return vulns

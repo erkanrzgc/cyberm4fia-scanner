@@ -115,7 +115,7 @@ ollama pull qwen3-coder:30b
 If Ollama runs on a different machine (e.g., Windows GPU host):
 
 ```bash
-export OLLAMA_URL="http://192.168.x.x:11434"
+export OLLAMA_URL="http://127.0.0.1:11434"
 ```
 
 ### AI-Powered Scanning

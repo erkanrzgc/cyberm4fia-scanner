@@ -7,14 +7,17 @@ Requirement: pip install mitmproxy
 
 import os
 import sys
+
+# Add project root to path so mitmdump can find the utils and core packages
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import threading
 from urllib.parse import urlparse
 import json
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from utils.colors import log_info, log_success, log_warning, log_error
 from utils.request import get_request_delay, set_cookie
+from utils.request import ScanExceptions
 
 try:
     from mitmproxy import ctx
@@ -22,7 +25,6 @@ try:
 except ImportError:
     log_warning("mitmproxy is not installed. To use the proxy module, run: pip install mitmproxy")
     ctx = None
-
 
 class Cyberm4fiaInterceptor:
     def __init__(self, target_scope):
@@ -66,7 +68,7 @@ class Cyberm4fiaInterceptor:
                 json_data = json.loads(flow.request.get_text())
                 if isinstance(json_data, dict):
                     params.update(json_data)
-            except Exception:
+            except ScanExceptions:
                 pass
                 
         # If we found actionable parameters, process them asynchronously
@@ -102,7 +104,7 @@ class Cyberm4fiaInterceptor:
             # Use the global Config delay (removed unsupported `method` keyword)
             run_modules_async(url, [dummy_form], get_request_delay(), options)
             
-        except Exception as e:
+        except ScanExceptions as e:
             log_error(f"Failed to scan intercepted request {url}: {e}")
 
 # Addon registration for mitmdump

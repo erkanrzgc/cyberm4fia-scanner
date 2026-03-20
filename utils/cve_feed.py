@@ -9,13 +9,9 @@ Usage:
     cve_findings = enrich_with_cves(tech_detect_results)
 """
 
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import httpx
 from utils.colors import log_info, log_success, log_warning
+from utils.request import ScanExceptions
 
 SIBERADAR_API = "https://www.siberadar.com/api/cves"
 
@@ -54,7 +50,6 @@ TECH_TO_VENDOR = {
 
 # In-memory cache to avoid duplicate queries in same scan
 _cache: dict[str, list] = {}
-
 
 def fetch_cves(tech_name: str, max_results: int = 10) -> list[dict]:
     """
@@ -102,10 +97,9 @@ def fetch_cves(tech_name: str, max_results: int = 10) -> list[dict]:
     except httpx.RequestError as e:
         log_warning(f"SiberAdar API unreachable: {e}")
         return []
-    except Exception as e:
+    except ScanExceptions as e:
         log_warning(f"CVE feed error: {e}")
         return []
-
 
 def enrich_with_cves(tech_results: list[dict]) -> list[dict]:
     """
@@ -240,7 +234,6 @@ def enrich_with_cves(tech_results: list[dict]) -> list[dict]:
         log_info("No relevant CVEs found for detected technologies.")
 
     return findings
-
 
 def clear_cache():
     """Clear in-memory CVE cache (useful between scans)."""

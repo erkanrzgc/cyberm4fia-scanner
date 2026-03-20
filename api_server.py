@@ -27,8 +27,6 @@ import threading
 from datetime import datetime
 from typing import Optional
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
 try:
     from fastapi import FastAPI, HTTPException
     from fastapi.responses import FileResponse, StreamingResponse
@@ -46,9 +44,7 @@ from utils.request import (
 )
 from core.scan_options import build_api_scan_options, get_scan_mode_runtime
 
-
 # ─── Pydantic Models ───
-
 
 class ScanRequest(BaseModel):
     """Request body for starting a new scan."""
@@ -91,7 +87,6 @@ class ScanRequest(BaseModel):
         description="Comma-separated risky path patterns to skip",
     )
 
-
 class ScanSummary(BaseModel):
     """Brief scan info for listing."""
 
@@ -100,7 +95,6 @@ class ScanSummary(BaseModel):
     status: str
     created_at: str
     total_vulns: int = 0
-
 
 class ScanResult(BaseModel):
     """Full scan result."""
@@ -119,7 +113,6 @@ class ScanResult(BaseModel):
     attack_paths: list = Field(default_factory=list)
     error: Optional[str] = None
 
-
 # ─── FastAPI App ───
 
 app = FastAPI(
@@ -134,12 +127,10 @@ app = FastAPI(
 SCANS: dict = {}
 _SCAN_LOCK = threading.Lock()
 
-
 def _update_scan(scan_id: str, **changes):
     with _SCAN_LOCK:
         if scan_id in SCANS:
             SCANS[scan_id].update(changes)
-
 
 def _set_scan_progress(scan_id: str, phase: str, completed: int, total: int, message: str):
     _update_scan(
@@ -153,15 +144,12 @@ def _set_scan_progress(scan_id: str, phase: str, completed: int, total: int, mes
         },
     )
 
-
 def _check_cancelled(scan: dict):
     cancel_event = scan.get("cancel_event")
     if cancel_event is not None and cancel_event.is_set():
         raise ScanCancelled("Scan cancelled by API request.")
 
-
 # ─── Background Scan Worker ───
-
 
 def _run_scan_job(scan_id: str, url: str, mode: str, options: dict):
     """Background scan worker."""
@@ -224,9 +212,7 @@ def _run_scan_job(scan_id: str, url: str, mode: str, options: dict):
             error=str(e),
         )
 
-
 # ─── API Endpoints ───
-
 
 @app.post(
     "/api/scan",
@@ -289,7 +275,6 @@ async def start_scan(scan_req: ScanRequest):
 
     return {"scan_id": scan_id, "status": "queued", "url": url}
 
-
 @app.get(
     "/api/scan/{scan_id}",
     response_model=ScanResult,
@@ -318,7 +303,6 @@ async def get_scan(scan_id: str):
         error=scan.get("error"),
     )
 
-
 @app.get(
     "/api/scans",
     response_model=dict,
@@ -340,7 +324,6 @@ async def list_scans():
         )
     return {"scans": scans}
 
-
 @app.get(
     "/api/report/{scan_id}",
     summary="Download HTML report",
@@ -360,7 +343,6 @@ async def get_report(scan_id: str):
     if os.path.exists(html_path):
         return FileResponse(html_path, media_type="text/html")
     raise HTTPException(status_code=404, detail="Report not found")
-
 
 @app.get(
     "/api/report/{scan_id}/json",
@@ -386,7 +368,6 @@ async def get_json_report(scan_id: str):
             return FileResponse(report_path, media_type="application/json")
     raise HTTPException(status_code=404, detail="JSON report not found")
 
-
 @app.get(
     "/api/report/{scan_id}/sarif",
     summary="Download SARIF report",
@@ -406,7 +387,6 @@ async def get_sarif_report(scan_id: str):
     if os.path.exists(sarif_path):
         return FileResponse(sarif_path, media_type="application/sarif+json")
     raise HTTPException(status_code=404, detail="SARIF report not found")
-
 
 @app.delete(
     "/api/scan/{scan_id}",
@@ -431,7 +411,6 @@ async def cancel_scan(scan_id: str):
         del SCANS[scan_id]
         return {"status": "deleted"}
     raise HTTPException(status_code=404, detail="Scan not found")
-
 
 @app.get(
     "/api/scan/{scan_id}/events",
@@ -470,7 +449,6 @@ async def stream_scan_events(scan_id: str):
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
-
 @app.get("/", summary="API info", tags=["Info"])
 async def index():
     """API information and available endpoints."""
@@ -491,9 +469,7 @@ async def index():
         },
     }
 
-
 # ─── Server Launcher ───
-
 
 def start_api_server(host="0.0.0.0", port=8080):
     """Start the FastAPI server with Uvicorn."""

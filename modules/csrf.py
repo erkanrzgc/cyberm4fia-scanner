@@ -3,17 +3,13 @@ cyberm4fia-scanner - CSRF Module
 Cross-Site Request Forgery detection
 """
 
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import re
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urljoin
 import httpx
 
 from utils.colors import Colors, log_info, log_success, log_vuln, log_warning
 from utils.request import increment_vulnerability_count, smart_request
+from utils.request import ScanExceptions
 
 # Common anti-CSRF token field names
 CSRF_TOKEN_NAMES = [
@@ -74,14 +70,13 @@ SENSITIVE_FIELDS = [
     "privilege",
 ]
 
-
 def _has_csrf_token(form):
     """Check if a form contains an anti-CSRF token."""
     inputs = form.find_all("input")
 
     for inp in inputs:
         name = (inp.get("name") or "").lower()
-        input_type = (inp.get("type") or "").lower()
+        _ = (inp.get("type") or "").lower()
 
         # Check if any input name matches known CSRF token names
         for token_name in CSRF_TOKEN_NAMES:
@@ -104,7 +99,6 @@ def _has_csrf_token(form):
 
     return False, None, None
 
-
 def _check_samesite_cookie(headers):
     """Check if cookies have SameSite attribute."""
     set_cookies = headers.get("Set-Cookie", "")
@@ -119,7 +113,6 @@ def _check_samesite_cookie(headers):
         return "None (unsafe!)"
     return "Not set"
 
-
 def _check_csrf_headers(url):
     """Check if the server expects CSRF-related headers."""
     found = []
@@ -131,7 +124,6 @@ def _check_csrf_headers(url):
     except httpx.RequestError:
         pass
     return found
-
 
 def _get_form_info(form, url):
     """Extract useful info from a form for reporting."""
@@ -148,7 +140,6 @@ def _get_form_info(form, url):
         "method": method,
         "fields": field_names[:5],
     }
-
 
 def scan_csrf(url, forms, delay):
     """Scan forms for CSRF vulnerabilities."""
@@ -168,7 +159,7 @@ def scan_csrf(url, forms, delay):
                 log_info(f"  Cookie SameSite: {samesite} (partial CSRF protection)")
             else:
                 log_warning(f"  Cookie SameSite: {samesite}")
-    except Exception:
+    except ScanExceptions:
         pass
 
     for i, form in enumerate(forms):
@@ -216,8 +207,8 @@ def scan_csrf(url, forms, delay):
             poc = _generate_csrf_poc(form, action_url)
 
             print(f"\n{Colors.BOLD}    ╔══ CSRF EXPLOIT PoC ══╗{Colors.END}")
-            print(f"    Save as .html and open in browser while")
-            print(f"    victim is logged in:")
+            print("    Save as .html and open in browser while")
+            print("    victim is logged in:")
             print(f"{Colors.GREY}")
             for line in poc.split("\n"):
                 print(f"    {line}")
@@ -240,7 +231,6 @@ def scan_csrf(url, forms, delay):
         log_info("  All forms have CSRF protection ✅")
 
     return vulns
-
 
 def _generate_csrf_poc(form, action_url):
     """Generate a CSRF Proof of Concept HTML page."""

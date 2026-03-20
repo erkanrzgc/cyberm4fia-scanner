@@ -3,15 +3,11 @@ cyberm4fia-scanner - Server-Side Template Injection (SSTI) Scanner
 Detects Jinja2, Twig, Mako, Smarty, Freemarker, Pebble template injection
 """
 
-import sys
-import os
-import re
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from utils.colors import log_info, log_success, log_warning, log_error
+from utils.colors import log_info, log_success
 from utils.request import smart_request
+from utils.request import ScanExceptions
 
 # ─────────────────────────────────────────────────────
 # SSTI Payloads — each has a unique expected output
@@ -45,7 +41,6 @@ SSTI_RCE_PAYLOADS = {
     ],
 }
 
-
 def inject_payload(url, param, payload, delay, method="get"):
     """Inject SSTI payload into a URL parameter."""
     parsed = urlparse(url)
@@ -66,9 +61,8 @@ def inject_payload(url, param, payload, delay, method="get"):
             resp = smart_request("post", url, data=data, delay=delay, timeout=8)
 
         return resp.text, resp.status_code
-    except Exception:
+    except ScanExceptions:
         return None, None
-
 
 def scan_ssti(url, delay=0):
     """Scan URL for SSTI vulnerabilities."""

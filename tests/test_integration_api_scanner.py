@@ -27,6 +27,14 @@ def test_scan_api_detects_openapi_auth_issues_via_wsgi_fixture(monkeypatch):
         "smart_request",
         lambda method, url, **kwargs: _wsgi_request(app, method, url, **kwargs),
     )
+    # After the api_scanner.py ➜ api_spec_parser.py split, spec parsing
+    # functions import smart_request in their own module namespace.
+    from modules import api_spec_parser
+    monkeypatch.setattr(
+        api_spec_parser,
+        "smart_request",
+        lambda method, url, **kwargs: _wsgi_request(app, method, url, **kwargs),
+    )
     monkeypatch.setattr(api_scanner, "test_bola", lambda target, delay=0: [])
     monkeypatch.setattr(api_scanner, "test_rate_limiting", lambda target, delay=0: [])
     monkeypatch.setattr(api_scanner, "test_mass_assignment", lambda target, delay=0: [])

@@ -14,6 +14,7 @@ except ImportError:
 
 from utils.colors import Colors, log_info, log_success, log_warning, log_error
 from utils.request import smart_request
+from utils.request import ScanExceptions
 
 
 class InteractiveShell:
@@ -119,7 +120,7 @@ class InteractiveShell:
                     data=data if self.method == "post" else None,
                 )
                 return self._extract_output(resp.text)
-            except Exception as e:
+            except ScanExceptions as e:
                 return f"Error: {e}"
         else:
             # Param-based (GET)
@@ -134,7 +135,7 @@ class InteractiveShell:
             try:
                 resp = smart_request("get", exploit_url)
                 return self._extract_output(resp.text)
-            except Exception as e:
+            except ScanExceptions as e:
                 return f"Error: {e}"
 
     def check_connection(self):
@@ -318,7 +319,7 @@ class InteractiveShell:
                                                     print(
                                                         f"{Colors.CYAN}{code}{Colors.END}"
                                                     )
-                                except Exception as ye:
+                                except ScanExceptions as ye:
                                     print(
                                         f"{Colors.RED}[!] Error parsing GTFOBins data: {ye}{Colors.END}"
                                     )
@@ -326,7 +327,7 @@ class InteractiveShell:
                                 print(
                                     f"{Colors.RED}[!] Binary '{binary}' not found on GTFOBins (404).{Colors.END}"
                                 )
-                        except Exception as e:
+                        except ScanExceptions as e:
                             print(
                                 f"{Colors.RED}[!] Error fetching GTFOBins: {e}{Colors.END}"
                             )
@@ -354,5 +355,5 @@ class InteractiveShell:
                 print(f"\n{Colors.YELLOW}[*] Shell interrupted.{Colors.END}")
                 self.is_running = False
                 break
-            except Exception as e:
+            except ScanExceptions as e:
                 log_error(f"Shell error: {e}")

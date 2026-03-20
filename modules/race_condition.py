@@ -4,17 +4,13 @@ Detects TOCTOU and concurrency bugs by sending parallel requests.
 Tests: coupon reuse, double-spend, vote manipulation, auth race.
 """
 
-import sys
-import os
 import time
 import asyncio
 import httpx
 from collections import Counter
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from utils.colors import log_info, log_success, log_warning
-
+from utils.request import ScanExceptions
 
 # ─────────────────────────────────────────────────────
 # Race Condition Patterns
@@ -55,7 +51,6 @@ RACE_PATTERNS = {
     },
 }
 
-
 async def _send_request(client, method, url, data=None, headers=None, cookies=None):
     """Send a single async request and return timing + response info."""
     start = time.time()
@@ -79,14 +74,13 @@ async def _send_request(client, method, url, data=None, headers=None, cookies=No
             "headers": dict(resp.headers),
         }
 
-    except Exception as e:
+    except ScanExceptions as e:
         return {
             "status": 0,
             "length": 0,
             "time": time.time() - start,
             "error": str(e),
         }
-
 
 async def _race_burst(
     method, url, concurrent=50, data=None, headers=None, cookies=None
@@ -111,7 +105,6 @@ async def _race_burst(
         results = await asyncio.gather(*tasks)
 
     return results
-
 
 def _analyze_race_results(results, concurrent):
     """Analyze race condition results for anomalies."""
@@ -177,7 +170,6 @@ def _analyze_race_results(results, concurrent):
 
     return findings
 
-
 def _detect_race_targets(url, forms, delay=0):
     """Auto-detect endpoints likely vulnerable to race conditions."""
     targets = []
@@ -231,7 +223,6 @@ def _detect_race_targets(url, forms, delay=0):
                     break
 
     return targets
-
 
 def scan_race_condition(url, forms=None, delay=0, concurrent=50, cookie=None):
     """
@@ -309,7 +300,7 @@ def scan_race_condition(url, forms=None, delay=0, concurrent=50, cookie=None):
                 else:
                     log_info(f"[{finding['severity']}] {finding['detail']}")
 
-        except Exception as e:
+        except ScanExceptions as e:
             log_warning(f"Race test failed for {target_url}: {e}")
 
     if not all_findings:

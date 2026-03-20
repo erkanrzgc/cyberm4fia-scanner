@@ -52,7 +52,7 @@ async def run_modules_async_impl(
             _run_module(
                 spec.name,
                 spec.loader(),
-                *spec.build_args(scan_url, forms, delay),
+                *spec.build_args(scan_url, forms, delay, options),
             )
         )
 

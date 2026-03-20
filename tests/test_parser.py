@@ -4,24 +4,19 @@ Tests for parser generation from core.scan_options metadata.
 
 import argparse
 import json
-import os
 import sys
 
 import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import scanner
 from core.session import ScanSession
 from core.scan_options import DEFAULT_AI_MODEL, add_parser_arguments
-
 
 @pytest.fixture(autouse=True)
 def reset_json_output():
     original = scanner.Config.JSON_OUTPUT
     yield
     scanner.Config.JSON_OUTPUT = original
-
 
 class TestParser:
     def test_parse_args_accepts_generated_cli_flags(self):

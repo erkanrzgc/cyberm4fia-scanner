@@ -3,17 +3,14 @@ cyberm4fia-scanner - CeWL-Style Wordlist Generator
 Generates site-specific wordlists by crawling and extracting words
 """
 
-import sys
 import os
 import re
 from collections import Counter
 from urllib.parse import urlparse, urljoin
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from utils.colors import log_info, log_success
 from utils.request import smart_request
-
+from utils.request import ScanExceptions
 
 def extract_words(html, min_length=4, max_length=30):
     """Extract meaningful words from HTML content."""
@@ -31,11 +28,9 @@ def extract_words(html, min_length=4, max_length=30):
     # Filter by length
     return [w.lower() for w in words if min_length <= len(w) <= max_length]
 
-
 def extract_emails(html):
     """Extract email addresses from page."""
     return re.findall(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", html)
-
 
 def extract_paths(html, base_url):
     """Extract URL paths for directory names."""
@@ -55,10 +50,9 @@ def extract_paths(html, base_url):
                     and not part.endswith((".js", ".css", ".png", ".jpg", ".gif"))
                 ):
                     paths.add(part.lower())
-        except Exception:
+        except ScanExceptions:
             pass
     return paths
-
 
 def extract_meta_keywords(html):
     """Extract meta keywords and description words."""
@@ -88,7 +82,6 @@ def extract_meta_keywords(html):
 
     return [w.lower().strip() for w in words if len(w) >= 3]
 
-
 def generate_mutations(words):
     """Generate common password mutations from words."""
     mutations = set()
@@ -105,7 +98,6 @@ def generate_mutations(words):
             mutations.add(prefix + word)
             mutations.add(prefix + word.capitalize())
     return mutations
-
 
 def generate_wordlist(
     url,
@@ -167,12 +159,12 @@ def generate_wordlist(
                         link_parsed = urlparse(link)
                         if link_parsed.netloc == base_domain and link not in visited:
                             to_visit.append((link, current_depth + 1))
-                    except Exception:
+                    except ScanExceptions:
                         pass
 
             log_info(f"Processed: {current_url} ({len(words)} words)")
 
-        except Exception:
+        except ScanExceptions:
             pass
 
     # Build final wordlist

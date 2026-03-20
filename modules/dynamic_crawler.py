@@ -4,12 +4,8 @@ Playwright-based smart crawler for modern web apps (Next.js, React, Vue, etc.)
 """
 
 import sys
-import os
 import asyncio
 from urllib.parse import urlparse, urljoin
-import re
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.colors import log_info, log_success, log_warning, log_error
 from utils.request import (
@@ -18,6 +14,7 @@ from utils.request import (
     get_proxy,
 )
 from bs4 import BeautifulSoup
+from utils.request import ScanExceptions
 
 try:
     from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
@@ -123,7 +120,7 @@ class DynamicCrawler:
             except PlaywrightTimeout:
                 log_warning(f"Timeout while dynamically crawling {self.target_url}")
                 final_html = ""
-            except Exception as e:
+            except ScanExceptions as e:
                 log_error(f"Error during dynamic crawling: {e}")
                 final_html = ""
                 

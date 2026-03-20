@@ -3,11 +3,6 @@ cyberm4fia-scanner - Recon Module
 Port scanning and server reconnaissance
 """
 
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import socket
 import ssl
 import asyncio
@@ -15,7 +10,7 @@ from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from utils.colors import Colors, log_info, log_success, log_warning, log_error
 from utils.request import _get_session
-
+from utils.request import ScanExceptions
 
 WEB_PORTS = [80, 443, 8080, 8443, 8000, 3000, 5000, 9000]
 
@@ -99,7 +94,6 @@ DANGEROUS_PORTS = {
 # SSL ports for certificate inspection
 SSL_PORTS = (443, 465, 636, 993, 995, 2083, 4443, 5986, 8443)
 
-
 def _init_extended_ports():
     """Build extended port list for deep scans."""
     ports = set()
@@ -109,9 +103,7 @@ def _init_extended_ports():
         ports.add(p)
     return list(sorted(ports))
 
-
 EXTENDED_PORTS = _init_extended_ports()
-
 
 async def async_scan_port(ip, port, semaphore, timeout=1.0):
     """Scan a single port asynchronously with banner grabbing."""
@@ -134,14 +126,14 @@ async def async_scan_port(ip, port, semaphore, timeout=1.0):
             writer.close()
             try:
                 await writer.wait_closed()
-            except Exception:
+            except ScanExceptions:
                 pass
 
             service = PORT_SERVICES.get(port, "Unknown")
             return {"port": port, "service": service, "banner": banner}
         except Exception:
+            # Catch TimeoutError, ConnectionRefusedError, CancelledError and others
             return None
-
 
 async def run_async_scanner(ip, ports_to_scan, concurrency=1000, timeout=1.0):
     """Run concurrent port scans using asyncio."""
@@ -149,7 +141,6 @@ async def run_async_scanner(ip, ports_to_scan, concurrency=1000, timeout=1.0):
     tasks = [async_scan_port(ip, port, semaphore, timeout) for port in ports_to_scan]
     results = await asyncio.gather(*tasks)
     return [r for r in results if r is not None]
-
 
 def scan_port(ip, port):
     """Legacy synchronous scan with banner grabbing (fallback)."""
@@ -165,7 +156,7 @@ def scan_port(ip, port):
                 data = sock.recv(1024)
                 banner = data.decode("utf-8", errors="ignore").strip()
                 banner = banner.split("\n")[0][:200]
-            except Exception:
+            except ScanExceptions:
                 pass
 
             sock.close()
@@ -173,10 +164,9 @@ def scan_port(ip, port):
             return {"port": port, "service": service, "banner": banner}
 
         sock.close()
-    except Exception:
+    except ScanExceptions:
         pass
     return None
-
 
 def get_server_info(url):
     """Get server information from headers"""
@@ -223,11 +213,10 @@ def get_server_info(url):
 
         info["waf"] = waf
 
-    except Exception as e:
+    except ScanExceptions as e:
         log_warning(f"Error getting server info: {e}")
 
     return info
-
 
 def check_security_headers(headers):
     """Audit HTTP security headers"""
@@ -287,7 +276,6 @@ def check_security_headers(headers):
 
     return results
 
-
 def get_ssl_info(hostname, port=443):
     """Get SSL/TLS certificate information"""
     info = {}
@@ -322,11 +310,10 @@ def get_ssl_info(hostname, port=443):
                     info["san"] = sans[:5]  # Max 5
                 else:
                     info["cn"] = "Could not parse cert"
-    except Exception:
+    except ScanExceptions:
         info["error"] = "SSL connection failed or no SSL"
 
     return info
-
 
 def fetch_robots_sitemap(url):
     """Fetch robots.txt and sitemap.xml"""
@@ -349,7 +336,7 @@ def fetch_robots_sitemap(url):
             results["robots"] = disallow[:10]
         else:
             results["robots"] = None
-    except Exception:
+    except ScanExceptions:
         results["robots"] = None
 
     # sitemap.xml
@@ -362,11 +349,10 @@ def fetch_robots_sitemap(url):
             results["sitemap"] = urls[:10]
         else:
             results["sitemap"] = None
-    except Exception:
+    except ScanExceptions:
         results["sitemap"] = None
 
     return results
-
 
 def get_dns_records(hostname):
     """Get DNS records"""
@@ -380,14 +366,13 @@ def get_dns_records(hostname):
         try:
             rdns = socket.gethostbyaddr(ips[2][0])
             records["PTR"] = rdns[0]
-        except Exception:
+        except ScanExceptions:
             pass
 
-    except Exception:
+    except ScanExceptions:
         pass
 
     return records
-
 
 def scan_subdomains(domain):
     """
@@ -433,12 +418,11 @@ def scan_subdomains(domain):
                 log_info("No subdomains found in certificate logs.")
         else:
             log_warning(f"crt.sh returned status {resp.status_code}")
-    except Exception as e:
+    except ScanExceptions as e:
         log_error(f"Error querying crt.sh: {e}")
 
     print(f"{Colors.BOLD}{'=' * 50}{Colors.END}\n")
     return list(subdomains)
-
 
 def run_recon(url, deep=False):
     """Run recon on target. If deep=True, run extended checks."""
@@ -453,7 +437,7 @@ def run_recon(url, deep=False):
     try:
         ip = socket.gethostbyname(hostname)
         log_info(f"IP Address: {ip}")
-    except Exception:
+    except ScanExceptions:
         ip = hostname
         log_warning(f"Could not resolve IP for {hostname}")
 
@@ -481,7 +465,7 @@ def run_recon(url, deep=False):
             open_ports = asyncio.run(
                 run_async_scanner(ip, ports_to_scan, concurrency=2000, timeout=1.0)
             )
-        except Exception as e:
+        except ScanExceptions as e:
             log_warning(f"Async port scan failed ({e}), falling back to slow scan...")
             with ThreadPoolExecutor(max_workers=50) as executor:
                 futures = {

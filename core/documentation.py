@@ -257,7 +257,7 @@ FEATURE_DOC_SPECS = (
     FeatureDocSpec(
         "Automation & Reporting",
         "AI Analysis",
-        "Local AI-assisted false-positive filtering and remediation guidance.",
+        "Dual-model AI with autonomous exploit agent, PoC generation, and false-positive filtering.",
         option_key="ai",
     ),
     FeatureDocSpec(
@@ -317,6 +317,7 @@ CLI_DOC_GROUPS = (
             "sarif",
             "ai",
             "ai_model",
+            "ollama_url",
         },
     ),
     (
@@ -434,7 +435,7 @@ def _render_feature_flag_label(option_key, action_map):
 
 def render_cli_flags_markdown():
     """Render CLI flag tables grouped for usage docs."""
-    action_map = build_action_map()
+    build_action_map()
     grouped_actions = {group_name: [] for group_name, _ in CLI_DOC_GROUPS}
     grouped_actions["Other"] = []
 

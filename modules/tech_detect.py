@@ -3,15 +3,12 @@ cyberm4fia-scanner - Technology Fingerprinter
 Wappalyzer-style detection of frameworks, CMS, servers, and libraries
 """
 
-import sys
-import os
 import re
 from urllib.parse import urljoin
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from utils.colors import log_info, log_success, log_warning, log_error
+from utils.colors import log_info, log_success, log_error
 from utils.request import smart_request
+from utils.request import ScanExceptions
 
 # ─────────────────────────────────────────────────────
 # Technology Fingerprint Database
@@ -201,7 +198,6 @@ TECHNOLOGIES = [
     },
 ]
 
-
 def fingerprint_headers(headers, tech):
     """Check response headers against technology fingerprints."""
     results = {}
@@ -219,7 +215,6 @@ def fingerprint_headers(headers, tech):
 
     return results
 
-
 def fingerprint_body(body, tech):
     """Check response body against technology fingerprints."""
     patterns = tech.get("body_patterns", [])
@@ -230,7 +225,6 @@ def fingerprint_body(body, tech):
             return {"matched": True, "version": version}
     return {}
 
-
 def check_paths(url, tech, delay):
     """Check specific paths that indicate a technology."""
     paths = tech.get("paths", [])
@@ -240,10 +234,9 @@ def check_paths(url, tech, delay):
             resp = smart_request("get", check_url, delay=delay, timeout=5)
             if resp.status_code == 200:
                 return {"matched": True, "evidence": path}
-        except Exception:
+        except ScanExceptions:
             pass
     return {}
-
 
 def check_security_posture(headers):
     """Analyze missing security headers."""
@@ -275,7 +268,6 @@ def check_security_posture(headers):
             )
 
     return issues
-
 
 def scan_technology(url, delay=0):
     """Main entry point for technology fingerprinting."""
@@ -339,7 +331,7 @@ def scan_technology(url, delay=0):
                 }
             )
 
-    except Exception as e:
+    except ScanExceptions as e:
         log_error(f"Technology fingerprinting failed: {e}")
 
     log_success(f"Tech detection complete. {len(detected)} item(s) identified.")

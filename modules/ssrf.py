@@ -3,14 +3,8 @@ cyberm4fia-scanner - SSRF Module
 Server-Side Request Forgery detection (Threaded)
 """
 
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse, urljoin
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
 
 from utils.colors import log_info, log_success, log_vuln
 from utils.request import (
@@ -20,7 +14,9 @@ from utils.request import (
     smart_request,
 )
 from modules.payloads import load_payloads_from_file
-
+from utils.payload_filter import PayloadFilter
+from typing import Any, Optional
+from utils.request import ScanExceptions
 
 # SSRF Payloads: loaded from file + hardcoded fallback
 _SSRF_FALLBACK = [
@@ -134,15 +130,13 @@ SSRF_PARAM_NAMES = [
     "page",
 ]
 
-
 def _get_baseline(url, params, parsed):
     """Get baseline response for comparison."""
     try:
         resp = smart_request("get", url, delay=0)
         return resp.text, len(resp.text)
-    except Exception:
+    except ScanExceptions:
         return "", 0
-
 
 def detect_ssrf(text, payload, baseline_text="", baseline_len=0):
     """Check response for SSRF indicators using baseline comparison."""
@@ -182,10 +176,12 @@ def detect_ssrf(text, payload, baseline_text="", baseline_len=0):
 
     return None, None
 
-
-def _test_ssrf_param(param, params, parsed, delay, baseline_text, baseline_len):
+def _test_ssrf_param(param: str, params: dict, parsed: Any, delay: float, baseline_text: str, baseline_len: int, target_context: Optional[dict] = None) -> Optional[dict]:
     """Test a single param for SSRF with baseline comparison."""
     all_payloads = list(SSRF_PAYLOADS)
+    if target_context:
+        all_payloads = PayloadFilter.filter_payloads(all_payloads, target_context)
+        
     oob_client = get_oob_client()
     if oob_client and oob_client.ready:
         all_payloads.append(oob_client.generate_payload("ssrf", param))
@@ -210,16 +206,18 @@ def _test_ssrf_param(param, params, parsed, delay, baseline_text, baseline_len):
                     "signature": sig,
                     "url": test_url,
                 }
-        except Exception:
+        except ScanExceptions:
             pass
     return None
 
-
 def _test_ssrf_form(
-    inp, inputs, hidden_data, method, target, delay, baseline_text, baseline_len
-):
+    inp: str, inputs: list, hidden_data: dict, method: str, target: str, delay: float, baseline_text: str, baseline_len: int, target_context: Optional[dict] = None
+) -> Optional[dict]:
     """Test a single form input for SSRF with baseline comparison."""
     all_payloads = list(SSRF_PAYLOADS)
+    if target_context:
+        all_payloads = PayloadFilter.filter_payloads(all_payloads, target_context)
+
     oob_client = get_oob_client()
     if oob_client and oob_client.ready:
         all_payloads.append(oob_client.generate_payload("ssrf", inp))
@@ -252,15 +250,17 @@ def _test_ssrf_form(
                     "url": target,
                     "method": method,
                 }
-        except Exception:
+        except ScanExceptions:
             pass
     return None
 
-
-def scan_ssrf(url, forms, delay, threads=None):
+def scan_ssrf(url: str, forms: list, delay: float, options: Optional[dict] = None, threads: Optional[int] = None) -> list:
     """Scan for SSRF vulnerabilities (threaded)."""
     if threads is None:
         threads = get_thread_count()
+        
+    options = options or {}
+    target_context = options.get("target_context")
 
     log_info(f"Testing SSRF with {len(SSRF_PAYLOADS)} payloads ({threads} threads)...")
     vulns = []
@@ -298,7 +298,8 @@ def scan_ssrf(url, forms, delay, threads=None):
                     delay,
                     baseline_text,
                     baseline_len,
-                )
+                    target_context
+                )  # pyre-ignore
             )
 
         # Forms — only test fields that look like they accept URLs
@@ -329,7 +330,8 @@ def scan_ssrf(url, forms, delay, threads=None):
                         delay,
                         baseline_text,
                         baseline_len,
-                    )
+                        target_context
+                    )  # pyre-ignore
                 )
 
         for future in as_completed(futures):
@@ -337,7 +339,7 @@ def scan_ssrf(url, forms, delay, threads=None):
                 result = future.result()
                 if result:
                     vulns.append(result)
-            except Exception:
+            except ScanExceptions:
                 pass
 
     return vulns
