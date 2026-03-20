@@ -72,15 +72,17 @@
 
 ## Quick Start
 
+The scanner now defaults to a powerful **Interactive Setup Wizard** built with `rich`. It allows you to select your target, mode, attack profile, and configure settings visually:
+
 ```bash
-git clone https://github.com/erkanrzgc/cyberm4fia-scanner.git
-cd cyberm4fia-scanner
-pip install -r requirements.txt
-
-# Interactive mode
+# Start Interactive Interface
 python3 scanner.py
+```
 
-# Full scan
+If you prefer classical CLI usage:
+
+```bash
+# Full scan via CLI
 python3 scanner.py -u https://target.com --all
 
 # Specific modules
@@ -94,7 +96,36 @@ python3 scanner.py -l targets.txt --all
 
 # Through proxy
 python3 scanner.py -u https://target.com --all --proxy socks5://127.0.0.1:9050
+
+# Session resume
+python3 scanner.py --resume scan1.json
 ```
+
+---
+
+## 🧨 Active Exploitation Framework
+
+cyberm4fia-scanner goes beyond finding vulnerabilities—it verifies and exploits them. By selecting an attack profile that supports it, or simply passing the `--exploit` flag, the scanner activates post-exploitation modules:
+
+- **Interactive Shells:** Catch reverse shells automatically when Command Injection or RCE is discovered.
+- **Out-of-Band (OOB) Testing:** Spin up local HTTP listeners to detect blind/asynchronous vulnerabilities (supports auto-port fallback).
+- **Automated Looting:** Extract and dump database contents (SQLi) or grab sensitive system files (LFI) directly into a `loot/` directory.
+- **Offline PoC Generation:** Generate standalone `.html` or `.json` artifacts that securely demonstrate the exact vulnerability (e.g. Clickjacking, CSRF HTML forms).
+- **Auto-Pwn Hand-off:** Automatically generates ready-to-run Nuclei templates or MSF (Metasploit) commands to reproduce and exploit findings.
+- **Headless Browser Escalation:** Uses Playwright to drive active DOM XSS or CSRF payload execution directly within a real headless Chromium instance.
+
+---
+
+## 🛡️ Built-in Proxy Interceptor
+
+You can route your manual browser traffic directly through the scanner using the built-in MITM proxy.
+
+```bash
+# Starts proxy on port 8081 specifically scoped to target.com
+python3 scanner.py --proxy-listen 8081 --scope-proxy target.com
+```
+
+Any traffic you generate through your browser will be automatically intercepted, fed into the main scanning engine, and dynamically tested for vulnerabilities in real-time.
 
 ---
 

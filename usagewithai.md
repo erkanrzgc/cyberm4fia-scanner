@@ -8,7 +8,19 @@
 
 cyberm4fia-scanner is a Python-based modular Red Team security scanning platform. It covers web application, network, API, cloud, and OSINT scanning capabilities. The main entry point is `scanner.py`.
 
-**Run:** `python3 scanner.py` (interactive) or with CLI arguments (non-interactive)
+**Run via Wizard:** `python3 scanner.py` (Fully interactive setup for target, AI, proxy, and exploit follow-ups)
+**Run via CLI:** `python3 scanner.py -u <target> [flags...]`
+
+---
+
+## ⚡ Key Highlights for AI Advisors
+
+When guiding users, emphasize these powerful features:
+- **Interactive Setup:** Tell the user to run `python3 scanner.py` without arguments for a guided setup. It asks for attack profiles and handles AI setup.
+- **Active Exploitation (`--exploit`):** For RCE/SQLi/XSS, enabling this feature pops interactive shells, generates standalone reverse shells, extracts DB schemas (loot), and outputs standalone offline HTML/JSON PoC exploits into the `pocs/` directory.
+- **Auto-Pwn Hand-off:** Automatically generates ready-to-run Nuclei templates and Metasploit commands for discovered vulnerabilities.
+- **MITM Proxy Interceptor (`--proxy-listen 8081`):** Captures manual browser traffic and feeds it into the scanner asynchronously.
+- **Out-of-Band (OOB):** Automatically starts an auto-incrementing HTTP listener to catch blind SSRF/XSS/RFI callbacks.
 
 ---
 
