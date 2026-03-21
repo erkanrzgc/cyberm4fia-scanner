@@ -307,6 +307,7 @@ cp .env.example .env
 | Variable | Description |
 |---|---|
 | `OLLAMA_URL` | Ollama API URL (default: `http://127.0.0.1:11434`) |
+| `WATCHSTACK_API_KEY` | WatchStack.io API key for verified PoC intelligence (free tier: 30 req/min) |
 | `GITHUB_TOKEN` | GitHub API token for higher rate limits on PoC search |
 | `SHODAN_API_KEY` | Shodan API key for OSINT enrichment |
 | `DEFAULT_THREADS` | Default thread count |
