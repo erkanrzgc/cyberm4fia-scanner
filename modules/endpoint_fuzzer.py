@@ -22,6 +22,7 @@ class EndpointFuzzer:
         self.found_endpoints = []
         self.soft_404_signatures = []
         self.soft_403_signatures = []  # Detect uniform 403 = generic "not found"
+        self.soft_redirect_signatures = []  # Detect uniform 3xx = catch-all redirect
         
         # Load wordlist
         self.words = []
@@ -48,25 +49,30 @@ class EndpointFuzzer:
                 resp = await client.get(test_url)
                 # If a random page returns 200 OK, it's a soft 404
                 if resp.status_code == 200:
-                    # Save the response length or hash as a signature
                     content_length = len(resp.text)
                     self.soft_404_signatures.append(content_length)
                 elif resp.status_code == 403:
-                    # Uniform 403 for random paths = generic "forbidden" page, not real 403
+                    # Uniform 403 for random paths = generic "forbidden" page
                     content_length = len(resp.text)
                     self.soft_403_signatures.append(content_length)
+                elif resp.status_code in (301, 302, 307, 308):
+                    # Uniform redirect for random paths = catch-all redirect
+                    content_length = len(resp.text)
+                    self.soft_redirect_signatures.append(content_length)
             except ScanExceptions:
                 pass
                 
         if self.soft_404_signatures:
-            log_warning(f"Soft-404 detected! Target returns 200 OK for missing pages. Calibration lengths: {self.soft_404_signatures}")
+            log_warning(f"Soft-404 detected! Target returns 200 OK for missing pages.")
         if self.soft_403_signatures:
             log_warning(f"Soft-403 detected! Target returns uniform 403 for random paths — these will be filtered.")
-        if not self.soft_404_signatures and not self.soft_403_signatures:
+        if self.soft_redirect_signatures:
+            log_warning(f"Soft-redirect detected! Target returns uniform 3xx for random paths — these will be filtered.")
+        if not self.soft_404_signatures and not self.soft_403_signatures and not self.soft_redirect_signatures:
             log_info("Target handles 404s correctly.")
             
     def _is_soft_404(self, resp):
-        """Check if a response is actually a soft 404/403 based on calibration"""
+        """Check if a response is actually a soft 404/403/redirect based on calibration"""
         content_length = len(resp.text)
 
         # Soft-404: 200 OK but same body as calibration 404 probe
@@ -79,6 +85,12 @@ class EndpointFuzzer:
         if resp.status_code == 403 and self.soft_403_signatures:
             for sig in self.soft_403_signatures:
                 if abs(content_length - sig) < 100:
+                    return True
+
+        # Soft-redirect: uniform 3xx with same body as calibration redirect probe
+        if resp.status_code in (301, 302, 307, 308) and self.soft_redirect_signatures:
+            for sig in self.soft_redirect_signatures:
+                if abs(content_length - sig) < 50:
                     return True
 
         return False

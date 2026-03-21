@@ -178,15 +178,30 @@ def _run_csrf_hook(state):
     return scan_csrf(state["scan_url"], state["forms"], state["delay"])
 
 
+# ── Host-level hook dedup (CSP/HSTS are per-host, not per-URL) ───────────────
+_csp_checked_hosts: set = set()
+_hsts_checked_hosts: set = set()
+
+
 def _run_csp_bypass_hook(state):
+    from urllib.parse import urlparse
     from modules.csp_bypass import scan_csp_bypass
 
+    host = urlparse(state["scan_url"]).netloc
+    if host in _csp_checked_hosts:
+        return []  # already reported for this host
+    _csp_checked_hosts.add(host)
     return scan_csp_bypass(state["scan_url"], response=state["response"])
 
 
 def _run_cookie_hsts_hook(state):
+    from urllib.parse import urlparse
     from modules.cookie_hsts_audit import scan_cookie_hsts
 
+    host = urlparse(state["scan_url"]).netloc
+    if host in _hsts_checked_hosts:
+        return []  # already reported for this host
+    _hsts_checked_hosts.add(host)
     return scan_cookie_hsts(state["scan_url"], response=state["response"])
 
 
