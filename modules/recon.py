@@ -362,14 +362,14 @@ def get_dns_records(hostname):
         ips = socket.gethostbyname_ex(hostname)
         records["A"] = ips[2]
 
-        # Try reverse DNS
+        # Try reverse DNS (best-effort, many hosts lack PTR)
         try:
             rdns = socket.gethostbyaddr(ips[2][0])
             records["PTR"] = rdns[0]
-        except ScanExceptions:
+        except (OSError, socket.herror, socket.gaierror):
             pass
 
-    except ScanExceptions:
+    except (OSError, socket.herror, socket.gaierror):
         pass
 
     return records
