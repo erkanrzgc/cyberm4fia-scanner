@@ -15,7 +15,62 @@ from utils.request import (
 
 
 DEFAULT_AI_MODEL = "WhiteRabbitNeo/Llama-3.1-WhiteRabbitNeo-2-8B"
-DEFAULT_OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434")
+
+
+def _auto_detect_ollama_url() -> str:
+    """Auto-detect Ollama URL.
+
+    Priority:
+    1. OLLAMA_URL environment variable (explicit override)
+    2. localhost (if Ollama runs on the same machine)
+    3. Default gateway IP (VMware/WSL host)
+    4. Common VMnet adapter IPs
+    """
+    env_url = os.environ.get("OLLAMA_URL", "")
+    if env_url:
+        return env_url
+
+    import socket
+
+    candidates = ["127.0.0.1"]
+
+    # Try to get default gateway (works in VMware/WSL — points to Windows host)
+    try:
+        with open("/proc/net/route") as f:
+            for line in f:
+                parts = line.strip().split()
+                if len(parts) >= 3 and parts[1] == "00000000":
+                    # Default route — gateway is in hex, little-endian
+                    gw_hex = parts[2]
+                    gw_ip = ".".join(
+                        str(int(gw_hex[i:i + 2], 16))
+                        for i in range(0, 8, 2)
+                    )
+                    if gw_ip not in candidates:
+                        candidates.append(gw_ip)
+                    break
+    except (OSError, ValueError):
+        pass
+
+    # Common VMnet8 adapter IPs
+    for ip in ("192.168.6.1", "192.168.186.1"):
+        if ip not in candidates:
+            candidates.append(ip)
+
+    # Quick probe each candidate
+    for ip in candidates:
+        try:
+            sock = socket.create_connection((ip, 11434), timeout=0.5)
+            sock.close()
+            return f"http://{ip}:11434"
+        except (OSError, socket.timeout):
+            continue
+
+    # Fallback
+    return "http://127.0.0.1:11434"
+
+
+DEFAULT_OLLAMA_URL = _auto_detect_ollama_url()
 
 
 @dataclass(frozen=True)
