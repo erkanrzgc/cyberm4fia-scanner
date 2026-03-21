@@ -21,6 +21,7 @@ class EndpointFuzzer:
         self.threads = threads
         self.found_endpoints = []
         self.soft_404_signatures = []
+        self.soft_403_signatures = []  # Detect uniform 403 = generic "not found"
         
         # Load wordlist
         self.words = []
@@ -50,24 +51,36 @@ class EndpointFuzzer:
                     # Save the response length or hash as a signature
                     content_length = len(resp.text)
                     self.soft_404_signatures.append(content_length)
+                elif resp.status_code == 403:
+                    # Uniform 403 for random paths = generic "forbidden" page, not real 403
+                    content_length = len(resp.text)
+                    self.soft_403_signatures.append(content_length)
             except ScanExceptions:
                 pass
                 
         if self.soft_404_signatures:
             log_warning(f"Soft-404 detected! Target returns 200 OK for missing pages. Calibration lengths: {self.soft_404_signatures}")
-        else:
+        if self.soft_403_signatures:
+            log_warning(f"Soft-403 detected! Target returns uniform 403 for random paths — these will be filtered.")
+        if not self.soft_404_signatures and not self.soft_403_signatures:
             log_info("Target handles 404s correctly.")
             
     def _is_soft_404(self, resp):
-        """Check if a 200 OK response is actually a soft 404 based on calibration"""
-        if resp.status_code != 200:
-            return False
-            
+        """Check if a response is actually a soft 404/403 based on calibration"""
         content_length = len(resp.text)
-        # Allow a small variance in length (e.g. CSRF tokens changing on error page)
-        for sig in self.soft_404_signatures:
-            if abs(content_length - sig) < 50:
-                return True
+
+        # Soft-404: 200 OK but same body as calibration 404 probe
+        if resp.status_code == 200:
+            for sig in self.soft_404_signatures:
+                if abs(content_length - sig) < 50:
+                    return True
+
+        # Soft-403: uniform 403 with same body as calibration 403 probe
+        if resp.status_code == 403 and self.soft_403_signatures:
+            for sig in self.soft_403_signatures:
+                if abs(content_length - sig) < 100:
+                    return True
+
         return False
 
     async def _fuzz_worker(self, client, queue):

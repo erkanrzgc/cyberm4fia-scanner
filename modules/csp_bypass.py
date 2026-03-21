@@ -14,9 +14,26 @@ Detects:
   - Complete absence of CSP
 """
 
+import re
+from urllib.parse import urlparse
+
 from utils.colors import log_info, log_warning, log_success, log_vuln
 from utils.request import increment_vulnerability_count
 from utils.request import ScanExceptions
+
+# File extensions that are binary/non-HTML — never navigate to these
+_SKIP_EXTENSIONS = re.compile(
+    r"\.(wasm|zip|tar|gz|bz2|xz|rar|7z|exe|dll|so|bin|dat|iso|img|"
+    r"pdf|doc|docx|xls|xlsx|ppt|pptx|mp3|mp4|avi|mkv|mov|flv|wmv|"
+    r"jpg|jpeg|png|gif|bmp|svg|ico|webp|tiff|woff|woff2|ttf|eot|otf)$",
+    re.IGNORECASE,
+)
+
+
+def _is_navigable_url(url: str) -> bool:
+    """Check if a URL is safe for Playwright navigation (not a binary download)."""
+    path = urlparse(url).path
+    return not bool(_SKIP_EXTENSIONS.search(path))
 
 
 # ──────────────────────────────────────────────
@@ -191,6 +208,10 @@ def analyze_csp_weaknesses(directives: dict, url: str) -> list:
 
 def _verify_with_playwright(url: str, weaknesses: list) -> list:
     """Use Playwright to verify CSP bypass by attempting actual XSS execution."""
+    if not _is_navigable_url(url):
+        log_info(f"Skipping Playwright CSP verify — non-HTML resource: {url}")
+        return weaknesses
+
     try:
         from playwright.sync_api import (
             sync_playwright,
@@ -245,7 +266,7 @@ def _verify_with_playwright(url: str, weaknesses: list) -> list:
                     page.wait_for_timeout(1500)
                 except PlaywrightTimeoutError:
                     pass
-                except ScanExceptions:
+                except Exception:  # noqa: BLE001 — catch download, nav, and other Playwright errors
                     pass
 
                 if alert_triggered[0]:
@@ -261,6 +282,9 @@ def _verify_with_playwright(url: str, weaknesses: list) -> list:
 
 def _check_nonce_leak(url: str) -> dict | None:
     """Check if CSP nonce values are leaked in the page DOM."""
+    if not _is_navigable_url(url):
+        return None
+
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
@@ -295,7 +319,7 @@ def _check_nonce_leak(url: str) -> dict | None:
                     "verified": True,
                     "nonces": nonces,
                 }
-        except ScanExceptions:
+        except Exception:  # noqa: BLE001 — Playwright nav errors
             pass
 
     return None
