@@ -721,12 +721,18 @@ def iter_phase_module_specs(phase: str, options: dict):
 
 def run_phase_modules(phase: str, options: dict, state: dict):
     """Run sequential registry-backed modules for a given scanner phase."""
+    from utils.colors import log_error
+
     collected = []
     for spec in iter_phase_module_specs(phase, options):
         if spec.requires_forms and not state.get("forms"):
             continue
-        result = spec.runner(state)
-        if spec.collect_results and result:
-            collected.extend(result)
-            state["all_vulns"] = list(state.get("all_vulns", [])) + list(result)
+        try:
+            result = spec.runner(state)
+            if spec.collect_results and result:
+                collected.extend(result)
+                state["all_vulns"] = list(state.get("all_vulns", [])) + list(result)
+        except Exception as e:  # noqa: BLE001 — never let a single module kill the scan
+            mod_name = getattr(spec, "label", None) or getattr(spec, "option_key", "unknown")
+            log_error(f"Module '{mod_name}' crashed: {type(e).__name__}: {e}")
     return collected

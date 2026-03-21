@@ -64,7 +64,7 @@ def scan_dom_xss(url):
                     page.wait_for_timeout(1000)
                 except PlaywrightTimeoutError:
                     pass
-                except ScanExceptions:
+                except Exception:  # noqa: BLE001 — Playwright download/nav errors
                     pass
 
                 if alert_triggered[0]:
@@ -104,7 +104,7 @@ def scan_dom_xss(url):
                         page.wait_for_timeout(1000)
                     except PlaywrightTimeoutError:
                         pass
-                    except ScanExceptions:
+                    except Exception:  # noqa: BLE001 — Playwright download/nav errors
                         pass
 
                     if alert_triggered_param[0]:
