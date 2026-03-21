@@ -189,6 +189,9 @@ def resolve_cname(subdomain):
         )
         cname = result.stdout.strip().rstrip(".")
         return cname if cname else None
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        # dig not installed, timed out, or other OS-level error
+        return None
     except ScanExceptions:
         return None
 
