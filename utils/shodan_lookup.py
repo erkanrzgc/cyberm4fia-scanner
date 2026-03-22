@@ -76,6 +76,14 @@ def shodan_lookup(ip, api_key=None):
                 log_success(
                     f"Shodan (API): {data.get('org', 'Unknown')} | {data.get('country_name', '')}"
                 )
+                if result.get("os"):
+                    log_info(f"OS: {result['os']}")
+                if result.get("isp"):
+                    log_info(f"ISP: {result['isp']}")
+                if result.get("country"):
+                    log_info(f"Country: {result['country']}")
+                if result["ports"]:
+                    log_success(f"Ports: {', '.join(map(str, result['ports'][:15]))}")
                 if result["vulns"]:
                     log_warning(
                         f"Known CVEs ({len(result['vulns'])}): {', '.join(result['vulns'][:5])}"

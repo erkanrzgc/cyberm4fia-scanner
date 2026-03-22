@@ -29,9 +29,11 @@ def _run_recon(state):
 
 
 def _run_osint(state):
+    import os
     from utils.shodan_lookup import scan_osint
 
-    state["osint_data"] = scan_osint(state["url"], delay=state["delay"])
+    shodan_key = os.environ.get("SHODAN_API_KEY", "")
+    state["osint_data"] = scan_osint(state["url"], shodan_api_key=shodan_key or None, delay=state["delay"])
     return []
 
 
