@@ -331,9 +331,36 @@ class InteractiveShell:
                             print(
                                 f"{Colors.RED}[!] Error fetching GTFOBins: {e}{Colors.END}"
                             )
+                    elif cmd == "privesc":
+                        print(
+                            f"{Colors.YELLOW}[*] Launching Privilege Escalation Scanner...{Colors.END}"
+                        )
+                        try:
+                            from modules.privesc_scanner import PrivEscScanner
+                            scanner = PrivEscScanner(self)
+                            scanner.scan_all()
+                            self._privesc_findings = scanner.findings
+                        except ScanExceptions as e:
+                            print(
+                                f"{Colors.RED}[!] PrivEsc scan error: {e}{Colors.END}"
+                            )
+                    elif cmd == "escalate":
+                        findings = getattr(self, "_privesc_findings", None)
+                        if not findings or not findings.get("suggestions"):
+                            print(
+                                f"{Colors.YELLOW}[*] Run !privesc first to enumerate vectors.{Colors.END}"
+                            )
+                        else:
+                            top = findings["suggestions"][0]
+                            print(
+                                f"{Colors.RED}[*] Auto-escalating via {top['vector']}: {top['command']}{Colors.END}"
+                            )
+                            output = self.execute(top["command"])
+                            if output:
+                                print(output)
                     else:
                         print(
-                            f"{Colors.YELLOW}[!] Unknown helper command. Available: !sysinfo, !download <file>, !gtfobins <binary>{Colors.END}"
+                            f"{Colors.YELLOW}[!] Unknown helper command. Available: !sysinfo, !download <file>, !gtfobins <binary>, !privesc, !escalate{Colors.END}"
                         )
                     continue
 

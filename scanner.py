@@ -563,6 +563,19 @@ def main():
 
     # Run scan for each target
     mode_override = args.mode if "mode" in provided_dests else None
+    
+    if options.get("agent"):
+        from utils.agent_framework import AgentOrchestrator
+        for target_idx, current_url in enumerate(target_urls):
+            if len(target_urls) > 1:
+                console.print(
+                    f"\n[bold magenta]━━━ Agent Mission {target_idx + 1}/{len(target_urls)}: {current_url} ━━━[/bold magenta]"
+                )
+            orchestrator = AgentOrchestrator()
+            console.print(f"[bold cyan][*] Starting multi-agent autonomous mission for {current_url}[/bold cyan]")
+            orchestrator.run_mission(current_url)
+        return
+
     for target_idx, current_url in enumerate(target_urls):
         current_mode = mode
         current_delay = delay

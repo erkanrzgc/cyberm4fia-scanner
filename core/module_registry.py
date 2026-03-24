@@ -293,6 +293,9 @@ from core.module_runners import (  # noqa: E402, F401
     _run_tech_intel,
     _run_wordlist_generation,
     _run_xss_postprocess,
+    _run_sploitus_search,
+    _run_brute_force,
+    _run_scan_history,
 )
 
 
@@ -323,6 +326,24 @@ PHASE_MODULES = (
         requires_forms=False,
         collect_results=True,
         runner=_run_tech_intel,
+    ),
+    PhaseModuleSpec(
+        id="sploitus",
+        option_key="tech", # Tie Sploitus Search to the tech flag
+        name="Sploitus Exploit Search",
+        phase="pre_scan",
+        requires_forms=False,
+        collect_results=False, # sploitus search just prints enrichments to screen for now
+        runner=_run_sploitus_search,
+    ),
+    PhaseModuleSpec(
+        id="brute",
+        option_key="brute", # We'll need to add a --brute flag later or tie it to something
+        name="SSH/FTP Brute-Force",
+        phase="pre_scan",
+        requires_forms=False,
+        collect_results=True,
+        runner=_run_brute_force,
     ),
     PhaseModuleSpec(
         id="cloud",
@@ -638,6 +659,15 @@ PHASE_MODULES = (
         requires_forms=False,
         collect_results=False,
         runner=_run_scan_summary,
+    ),
+    PhaseModuleSpec(
+        id="scan_history",
+        option_key="history",
+        name="Scan Drift Detection",
+        phase="reporting",
+        requires_forms=False,
+        collect_results=False,
+        runner=_run_scan_history,
     ),
     PhaseModuleSpec(
         id="html_report",

@@ -71,6 +71,10 @@ def _make_args(**overrides):
         "ai": False,
         "ai_model": DEFAULT_AI_MODEL,
         "proxy_listen": False,
+        "agent": False,
+        "brute": False,
+        "sploitus": False,
+        "history": False,
     }
     base.update(overrides)
     return SimpleNamespace(**base)
@@ -297,7 +301,6 @@ class TestScanOptions:
             "scope",
             "exclude",
             "session",
-            "exploit",
             "ai",
             "ollama_url",
             "proxy_listen",
@@ -309,7 +312,6 @@ class TestScanOptions:
             "proxy_url",
             "scope",
             "exclude",
-            "exploit",
             "ai",
             "ollama_url",
             "proxy_listen",

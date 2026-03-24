@@ -194,6 +194,7 @@ def build_cli_scan_options(args, threads: int):
     options["ollama_url"] = (
         getattr(args, "ollama_url", options["ollama_url"]) or options["ollama_url"]
     )
+    options["agent"] = bool(getattr(args, "agent", False))
     return normalize_runtime_options(options)
 
 

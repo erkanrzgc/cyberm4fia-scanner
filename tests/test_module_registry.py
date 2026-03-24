@@ -142,7 +142,7 @@ class TestModuleRegistry:
         monkeypatch.setattr(
             osint_mod,
             "scan_osint",
-            lambda url, delay=0: {"domain": url, "delay": delay},
+            lambda url, shodan_api_key=None, delay=0: {"domain": url, "delay": delay},
         )
         monkeypatch.setattr(
             tech_mod,
@@ -236,6 +236,10 @@ class TestModuleRegistry:
         import modules.secrets_scanner as secrets_mod
         import modules.csp_bypass as csp_mod
         import modules.cookie_hsts_audit as cookie_mod
+        import core.module_runners as runners
+
+        runners._csp_checked_hosts.clear()
+        runners._hsts_checked_hosts.clear()
 
         monkeypatch.setattr(
             passive_mod,
@@ -292,6 +296,8 @@ class TestModuleRegistry:
         ]
 
         state["forms"] = []
+        runners._csp_checked_hosts.clear()
+        runners._hsts_checked_hosts.clear()
         findings = run_phase_modules(
             "page_hooks",
             {"passive": True, "secrets": True, "csrf": True},
@@ -553,7 +559,7 @@ class TestModuleRegistry:
 
         monkeypatch.setattr(cmdi_shell_mod, "InteractiveShell", DummyShell)
 
-        answers = iter(["n", "y", "y"])
+        answers = iter(["3", "1"])
         state = {
             "scan_url": "http://example.com",
             "forms": [{"id": "login"}],
