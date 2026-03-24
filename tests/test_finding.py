@@ -173,7 +173,7 @@ class TestNormalizeVuln:
         assert finding.id.startswith("finding_")
         assert finding.asset_id.startswith("asset_")
         assert finding.surface == "web"
-        assert finding.verification_state == "verified"
+        assert finding.verification_state == "suspected"
         assert finding.exploitability == "medium"
         assert finding.observation_refs
         assert finding.replay_recipe["url"] == "https://app.example.com/item?id=1"

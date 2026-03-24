@@ -23,7 +23,7 @@ import httpx
 from typing import Optional
 from utils.colors import log_info, log_success, log_warning, log_error
 from utils.request import ScanExceptions
-
+from utils.payload_memory import get_memory
 
 def _extract_json(text: str, expect_array: bool = False):
     """Extract JSON from LLM response that may contain markdown/code blocks."""
@@ -76,24 +76,25 @@ def resolve_ollama_base(explicit_url: str | None = None) -> str:
 # Backward-compatible snapshot used by tests and older imports.
 OLLAMA_BASE = resolve_ollama_base()
 DEFAULT_MODEL = "WhiteRabbitNeo/Llama-3.1-WhiteRabbitNeo-2-8B"
-CODER_MODEL = "qwen3-coder:30b"
+CODER_MODEL = "qwen3.5:35b"
 
 # Model roles — which model to use for which task
 MODEL_ROLES = {
-    "exploit":     DEFAULT_MODEL,   # payload crafting, WAF bypass, exploit strategy
-    "analysis":    DEFAULT_MODEL,   # vuln analysis, false positive detection
-    "code":        CODER_MODEL,     # PoC script generation, code analysis
-    "remediation": CODER_MODEL,     # code fix generation, secure code examples
-    "summary":     DEFAULT_MODEL,   # executive summary, reporting
+    "exploit": DEFAULT_MODEL,  # payload crafting, WAF bypass, exploit strategy
+    "analysis": DEFAULT_MODEL,  # vuln analysis, false positive detection
+    "code": CODER_MODEL,  # PoC script generation, code analysis
+    "remediation": CODER_MODEL,  # code fix generation, secure code examples
+    "summary": DEFAULT_MODEL,  # executive summary, reporting
 }
 
 
 class OllamaClient:
     """Client for Ollama local LLM API."""
 
-    def __init__(self, model: Optional[str] = None, base_url: Optional[str] = None):
+    def __init__(self, model: Optional[str] = None, base_url: Optional[str] = None, quiet: bool = False):
         self.model = model or DEFAULT_MODEL
         self.base_url = resolve_ollama_base(base_url)
+        self.quiet = quiet
         self.available = False
         self._check_connection()
 
@@ -105,7 +106,8 @@ class OllamaClient:
                 models = [m["name"] for m in resp.json().get("models", [])]
                 if any(self.model in m for m in models):
                     self.available = True
-                    log_success(f"AI Engine: Ollama ({self.model}) ✓")
+                    if not getattr(self, "quiet", False):
+                        log_success(f"AI Engine: Ollama ({self.model}) ✓")
                 else:
                     self.available = False
                     available_str = ", ".join(models[:5]) if models else "none"
@@ -123,7 +125,15 @@ class OllamaClient:
                 "If Ollama runs on another machine, set OLLAMA_URL=http://HOST:11434"
             )
 
-    def _prompt_ollama(self, model: str, prompt: str, system: str = "", base_url: Optional[str] = None, expect_json: bool = False, temperature: float = 0.3) -> Optional[dict]:
+    def _prompt_ollama(
+        self,
+        model: str,
+        prompt: str,
+        system: str = "",
+        base_url: Optional[str] = None,
+        expect_json: bool = False,
+        temperature: float = 0.3,
+    ) -> Optional[dict]:
         """Generate a response from the LLM using chat API."""
         if not self.available:
             return None
@@ -183,6 +193,7 @@ class OllamaClient:
 
 # ─── Dual-Model AI System ──────────────────────────────────────────────────
 
+
 class DualModelAI:
     """Dual-model AI system using WhiteRabbitNeo + Qwen3-Coder.
 
@@ -215,22 +226,20 @@ class DualModelAI:
         has_wrn = any(DEFAULT_MODEL in m for m in self._available_models)
         if has_wrn:
             self.exploit_client = OllamaClient(
-                model=DEFAULT_MODEL, base_url=self.base_url
+                model=DEFAULT_MODEL, base_url=self.base_url, quiet=True
             )
 
         # Init Qwen3-Coder (code generation)
         has_qwen = any(CODER_MODEL in m for m in self._available_models)
         if has_qwen:
-            self.coder_client = OllamaClient(
-                model=CODER_MODEL, base_url=self.base_url
-            )
+            self.coder_client = OllamaClient(model=CODER_MODEL, base_url=self.base_url)
 
         # Log status
         models_active = []
         if self.exploit_client and self.exploit_client.available:
             models_active.append("🐇 WhiteRabbitNeo (exploit)")
         if self.coder_client and self.coder_client.available:
-            models_active.append("🧠 Qwen3-Coder (code)")
+            models_active.append("🧠 Qwen 3.5 (code)")
 
         if models_active:
             log_success(f"Dual AI: {' + '.join(models_active)}")
@@ -273,7 +282,11 @@ class DualModelAI:
         return None
 
     def generate(
-        self, prompt: str, system: str = "", temperature: float = 0.3, role: str = "exploit"
+        self,
+        prompt: str,
+        system: str = "",
+        temperature: float = 0.3,
+        role: str = "exploit",
     ) -> str:
         """Generate using the appropriate model for the role."""
         client = self.get_client_for_role(role)
@@ -305,7 +318,15 @@ def analyze_vulnerability(client: OllamaClient, vuln: dict) -> dict:
 Type: {vuln_type}
 URL: {url}
 Parameter/Field: {field}
-Payload: {payload}
+Payload: {payload}"""
+
+    # Add payload memory context if applicable
+    memory = get_memory()
+    mem_ctx = memory.get_context_for_ai(vuln_type=vuln_type, max_entries=3)
+    if mem_ctx:
+        prompt += f"\n\nContext based on past success for this vuln type:\n{mem_ctx}"
+
+    prompt += """
 
 Provide:
 1. **Risk Assessment**: How critical is this? (Critical/High/Medium/Low)
@@ -476,7 +497,6 @@ Example format: ["payload1", "payload2", "payload3"]"""
     return []
 
 
-
 class EvolvingWAFBypassEngine:
     """Stateful AI Mutation Engine for bypassing advanced HTTP WAFs."""
 
@@ -490,7 +510,7 @@ class EvolvingWAFBypassEngine:
     def tokenize_payload(self, payload: str) -> list:
         """Splits an injection payload into logical semantic tokens."""
         # Split on common SQL/XSS delimiters (spaces, tags, quotes)
-        tokens = re.split(r'(<[^>]+>|[\'\"(\s)])', payload)
+        tokens = re.split(r"(<[^>]+>|[\'\"(\s)])", payload)
         return [t.strip() for t in tokens if t and t.strip()]
 
     def analyze_failure(self, failed_payload: str):

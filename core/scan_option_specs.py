@@ -176,6 +176,10 @@ SCAN_OPTION_DEFAULTS = {
     "ai": False,
     "ai_model": DEFAULT_AI_MODEL,
     "ollama_url": DEFAULT_OLLAMA_URL,
+    "agent": False,
+    "brute": False,
+    "sploitus": False,
+    "history": False,
     "proxy_listen": False,
 }
 
@@ -679,6 +683,13 @@ PARSER_ARGUMENT_SPECS = (
         {
             "action": "store_true",
             "help": "Enable AI analysis (Ollama, local & free). Requires Ollama running.",
+        },
+    ),
+    ArgumentSpec(
+        ("--agent",),
+        {
+            "action": "store_true",
+            "help": "Run Multi-Agent autonomous pentesting mode (bypasses standard modules)",
         },
     ),
     ArgumentSpec(

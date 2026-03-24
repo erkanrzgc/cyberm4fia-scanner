@@ -633,23 +633,100 @@ def _coerce_repro_steps(vuln_dict):
     return steps or None
 
 
-def _infer_confidence(vuln_dict, severity):
-    explicit = vuln_dict.get("confidence")
-    if explicit:
-        return str(explicit).lower()
+def compute_confidence_score(vuln_dict):
+    """
+    Compute a 0-100 confidence score for a vulnerability finding.
+    
+    Scoring criteria:
+    - Payload reflection in response:  +30
+    - Expected status code:            +20
+    - Evidence string match:           +25
+    - Exploit data / PoC proof:        +25
+    - Timing-only (blind):             -15
+    - WAF bypass technique used:       +10
+    - Multiple confirmation vectors:   +10
+    """
+    score = 0
 
-    if vuln_dict.get("exploit_data"):
-        return "confirmed"
-
+    payload = str(vuln_dict.get("payload", ""))
     evidence = str(vuln_dict.get("evidence", "")).lower()
+    response = str(vuln_dict.get("response_snippet", "") or vuln_dict.get("response", ""))
+    vuln_type = str(vuln_dict.get("type", "")).lower()
     description = str(vuln_dict.get("description", "")).lower()
+
+    # 1. Payload reflected in response (+30)
+    if payload and response and payload in response:
+        score += 30
+    elif payload and evidence and payload.lower() in evidence:
+        score += 25
+
+    # 2. Status code indicates success (+20)
+    status = vuln_dict.get("status_code") or vuln_dict.get("response_code")
+    if status:
+        status = int(status) if str(status).isdigit() else 0
+        if status in (200, 500, 302):
+            score += 20
+        elif status in (403, 406, 503):
+            score -= 10  # WAF block indicators
+
+    # 3. Evidence string present (+25)
+    if evidence and len(evidence) > 10:
+        score += 25
+    elif evidence:
+        score += 10
+
+    # 4. Exploit data / PoC present (+25)
+    if vuln_dict.get("exploit_data"):
+        score += 25
+
+    # 5. Confirmed / verified keywords (+15)
     if "confirmed" in evidence or "confirmed" in description:
+        score += 15
+    elif "verified" in evidence or "verified" in description:
+        score += 10
+
+    # 6. Timing-only detection penalty (-15)
+    if "blind" in vuln_type or "time" in vuln_type:
+        if not vuln_dict.get("exploit_data") and "confirmed" not in evidence:
+            score -= 15
+
+    # 7. WAF bypass bonus (+10)
+    if vuln_dict.get("waf_bypassed") or "waf" in description:
+        score += 10
+
+    # 8. Multiple evidence items (+10)
+    if vuln_dict.get("response_snippet") and vuln_dict.get("evidence"):
+        score += 10
+
+    # Clamp to 0-100
+    return max(0, min(100, score))
+
+
+def _score_to_confidence(score):
+    """Map a 0-100 confidence score to a label."""
+    if score >= 80:
         return "confirmed"
-    if evidence or vuln_dict.get("response") or vuln_dict.get("response_snippet"):
+    elif score >= 60:
         return "high"
-    if severity in {"critical", "high"}:
+    elif score >= 40:
         return "medium"
     return "low"
+
+
+def _infer_confidence(vuln_dict, severity):
+    """Infer confidence level using smart scoring."""
+    explicit = vuln_dict.get("confidence")
+    if explicit and str(explicit).lower() in ("confirmed", "high", "medium", "low"):
+        return str(explicit).lower()
+
+    score = compute_confidence_score(vuln_dict)
+
+    # Severity-based floor: critical/high vulns get at least medium
+    if score < 40 and severity in {"critical", "high"}:
+        score = max(score, 40)
+
+    return _score_to_confidence(score)
+
 
 
 def _stable_id(prefix, *parts):

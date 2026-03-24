@@ -137,9 +137,9 @@ scanner.py                          ← Main orchestrator
 | Profile | Coverage | Included Flags | Suggested Extras |
 |---|---|---|---|
 | `1-Fast Recon` | Recon, subdomain discovery, endpoint fuzzing, technology intel, and passive checks. | `--fuzz`, `--passive`, `--recon`, `--subdomain`, `--tech` | `--crawl`, `--osint`, `--headless` |
-| `2-Core Web Vulns` | Core web checks like XSS, SQLi, file inclusion, CMDi, CSRF, CORS, and DOM XSS. | `--cmdi`, `--cors`, `--csrf`, `--dom-xss`, `--header-inject`, `--lfi`, `--passive`, `--rfi`, `--sqli`, `--xss` | `--secrets`, `--oob`, `--headless` |
-| `3-Advanced / Modern` | JWT, deserialization, SSTI, race, prototype pollution, SSRF, business logic, API, OOB, and XXE coverage. | `--api-scan`, `--bizlogic`, `--deser`, `--jwt`, `--oob`, `--proto`, `--race`, `--redirect`, `--smuggle`, `--ssrf`, `--ssti`, `--xxe` | `--tech`, `--passive`, `--chain` |
-| `4-All-In-One` | Enables nearly every scan module except opt-in extras like AI and SARIF. | `(auto via --all)`, `--api-scan`, `--bizlogic`, `--chain`, `--cloud`, `--cmdi`, `--cors`, `--crawl`, `--csrf`, `--deser`, `--dom-xss`, `--email`, `--fuzz`, `--header-inject`, `--headless`, `--html`, `--jwt`, `--lfi`, `--oob`, `--osint`, `--passive`, `--proto`, `--race`, `--recon`, `--redirect`, `--rfi`, `--secrets`, `--smuggle`, `--spray`, `--sqli`, `--ssrf`, `--ssti`, `--subdomain`, `--takeover`, `--tech`, `--xss`, `--xxe` | `--wordlist` |
+| `2-Core Web Vulns` | Core web checks like XSS, SQLi, file inclusion, CMDi, CSRF, CORS, and DOM XSS. | `--cmdi`, `--cors`, `--csrf`, `--dom-xss`, `--header-inject`, `--lfi`, `--passive`, `--rfi`, `--sqli`, `--xss` | `--secrets`, `--oob`, `--headless`, `--exploit` |
+| `3-Advanced / Modern` | JWT, deserialization, SSTI, race, prototype pollution, SSRF, business logic, API, OOB, and XXE coverage. | `--api-scan`, `--bizlogic`, `--deser`, `--jwt`, `--oob`, `--proto`, `--race`, `--redirect`, `--smuggle`, `--ssrf`, `--ssti`, `--xxe` | `--tech`, `--passive`, `--chain`, `--exploit` |
+| `4-All-In-One` | Enables nearly every scan module except opt-in extras like AI and SARIF. | `(auto via --all)`, `--api-scan`, `--bizlogic`, `--chain`, `--cloud`, `--cmdi`, `--cors`, `--crawl`, `--csrf`, `--deser`, `--dom-xss`, `--email`, `--fuzz`, `--header-inject`, `--headless`, `--html`, `--jwt`, `--lfi`, `--oob`, `--osint`, `--passive`, `--proto`, `--race`, `--recon`, `--redirect`, `--rfi`, `--secrets`, `--smuggle`, `--spray`, `--sqli`, `--ssrf`, `--ssti`, `--subdomain`, `--takeover`, `--tech`, `--xss`, `--xxe`, `SSH/FTP Brute-Force`, `Scan Drift Detection` | `--wordlist`, `--exploit` |
 | `5-Custom Choice` | Ask every module prompt one by one. | `manual selection` | - |
 <!-- END GENERATED: attack_profiles -->
 
@@ -292,7 +292,7 @@ Each scan creates results under `scans/<target>/`:
 | `--proxy PROXY_URL` | Proxy URL (http/socks5, e.g. socks5://127.0.0.1:9050) |
 | `--ai` | Enable AI analysis (Ollama, local & free). Requires Ollama running. |
 | `--ai-model AI_MODEL` | Ollama model (default: WhiteRabbitNeo-Llama-3.1-8B) |
-| `--ollama-url OLLAMA_URL` | Ollama server URL (default: http://127.0.0.1:11434) |
+| `--ollama-url OLLAMA_URL` | Ollama server URL (default: http://192.168.6.1:11434) |
 
 ### Service Modes
 | Flag | Description |
@@ -311,6 +311,7 @@ Each scan creates results under `scans/<target>/`:
 | `--request-timeout SECONDS` | Default per-request timeout in seconds |
 | `--max-host-concurrency N` | Limit simultaneous in-flight requests per host (0 disables the limit) |
 | `--path-blacklist PATTERNS` | Comma-separated risky path patterns to skip (e.g. '/logout,/checkout') |
+| `--agent` | Run Multi-Agent autonomous pentesting mode (bypasses standard modules) |
 <!-- END GENERATED: cli_flags -->
 
 ---
