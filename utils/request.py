@@ -11,18 +11,29 @@ import random
 import threading
 from urllib.parse import urlparse
 
-# Standard scanning exceptions for graceful generic fallbacks instead of bare except Exception:
+# Network/HTTP exceptions — use when wrapping smart_request or httpx calls.
+NetworkExceptions = (
+    httpx.RequestError,
+    httpx.HTTPStatusError,
+    httpx.TimeoutException,
+)
+
+# Scan-module exceptions — for top-level module wrappers that must never crash
+# the pipeline. Intentionally broader than NetworkExceptions, but excludes
+# programming errors (AttributeError, NameError, RecursionError) so real bugs
+# still surface.
 ScanExceptions = (
     httpx.RequestError,
     httpx.HTTPStatusError,
     httpx.TimeoutException,
     json.JSONDecodeError,
-    ValueError,
-    KeyError,
-    TypeError,
-    IndexError,
     UnicodeError,
+    OSError,
 )
+
+# Legacy alias kept for backward compatibility with any external importers.
+# New code should prefer NetworkExceptions or ScanExceptions explicitly.
+ScanNetworkExceptions = NetworkExceptions
 
 # Load .env file if python-dotenv is available
 try:
@@ -569,34 +580,60 @@ def _get_host_semaphore(url):
 
 def snapshot_runtime_state():
     """Capture mutable request/runtime globals for later restoration."""
-    return {
-        "proxy": Config.PROXY,
-        "request_delay": Config.REQUEST_DELAY,
-        "json_output": Config.JSON_OUTPUT,
-        "threads": Config.THREADS,
-        "default_timeout": Config.DEFAULT_TIMEOUT,
-        "request_budget": Config.REQUEST_BUDGET,
-        "max_host_concurrency": Config.MAX_HOST_CONCURRENCY,
-        "path_blacklist": tuple(Config.PATH_BLACKLIST),
-        "cancel_event": Config.CANCEL_EVENT,
-        "global_headers": dict(_global_headers),
-    }
+    with lock:
+        return {
+            "proxy": Config.PROXY,
+            "request_delay": Config.REQUEST_DELAY,
+            "random_delay": Config.RANDOM_DELAY,
+            "json_output": Config.JSON_OUTPUT,
+            "threads": Config.THREADS,
+            "max_retries": Config.MAX_RETRIES,
+            "default_timeout": Config.DEFAULT_TIMEOUT,
+            "verify_ssl": Config.VERIFY_SSL,
+            "request_budget": Config.REQUEST_BUDGET,
+            "max_host_concurrency": Config.MAX_HOST_CONCURRENCY,
+            "path_blacklist": tuple(Config.PATH_BLACKLIST),
+            "cancel_event": Config.CANCEL_EVENT,
+            "global_headers": dict(_global_headers),
+            "stats": {
+                "total_requests": Stats.total_requests,
+                "vulnerabilities_found": Stats.vulnerabilities_found,
+                "waf_blocks": Stats.waf_blocks,
+                "errors": Stats.errors,
+                "retries": Stats.retries,
+                "start_time": Stats.start_time,
+            },
+        }
 
 
 def restore_runtime_state(state):
     """Restore mutable request/runtime globals from a snapshot."""
-    Config.PROXY = state.get("proxy")
-    Config.REQUEST_DELAY = state.get("request_delay", Config.REQUEST_DELAY)
-    Config.JSON_OUTPUT = state.get("json_output", Config.JSON_OUTPUT)
-    Config.THREADS = state.get("threads", Config.THREADS)
-    Config.DEFAULT_TIMEOUT = state.get("default_timeout", Config.DEFAULT_TIMEOUT)
-    Config.REQUEST_BUDGET = state.get("request_budget", Config.REQUEST_BUDGET)
-    Config.MAX_HOST_CONCURRENCY = state.get(
-        "max_host_concurrency",
-        Config.MAX_HOST_CONCURRENCY,
-    )
-    Config.PATH_BLACKLIST = tuple(state.get("path_blacklist", Config.PATH_BLACKLIST))
-    Config.CANCEL_EVENT = state.get("cancel_event")
+    with lock:
+        Config.PROXY = state.get("proxy")
+        Config.REQUEST_DELAY = state.get("request_delay", Config.REQUEST_DELAY)
+        Config.RANDOM_DELAY = state.get("random_delay", Config.RANDOM_DELAY)
+        Config.JSON_OUTPUT = state.get("json_output", Config.JSON_OUTPUT)
+        Config.THREADS = state.get("threads", Config.THREADS)
+        Config.MAX_RETRIES = state.get("max_retries", Config.MAX_RETRIES)
+        Config.DEFAULT_TIMEOUT = state.get("default_timeout", Config.DEFAULT_TIMEOUT)
+        Config.VERIFY_SSL = state.get("verify_ssl", Config.VERIFY_SSL)
+        Config.REQUEST_BUDGET = state.get("request_budget", Config.REQUEST_BUDGET)
+        Config.MAX_HOST_CONCURRENCY = state.get(
+            "max_host_concurrency",
+            Config.MAX_HOST_CONCURRENCY,
+        )
+        Config.PATH_BLACKLIST = tuple(state.get("path_blacklist", Config.PATH_BLACKLIST))
+        Config.CANCEL_EVENT = state.get("cancel_event")
+
+        # Restore stats if captured
+        saved_stats = state.get("stats")
+        if saved_stats:
+            Stats.total_requests = saved_stats["total_requests"]
+            Stats.vulnerabilities_found = saved_stats["vulnerabilities_found"]
+            Stats.waf_blocks = saved_stats["waf_blocks"]
+            Stats.errors = saved_stats["errors"]
+            Stats.retries = saved_stats["retries"]
+            Stats.start_time = saved_stats["start_time"]
 
     _global_headers.clear()
     _global_headers.update(state.get("global_headers", {}))

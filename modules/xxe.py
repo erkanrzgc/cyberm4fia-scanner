@@ -269,5 +269,47 @@ def scan_xxe(url, delay=0):
             )
             log_warning(f"[MEDIUM] XML parser errors at: {ep_url}")
 
+    # ── AI Exploit Agent (Final Escalation) ──
+    if not findings and xml_endpoints:
+        try:
+            from utils.ai_exploit_agent import get_exploit_agent, ExploitContext
+            agent = get_exploit_agent()
+            if agent and agent.available:
+                from utils.waf import waf_detector
+                waf_name = getattr(waf_detector, "detected_waf", "") or ""
+
+                for ep in xml_endpoints[:3]:
+                    ctx = ExploitContext(
+                        url=ep["url"],
+                        vuln_type="XXE",
+                        waf=waf_name,
+                        http_method="POST",
+                        content_type="application/xml",
+                    )
+                    result = agent.exploit_xxe(ctx)
+                    if result and result.success:
+                        findings.append({
+                            "type": "XXE",
+                            "url": ep["url"],
+                            "payload": result.payload,
+                            "evidence": result.evidence[:200],
+                            "severity": "CRITICAL",
+                            "description": (
+                                f"AI-discovered XXE at {ep['url']}. "
+                                f"Confidence: {result.confidence:.0f}%"
+                            ),
+                            "source": f"AI Agent (Gen-{result.iteration})",
+                            "ai_curl": result.curl_command,
+                            "ai_poc_script": result.python_script,
+                            "ai_nuclei": result.nuclei_template,
+                        })
+                        log_success(
+                            f"[CRITICAL] XXE at: {ep['url']} "
+                            f"[AI Agent Gen-{result.iteration}]"
+                        )
+                        break
+        except ImportError:
+            pass
+
     log_success(f"XXE scan complete. Found {len(findings)} issue(s).")
     return findings

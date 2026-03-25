@@ -58,7 +58,7 @@ class TestAIFunctions:
         client.model = "whiterabbitneo"
         client._mock_response = response
 
-        def mock_generate(prompt, system="", temperature=0.3):
+        def mock_generate(prompt, system="", temperature=0.3, model_role=""):
             return client._mock_response
 
         client.generate = mock_generate
@@ -108,7 +108,7 @@ class TestFalsePositiveFilter:
         client = OllamaClient.__new__(OllamaClient)
         client.available = True
 
-        def mock_generate(prompt, system="", temperature=0.3):
+        def mock_generate(prompt, system="", temperature=0.3, model_role=""):
             return response
 
         client.generate = mock_generate

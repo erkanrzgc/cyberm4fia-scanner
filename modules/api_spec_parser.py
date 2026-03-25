@@ -106,7 +106,7 @@ def _parse_api_spec_text(text):
     for parser in parsers:
         try:
             doc = parser(text)
-        except ScanExceptions:
+        except Exception:  # json.JSONDecodeError, yaml.YAMLError, etc.
             continue
         if _is_openapi_spec(doc):
             return doc

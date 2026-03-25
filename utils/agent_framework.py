@@ -179,7 +179,7 @@ Always be thorough but efficient. Prioritize high-value targets."""
     def __init__(self, ai_client=None):
         super().__init__(
             name="ReconAgent",
-            role="exploit",
+            role="analysis",
             system_prompt=self.SYSTEM_PROMPT,
             ai_client=ai_client,
         )
@@ -354,6 +354,20 @@ class AgentOrchestrator:
     """
 
     def __init__(self, ai_client=None):
+        # Auto-detect DualModelAI if no client provided
+        if ai_client is None:
+            try:
+                from utils.ai import get_dual_ai, get_ai
+                dual = get_dual_ai()
+                if dual and dual.available:
+                    ai_client = dual
+                else:
+                    ai = get_ai()
+                    if ai.available:
+                        ai_client = ai
+            except Exception:
+                pass
+
         self.ai_client = ai_client
         self.recon = ReconAgent(ai_client=ai_client)
         self.exploit = ExploitAgent(ai_client=ai_client)
@@ -363,31 +377,37 @@ class AgentOrchestrator:
     def run_mission(self, target, scope=None):
         """
         Run a full pentesting mission on a target.
-        
+
+        Executes the real scan pipeline via ``scan_target`` and wraps each
+        phase with agent think/act/report cycles for AI-enriched analysis.
+
         Args:
             target: Target URL or hostname.
             scope: Optional scope restrictions.
-            
+
         Returns:
             MissionReport with all findings.
         """
+        from scanner import scan_target
+        from core.scan_options import build_default_scan_options, get_scan_mode_runtime
+
         mission = MissionReport(
             target=target,
             start_time=datetime.now().isoformat(),
             agents_used=[a.name for a in self.agents],
         )
 
-        print(f"\n{Colors.BOLD}{Colors.CYAN}{'═' * 55}")
-        print(f"  🤖 Multi-Agent Pentesting Mission")
-        print(f"{'═' * 55}{Colors.END}")
+        print(f"\n{Colors.BOLD}{Colors.CYAN}{'=' * 55}")
+        print(f"  Multi-Agent Pentesting Mission")
+        print(f"{'=' * 55}{Colors.END}")
         print(f"  Target: {target}")
         print(f"  Agents: {', '.join(a.name for a in self.agents)}")
         print()
 
         context = {"target": target, "scope": scope or {}}
 
-        # Phase 1: Reconnaissance
-        log_info(f"[Phase 1] {self.recon.name} — Reconnaissance")
+        # Phase 1: Reconnaissance (agent plans, then real scan runs)
+        log_info(f"[Phase 1] {self.recon.name} -- Reconnaissance")
         recon_think = self.recon.think(context)
         log_info(f"  Think: {recon_think[:100]}")
         recon_result = self.recon.act(context)
@@ -396,24 +416,54 @@ class AgentOrchestrator:
             agent_role="recon", status="completed", result=recon_result
         ))
 
-        # Phase 2: Exploitation Planning
-        context["recon_results"] = recon_result
-        context["vulnerabilities"] = context.get("vulnerabilities", [])
-
-        log_info(f"[Phase 2] {self.exploit.name} — Exploitation Planning")
+        # Phase 2: Run the real scan pipeline
+        log_info(f"[Phase 2] {self.exploit.name} -- Running scan pipeline")
         exploit_think = self.exploit.think(context)
         log_info(f"  Think: {exploit_think[:100]}")
-        exploit_result = self.exploit.act(context)
-        mission.tasks.append(AgentTask(
-            id="exploit_1", description="Vulnerability exploitation",
-            agent_role="exploit", status="completed", result=exploit_result
-        ))
 
-        # Phase 3: Reporting
-        context["exploit_results"] = exploit_result
+        # Build options — enable all modules for a comprehensive agent scan
+        options = build_default_scan_options()
+        options.update({
+            "xss": True, "sqli": True, "lfi": True, "cmdi": True,
+            "ssrf": True, "ssti": True, "xxe": True, "crawl": True,
+            "passive": True, "csrf": True, "secrets": True,
+            "ai": bool(self.ai_client),
+            "html": True,
+        })
+
+        mode, delay, _ = get_scan_mode_runtime("normal")
+        runtime_options = dict(options)
+
+        try:
+            scan_result = scan_target(
+                target, mode, delay, options, runtime_options,
+                summary_printer=None,
+                persist_console_log=True,
+            )
+
+            vulns = scan_result.get("vulnerabilities", [])
+            findings = scan_result.get("findings", [])
+            context["vulnerabilities"] = vulns
+            context["scan_result"] = scan_result
+            mission.findings.extend(findings or vulns)
+
+            mission.tasks.append(AgentTask(
+                id="exploit_1", description="Vulnerability scan",
+                agent_role="exploit", status="completed",
+                result={"vuln_count": len(vulns), "finding_count": len(findings)},
+            ))
+
+        except Exception as e:
+            log_error(f"Scan pipeline failed: {e}")
+            mission.tasks.append(AgentTask(
+                id="exploit_1", description="Vulnerability scan",
+                agent_role="exploit", status="failed",
+                result={"error": str(e)},
+            ))
+
+        # Phase 3: Agent-enriched reporting
         context["findings"] = mission.findings
-
-        log_info(f"[Phase 3] {self.reporter.name} — Report Generation")
+        log_info(f"[Phase 3] {self.reporter.name} -- Report Generation")
         report_result = self.reporter.act(context)
         report_text = self.reporter.report(mission.findings)
         mission.summary = report_text

@@ -15,12 +15,13 @@ import httpx
 
 from utils.request import (
     USER_AGENTS,
+    _raise_if_scan_cancelled,
+    _reserve_request_budget,
     get_default_timeout,
     get_global_headers,
     get_max_retries,
     get_request_delay,
     increment_error_count,
-    increment_request_count,
     increment_retry_count,
     increment_waf_block_count,
     is_ssl_verification_enabled,
@@ -35,12 +36,13 @@ async def async_smart_request(
     if delay is None:
         delay = get_request_delay()
 
+    _raise_if_scan_cancelled()
+    _reserve_request_budget()
+
     if use_random_delay():
         await asyncio.sleep(delay * random.uniform(0.5, 1.5))
     else:
         await asyncio.sleep(delay)
-
-    increment_request_count()
 
     req_headers = {
         "User-Agent": random.choice(USER_AGENTS),

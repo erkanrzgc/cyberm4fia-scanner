@@ -33,17 +33,30 @@ class TestAPIServer:
 
     async def _request(self, method, path, **kwargs):
         transport = httpx.ASGITransport(app=app)
+        headers = kwargs.pop("headers", {})
+        headers.setdefault("X-API-Key", api_server._API_KEY)
         async with httpx.AsyncClient(
             transport=transport,
             base_url="http://testserver",
         ) as client:
-            return await client.request(method, path, **kwargs)
+            return await client.request(method, path, headers=headers, **kwargs)
 
     def setup_method(self):
         api_server.SCANS.clear()
 
     def teardown_method(self):
         api_server.SCANS.clear()
+
+    @pytest.mark.asyncio
+    async def test_unauthorized_without_api_key(self):
+        """Endpoints should reject requests without a valid API key."""
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            resp = await client.get("/api/scans")
+            assert resp.status_code == 401
+
+            resp = await client.get("/api/scans", headers={"X-API-Key": "wrong-key"})
+            assert resp.status_code == 401
 
     @pytest.mark.asyncio
     async def test_index(self):

@@ -150,7 +150,7 @@ class OllamaClient:
                 "stream": False,
                 "options": {
                     "temperature": temperature,
-                    "num_predict": 1024,
+                    "num_predict": 4096,
                 },
             }
 
@@ -175,8 +175,17 @@ class OllamaClient:
             log_warning(f"AI error: {e}")
             return None
 
-    def generate(self, prompt: str, system: str = "", temperature: float = 0.3) -> str:
-        """Generate a response from the LLM using chat API."""
+    def generate(self, prompt: str, system: str = "", temperature: float = 0.3,
+                  model_role: str = "") -> str:
+        """Generate a response from the LLM using chat API.
+
+        Args:
+            prompt: User prompt.
+            system: System prompt.
+            temperature: Sampling temperature.
+            model_role: Optional role hint (ignored by single-model client,
+                        used by DualModelAI to route to the right model).
+        """
         if not getattr(self, "available", False):
             return ""
 
@@ -286,10 +295,14 @@ class DualModelAI:
         prompt: str,
         system: str = "",
         temperature: float = 0.3,
-        role: str = "exploit",
+        model_role: str = "exploit",
     ) -> str:
-        """Generate using the appropriate model for the role."""
-        client = self.get_client_for_role(role)
+        """Generate using the appropriate model for the role.
+
+        Routes to WhiteRabbitNeo for exploit/analysis/summary tasks,
+        and to Qwen3.5 for code/remediation tasks.
+        """
+        client = self.get_client_for_role(model_role)
         if not client:
             return ""
         return client.generate(prompt, system=system, temperature=temperature)
@@ -338,7 +351,7 @@ Provide:
 Respond in JSON format:
 {{"risk": "...", "scenario": "...", "confidence": 85, "remediation": "...", "cvss_note": "..."}}"""
 
-    response = client.generate(prompt, system=SECURITY_SYSTEM_PROMPT)
+    response = client.generate(prompt, system=SECURITY_SYSTEM_PROMPT, model_role="analysis")
 
     result = _extract_json(response, expect_array=False)
     if result and isinstance(result, dict):
@@ -381,7 +394,8 @@ Payload: {payload}
 Answer ONLY with a JSON: {{"real": true/false, "confidence": 0-100, "reason": "..."}}"""
 
         response = client.generate(
-            prompt, system=SECURITY_SYSTEM_PROMPT, temperature=0.1
+            prompt, system=SECURITY_SYSTEM_PROMPT, temperature=0.1,
+            model_role="analysis",
         )
 
         result = _extract_json(response, expect_array=False)
@@ -457,7 +471,8 @@ Provide:
 
 Be specific and developer-friendly. Include code examples."""
 
-        response = client.generate(prompt, system=SECURITY_SYSTEM_PROMPT)
+        response = client.generate(prompt, system=SECURITY_SYSTEM_PROMPT,
+                                    model_role="remediation")
         remediations.append(
             {
                 "vuln_type": vuln_type,
@@ -488,7 +503,8 @@ Requirements:
 
 Example format: ["payload1", "payload2", "payload3"]"""
 
-    response = client.generate(prompt, system=SECURITY_SYSTEM_PROMPT, temperature=0.7)
+    response = client.generate(prompt, system=SECURITY_SYSTEM_PROMPT, temperature=0.7,
+                                model_role="exploit")
 
     result = _extract_json(response, expect_array=True)
     if result and isinstance(result, list):
@@ -610,7 +626,7 @@ Write a 3-paragraph executive summary:
 
 Keep it professional and suitable for a C-level audience."""
 
-    return client.generate(prompt, system=SECURITY_SYSTEM_PROMPT)
+    return client.generate(prompt, system=SECURITY_SYSTEM_PROMPT, model_role="summary")
 
 
 # ─── Global Clients ─────────────────────────────────────────────────────────

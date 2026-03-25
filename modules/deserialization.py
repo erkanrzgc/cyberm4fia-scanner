@@ -338,5 +338,45 @@ def scan_deserialization(url, delay=0):
     if not all_findings:
         log_info("No deserialization vulnerabilities detected.")
 
+    # ── AI Exploit Agent (Final Escalation) ──
+    if not all_findings:
+        try:
+            from utils.ai_exploit_agent import get_exploit_agent, ExploitContext
+            from urllib.parse import urlparse, parse_qs
+            agent = get_exploit_agent()
+            if agent and agent.available:
+                from utils.waf import waf_detector
+                waf_name = getattr(waf_detector, "detected_waf", "") or ""
+
+                ctx = ExploitContext(
+                    url=url,
+                    vuln_type="Deserialization",
+                    waf=waf_name,
+                    http_method="POST",
+                )
+                result = agent.exploit_deserialization(ctx)
+                if result and result.success:
+                    all_findings.append({
+                        "type": "Insecure Deserialization",
+                        "url": url,
+                        "payload": result.payload,
+                        "evidence": result.evidence[:200],
+                        "severity": "CRITICAL",
+                        "description": (
+                            f"AI-discovered deserialization vulnerability. "
+                            f"Confidence: {result.confidence:.0f}%"
+                        ),
+                        "source": f"AI Agent (Gen-{result.iteration})",
+                        "ai_curl": result.curl_command,
+                        "ai_poc_script": result.python_script,
+                        "ai_nuclei": result.nuclei_template,
+                    })
+                    log_success(
+                        f"[CRITICAL] Deserialization at: {url} "
+                        f"[AI Agent Gen-{result.iteration}]"
+                    )
+        except ImportError:
+            pass
+
     log_success(f"Deserialization scan complete. {len(all_findings)} finding(s).")
     return all_findings

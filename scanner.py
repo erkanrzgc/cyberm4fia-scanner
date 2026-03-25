@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-from utils.request import ScanExceptions
 """
 cyberm4fia-scanner v4.0 (Modular Edition)
 Educational Purpose Only | by Erkan
@@ -12,16 +11,14 @@ This is the modular version. Uses:
 - modules/ for all scanning and utility functions
 """
 
-import sys  # noqa: E402
-import os  # noqa: E402
-from datetime import datetime  # noqa: E402
-from urllib.parse import urlparse  # noqa: E402
+import sys
+import os
+from datetime import datetime
+from urllib.parse import urlparse
 
-# Add current directory to path for imports
+from bs4 import BeautifulSoup
 
-from bs4 import BeautifulSoup  # noqa: E402
-
-from utils.colors import (  # noqa: E402
+from utils.colors import (
     Colors,
     print_gradient_banner,
     log_info,
@@ -29,40 +26,41 @@ from utils.colors import (  # noqa: E402
     log_error,
     set_quiet,
 )
-from utils.request import (  # noqa: E402
+from utils.request import (
     BlockedTargetPath,
     Config,  # noqa: F401
     RequestBudgetExceeded,
     ScanCancelled,
+    ScanExceptions,
     get_runtime_stats,
     is_url_blocked,
     set_json_output_enabled,
     smart_request,
 )
 
-from modules.payloads import XSS_FLAT_PAYLOADS  # noqa: E402
-from utils.tamper import TamperChain, set_tamper_chain  # noqa: E402
-from core.scope import ScopeFilter, set_scope, get_scope  # noqa: E402
-from core.module_registry import canonicalize_scan_urls, run_phase_modules  # noqa: E402
-from core.scan_options import (  # noqa: E402
+from modules.payloads import XSS_FLAT_PAYLOADS
+from utils.tamper import TamperChain, set_tamper_chain
+from core.scope import ScopeFilter, set_scope, get_scope
+from core.module_registry import canonicalize_scan_urls, run_phase_modules
+from core.scan_options import (
     DEFAULT_AI_MODEL,
     build_cli_scan_options,
     get_scan_mode_runtime,
 )
-from core.session import ScanSession  # noqa: E402
-from core.scan_context import ScanContext  # noqa: E402
-from utils.colors import console, save_console_log  # noqa: E402
-from rich.table import Table  # noqa: E402
-from utils.ai import init_ai, init_dual_ai  # noqa: E402
-from modules.compare import (  # noqa: E402
+from core.session import ScanSession
+from core.scan_context import ScanContext
+from utils.colors import console, save_console_log
+from rich.table import Table
+from utils.ai import init_ai, init_dual_ai
+from modules.compare import (
     compare_scans,
     print_comparison,
     save_comparison_json,
 )
 
 # Re-exported from extracted modules for backward compatibility
-from core.cli import parse_args, get_input  # noqa: E402, F401
-from core.interactive import (  # noqa: E402, F401
+from core.cli import parse_args, get_input  # noqa: F401
+from core.interactive import (  # noqa: F401
     interactive_menu,
     restore_resume_scan_state,
     summarize_restored_config,
@@ -545,7 +543,7 @@ def main():
 
     # If proxy_listen was enabled interactively, start it in the background
     if options.get("proxy_listen"):
-        from urllib.parse import urlparse  # noqa: E402
+        from urllib.parse import urlparse
         import threading
         from modules.proxy_interceptor import start_proxy
 
