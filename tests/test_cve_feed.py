@@ -132,8 +132,9 @@ class TestFetchCves:
     @patch("utils.cve_feed.httpx.Client")
     def test_fetch_cves_handles_api_error(self, mock_client_cls):
         """API errors should return empty list, not crash."""
+        import httpx
         mock_client = MagicMock()
-        mock_client.get.side_effect = ValueError("Connection failed")
+        mock_client.get.side_effect = httpx.ConnectError("Connection failed")
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
         mock_client_cls.return_value = mock_client

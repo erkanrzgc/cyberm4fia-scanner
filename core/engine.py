@@ -12,6 +12,7 @@ Usage:
 """
 
 import asyncio
+import concurrent.futures
 from utils.colors import log_info, log_warning
 from core.module_registry import iter_async_module_specs
 
@@ -83,6 +84,13 @@ async def run_modules_async_impl(
     return all_vulns
 
 
+def _run_in_new_loop(scan_url, forms, delay, options, progress_callback):
+    """Run the async implementation in a fresh event loop (for use in threads)."""
+    return asyncio.run(
+        run_modules_async_impl(scan_url, forms, delay, options, progress_callback)
+    )
+
+
 def run_modules_async(scan_url, forms, delay, options, progress_callback=None):
     """
     Synchronous wrapper — call from non-async scanner.py code.
@@ -96,15 +104,11 @@ def run_modules_async(scan_url, forms, delay, options, progress_callback=None):
         loop = None
 
     if loop and loop.is_running():
-        # Already inside an event loop — use thread pool
-        import concurrent.futures
-
-        with concurrent.futures.ThreadPoolExecutor() as pool:
+        # Already inside an event loop (e.g. FastAPI) — run in a separate
+        # thread with its own event loop to avoid blocking.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             future = pool.submit(
-                asyncio.run,
-                run_modules_async_impl(
-                    scan_url, forms, delay, options, progress_callback
-                ),
+                _run_in_new_loop, scan_url, forms, delay, options, progress_callback
             )
             return future.result()
     else:

@@ -342,4 +342,45 @@ def scan_ssrf(url: str, forms: list, delay: float, options: Optional[dict] = Non
             except ScanExceptions:
                 pass
 
+    # ── AI Exploit Agent (Final Escalation) ──
+    if not vulns and params:
+        try:
+            from utils.ai_exploit_agent import get_exploit_agent, ExploitContext
+            agent = get_exploit_agent()
+            if agent and agent.available:
+                from utils.waf import waf_detector
+                waf_name = getattr(waf_detector, "detected_waf", "") or ""
+
+                for param in params:
+                    ctx = ExploitContext(
+                        url=url,
+                        param=param,
+                        vuln_type="SSRF",
+                        waf=waf_name,
+                        http_method="GET",
+                    )
+                    result = agent.exploit_ssrf(ctx)
+                    if result and result.success:
+                        increment_vulnerability_count()
+                        log_vuln(f"SSRF in: {param} [AI Agent Gen-{result.iteration}]")
+                        vulns.append({
+                            "type": "SSRF",
+                            "url": url,
+                            "param": param,
+                            "payload": result.payload,
+                            "evidence": result.evidence[:200],
+                            "severity": "HIGH",
+                            "description": (
+                                f"AI-discovered SSRF in '{param}'. "
+                                f"Confidence: {result.confidence:.0f}%"
+                            ),
+                            "source": f"AI Agent (Gen-{result.iteration})",
+                            "ai_curl": result.curl_command,
+                            "ai_poc_script": result.python_script,
+                            "ai_nuclei": result.nuclei_template,
+                        })
+                        break
+        except ImportError:
+            pass
+
     return vulns

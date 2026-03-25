@@ -18,31 +18,63 @@ Endpoints:
   DELETE /api/scan/{id}     Cancel a scan
 """
 
+import hashlib
+import hmac
+import secrets
 import sys
 import os
 import json
 import asyncio
 import uuid
 import threading
+import time
+from collections import defaultdict
 from datetime import datetime
 from typing import Optional
 
 try:
-    from fastapi import FastAPI, HTTPException
-    from fastapi.responses import FileResponse, StreamingResponse
+    from fastapi import FastAPI, HTTPException, Request, Security
+    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+    from fastapi.security import APIKeyHeader
     from pydantic import BaseModel, Field
     import uvicorn
 except ImportError:
     print("FastAPI not installed. Run: pip install 'fastapi[standard]'")
     sys.exit(1)
 
-from utils.colors import log_info, log_success, set_quiet
+from utils.colors import log_info, log_success, log_warning, set_quiet
 from utils.request import (
     ScanCancelled,
     get_default_timeout,
     get_path_blacklist,
 )
 from core.scan_options import build_api_scan_options, get_scan_mode_runtime
+
+# ─── API Security ───
+
+# API key is read from environment or auto-generated on first start.
+# Set SCANNER_API_KEY in .env or environment to use a fixed key.
+_API_KEY = os.environ.get("SCANNER_API_KEY", "")
+if not _API_KEY:
+    _API_KEY = secrets.token_urlsafe(32)
+
+_api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+def _verify_api_key(api_key: str = Security(_api_key_header)):
+    """Validate the API key from the X-API-Key header."""
+    if not api_key or not hmac.compare_digest(api_key, _API_KEY):
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+    return api_key
+
+
+# ─── Rate Limiting ───
+
+_RATE_LIMIT_WINDOW = 60  # seconds
+_RATE_LIMIT_MAX = int(os.environ.get("SCANNER_API_RATE_LIMIT", "30"))  # requests per window
+_rate_limit_store: dict[str, list[float]] = defaultdict(list)
+_rate_limit_lock = threading.Lock()
 
 # ─── Pydantic Models ───
 
@@ -122,6 +154,43 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+# CORS — restrict to configured origins (default: same-origin only)
+_allowed_origins = [
+    o.strip()
+    for o in os.environ.get("SCANNER_CORS_ORIGINS", "").split(",")
+    if o.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_allowed_origins or ["*"],
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["X-API-Key", "Content-Type"],
+    allow_credentials=False,
+)
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """Simple sliding-window rate limiter per client IP."""
+    client_ip = request.client.host if request.client else "unknown"
+    now = time.time()
+
+    with _rate_limit_lock:
+        timestamps = _rate_limit_store[client_ip]
+        # Trim old entries outside the window
+        _rate_limit_store[client_ip] = [
+            ts for ts in timestamps if now - ts < _RATE_LIMIT_WINDOW
+        ]
+        if len(_rate_limit_store[client_ip]) >= _RATE_LIMIT_MAX:
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Rate limit exceeded. Try again later."},
+            )
+        _rate_limit_store[client_ip].append(now)
+
+    return await call_next(request)
+
 
 # In-memory scan storage
 SCANS: dict = {}
@@ -220,6 +289,7 @@ def _run_scan_job(scan_id: str, url: str, mode: str, options: dict):
     status_code=201,
     summary="Start a new scan",
     tags=["Scans"],
+    dependencies=[Security(_verify_api_key)],
 )
 async def start_scan(scan_req: ScanRequest):
     """Start a new vulnerability scan on the target URL.
@@ -280,6 +350,7 @@ async def start_scan(scan_req: ScanRequest):
     response_model=ScanResult,
     summary="Get scan status and results",
     tags=["Scans"],
+    dependencies=[Security(_verify_api_key)],
 )
 async def get_scan(scan_id: str):
     """Retrieve detailed scan results including vulnerabilities and stats."""
@@ -308,6 +379,7 @@ async def get_scan(scan_id: str):
     response_model=dict,
     summary="List all scans",
     tags=["Scans"],
+    dependencies=[Security(_verify_api_key)],
 )
 async def list_scans():
     """List all scans with summary information."""
@@ -328,6 +400,7 @@ async def list_scans():
     "/api/report/{scan_id}",
     summary="Download HTML report",
     tags=["Reports"],
+    dependencies=[Security(_verify_api_key)],
 )
 async def get_report(scan_id: str):
     """Download the generated HTML report for a completed scan."""
@@ -348,6 +421,7 @@ async def get_report(scan_id: str):
     "/api/report/{scan_id}/json",
     summary="Download JSON findings report",
     tags=["Reports"],
+    dependencies=[Security(_verify_api_key)],
 )
 async def get_json_report(scan_id: str):
     """Download the generated JSON findings report for a completed scan."""
@@ -372,6 +446,7 @@ async def get_json_report(scan_id: str):
     "/api/report/{scan_id}/sarif",
     summary="Download SARIF report",
     tags=["Reports"],
+    dependencies=[Security(_verify_api_key)],
 )
 async def get_sarif_report(scan_id: str):
     """Download the generated SARIF report for a completed scan."""
@@ -392,6 +467,7 @@ async def get_sarif_report(scan_id: str):
     "/api/scan/{scan_id}",
     summary="Cancel/delete a scan",
     tags=["Scans"],
+    dependencies=[Security(_verify_api_key)],
 )
 async def cancel_scan(scan_id: str):
     """Cancel or delete a scan and its results."""
@@ -416,6 +492,7 @@ async def cancel_scan(scan_id: str):
     "/api/scan/{scan_id}/events",
     summary="Stream scan progress events",
     tags=["Scans"],
+    dependencies=[Security(_verify_api_key)],
 )
 async def stream_scan_events(scan_id: str):
     """Stream scan status updates using Server-Sent Events (SSE)."""
@@ -477,4 +554,10 @@ def start_api_server(host="0.0.0.0", port=8080):
     log_info(f"Starting FastAPI server on {host}:{port}")
     log_success(f"API docs: http://localhost:{port}/docs")
     log_success(f"ReDoc: http://localhost:{port}/redoc")
+    if os.environ.get("SCANNER_API_KEY"):
+        log_info("API Key: (from SCANNER_API_KEY env var)")
+    else:
+        log_warning(f"Auto-generated API Key: {_API_KEY}")
+        log_info("Set SCANNER_API_KEY in .env for a persistent key.")
+    log_info(f"Rate limit: {_RATE_LIMIT_MAX} requests/{_RATE_LIMIT_WINDOW}s per IP")
     uvicorn.run(app, host=host, port=port, log_level="info")

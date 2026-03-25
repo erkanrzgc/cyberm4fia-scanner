@@ -78,6 +78,8 @@ def scan_ssti(url, delay=0):
 
     for param in params:
         log_info(f"Testing parameter: {param}")
+        param_found = False
+        waf_blocked = False
 
         for entry in SSTI_PAYLOADS:
             payload = entry["payload"]
@@ -87,6 +89,10 @@ def scan_ssti(url, delay=0):
             body, status = inject_payload(url, param, payload, delay)
             if body is None:
                 continue
+
+            # Track WAF blocks for AI bypass later
+            if status in (403, 406, 429, 503):
+                waf_blocked = True
 
             # Check if the mathematical result appears in response
             if expected in body:
@@ -113,7 +119,100 @@ def scan_ssti(url, delay=0):
                         f"[CRITICAL] SSTI found! Param: {param} | "
                         f"Engine: {engine} | Payload: {payload}"
                     )
+                    param_found = True
                     break  # One confirmed finding per param is enough
+
+        # ── AI WAF Bypass for this param ──
+        if not param_found and waf_blocked:
+            try:
+                from utils.ai import get_ai, EvolvingWAFBypassEngine
+                from utils.waf import waf_detector
+
+                ai_client = get_ai()
+                waf_name = getattr(waf_detector, "detected_waf", "") or ""
+                if ai_client and ai_client.available and waf_name:
+                    log_info(f"AI WAF Bypass: SSTI on {param} (WAF: {waf_name})")
+                    engine_ai = EvolvingWAFBypassEngine(ai_client, waf_name, "SSTI")
+                    base_payload = "{{7*7}}"
+
+                    for iteration in range(1, 4):
+                        ai_payloads = engine_ai.mutate(base_payload, iteration)
+                        for ai_p in ai_payloads:
+                            body, status = inject_payload(url, param, ai_p, delay)
+                            if body and "49" in body:
+                                clean_body, _ = inject_payload(
+                                    url, param, "harmless_test_string", delay
+                                )
+                                if clean_body and "49" not in clean_body:
+                                    findings.append({
+                                        "type": "SSTI",
+                                        "url": url,
+                                        "field": param,
+                                        "payload": ai_p,
+                                        "engine": "AI WAF Bypass",
+                                        "evidence": "Response contains '49' (WAF bypassed)",
+                                        "severity": "CRITICAL",
+                                        "description": (
+                                            f"SSTI in '{param}' via AI WAF bypass "
+                                            f"(Gen-{iteration}). WAF: {waf_name}"
+                                        ),
+                                    })
+                                    log_success(
+                                        f"[CRITICAL] SSTI WAF bypass! Param: {param} | "
+                                        f"Gen-{iteration}"
+                                    )
+                                    param_found = True
+                                    break
+                            elif body and status not in (403, 406, 429, 503):
+                                engine_ai.analyze_failure(ai_p)
+                        if param_found:
+                            break
+            except (ImportError, ScanExceptions):
+                pass
+
+    # ── AI Exploit Agent (Final Escalation) ──
+    if not findings and params:
+        try:
+            from utils.ai_exploit_agent import get_exploit_agent, ExploitContext
+            agent = get_exploit_agent()
+            if agent and agent.available:
+                from utils.waf import waf_detector
+                waf_name = getattr(waf_detector, "detected_waf", "") or ""
+
+                for param in params:
+                    ctx = ExploitContext(
+                        url=url,
+                        param=param,
+                        vuln_type="SSTI",
+                        waf=waf_name,
+                        http_method="GET",
+                    )
+                    result = agent.exploit_ssti(ctx)
+                    if result and result.success:
+                        findings.append({
+                            "type": "SSTI",
+                            "url": url,
+                            "field": param,
+                            "payload": result.payload,
+                            "engine": "AI-detected",
+                            "evidence": result.evidence[:200],
+                            "severity": "CRITICAL",
+                            "description": (
+                                f"AI-discovered SSTI in '{param}' parameter. "
+                                f"Confidence: {result.confidence:.0f}%"
+                            ),
+                            "source": f"AI Agent (Gen-{result.iteration})",
+                            "ai_curl": result.curl_command,
+                            "ai_poc_script": result.python_script,
+                            "ai_nuclei": result.nuclei_template,
+                        })
+                        log_success(
+                            f"[CRITICAL] SSTI in: {param} "
+                            f"[AI Agent Gen-{result.iteration}]"
+                        )
+                        break
+        except ImportError:
+            pass
 
     log_success(f"SSTI scan complete. Found {len(findings)} vulnerability(ies).")
     return findings

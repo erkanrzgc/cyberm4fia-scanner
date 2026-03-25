@@ -21,18 +21,21 @@ def mock_asyncio_run():
 def test_scan_pipeline_end_to_end_fast(mock_asyncio_run, mock_modules):
     """Test the orchestration of scan_target with Fast Recon profile."""
     options = build_default_scan_options()
-    
+
     # Enable just a few modules like stealth/fast recon
     options["recon"] = True
     options["subdomain"] = True
-    
+
     scan_target("http://test.local", "normal", 0.0, options, options)
-    
+
     # Verify run_modules_async was called by asyncio
     mock_asyncio_run.assert_called_once()
     args = mock_asyncio_run.call_args[0]
-    # args[0] is the coroutine returned by run_modules_async
-    assert "coroutine object run_modules_async" in str(args[0])
+    # args[0] is the coroutine returned by run_modules_async_impl
+    coro = args[0]
+    assert "coroutine object run_modules_async" in str(coro)
+    # Close the coroutine to avoid "never awaited" warning
+    coro.close()
 
 def test_scan_pipeline_with_mocked_engine(mock_modules):
     """Test scan_target where asyncio run_modules_async returns mocked findings."""

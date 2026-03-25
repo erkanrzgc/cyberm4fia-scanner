@@ -707,6 +707,7 @@ def _run_ai_analysis(state):
         generate_remediation,
         generate_scan_summary,
         get_ai,
+        get_dual_ai,
     )
     from utils.colors import console, log_info, log_success
 
@@ -714,9 +715,14 @@ def _run_ai_analysis(state):
     if not findings:
         return []
 
-    ai = get_ai()
-    if not ai.available:
-        return []
+    # Prefer DualModelAI (routes tasks to WhiteRabbitNeo or Qwen3.5 by role)
+    dual = get_dual_ai()
+    if dual and dual.available:
+        ai = dual
+    else:
+        ai = get_ai()
+        if not ai.available:
+            return []
 
     findings = detect_false_positives(ai, findings)
     state["all_vulns"] = findings
@@ -755,6 +761,20 @@ def _run_ai_analysis(state):
         console.print("\n[bold cyan]═══ AI Executive Summary ═══[/bold cyan]")
         console.print(summary)
         console.print("[bold cyan]════════════════════════════[/bold cyan]\n")
+
+    # ── Feed payload memory with confirmed findings ──
+    try:
+        from utils.payload_memory import get_memory
+        memory = get_memory()
+        remembered = 0
+        for vuln in findings:
+            if vuln.get("payload"):
+                memory.remember_from_finding(vuln)
+                remembered += 1
+        if remembered:
+            log_info(f"Payload memory updated: {remembered} finding(s) stored for future scans")
+    except Exception:
+        pass
 
     return []
 

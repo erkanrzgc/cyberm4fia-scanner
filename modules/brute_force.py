@@ -107,7 +107,7 @@ class BruteForcer:
                 dir_listing = []
                 try:
                     ftp.dir(dir_listing.append)
-                except ScanExceptions:
+                except Exception:  # ftplib errors during listing
                     pass
 
                 results.append({
@@ -123,7 +123,7 @@ class BruteForcer:
 
                 try:
                     ftp.quit()
-                except ScanExceptions:
+                except Exception:  # ftplib errors during disconnect
                     pass
 
             except ftplib.error_perm:
@@ -193,7 +193,7 @@ class BruteForcer:
                 try:
                     _, stdout, _ = client.exec_command("whoami && hostname && uname -a", timeout=5)
                     evidence = stdout.read().decode("utf-8", errors="replace").strip()
-                except ScanExceptions:
+                except Exception:  # paramiko/SSH errors + unpacking issues
                     pass
 
                 results.append({

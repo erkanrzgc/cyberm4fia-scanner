@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from utils.agent_framework import (
     Agent, ReconAgent, ExploitAgent, ReportAgent, AgentOrchestrator
 )
@@ -48,13 +48,28 @@ def test_report_agent_rule_based():
     assert res["severity_breakdown"]["critical"] == 1
     assert res["risk_level"] == "CRITICAL"
 
-def test_orchestrator_mission():
-    orchestrator = AgentOrchestrator() # Rule-based fallback mode
-    
-    # Run a complete mission
-    mission = orchestrator.run_mission("example.com")
-    
-    assert mission.target == "example.com"
+@patch("scanner.scan_target")
+def test_orchestrator_mission(mock_scan_target):
+    mock_scan_target.return_value = {
+        "vulnerabilities": [{"type": "XSS", "url": "http://example.com/xss"}],
+        "findings": [{"id": "f1", "type": "XSS"}],
+        "observations": [],
+        "attack_paths": [],
+        "recon_data": {},
+        "stats": {"total_requests": 10},
+        "scan_dir": "/tmp/test",
+        "log_file": "/tmp/test/scan.txt",
+        "total_vulns": 1,
+    }
+
+    orchestrator = AgentOrchestrator()  # Rule-based fallback mode
+
+    # Run a complete mission (scan_target is mocked)
+    mission = orchestrator.run_mission("http://example.com")
+
+    assert mission.target == "http://example.com"
     assert mission.status == "completed"
     assert len(mission.agents_used) == 3
-    assert len(mission.tasks) == 3 # recon, exploit, report
+    assert len(mission.tasks) == 3  # recon, exploit, report
+    assert len(mission.findings) > 0  # findings from real scan pipeline
+    mock_scan_target.assert_called_once()
