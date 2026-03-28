@@ -31,3 +31,6 @@ Thumbs.db
 .env
 scans/
 memory/
+
+# External MCP tools (cloned, not tracked)
+tools/mcp-for-security/
