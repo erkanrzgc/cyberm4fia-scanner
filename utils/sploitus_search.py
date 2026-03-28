@@ -90,7 +90,7 @@ class SploitusSearch:
         
         Args:
             findings: List of vulnerability finding dicts.
-            tech_stack: Dict of detected technologies {name: version}.
+            tech_stack: Dict or list of detected technologies.
             
         Returns:
             List of exploit enrichment dicts.
@@ -114,7 +114,19 @@ class SploitusSearch:
 
         # Search by tech stack
         if tech_stack:
-            for tech, version in tech_stack.items():
+            # tech_stack can be a list of dicts (from scan_technology) or a dict
+            tech_iter = []
+            if isinstance(tech_stack, list):
+                # Convert list of {"name": "X", "version": "1.0", ...} to (name, version) pairs
+                tech_iter = [
+                    (t.get("name", ""), t.get("version", ""))
+                    for t in tech_stack
+                    if t.get("type") == "technology"
+                ]
+            elif isinstance(tech_stack, dict):
+                tech_iter = list(tech_stack.items())
+
+            for tech, version in tech_iter:
                 if not version or version == "unknown":
                     continue
                 exploits = self.search_by_tech(tech, version, limit=3)

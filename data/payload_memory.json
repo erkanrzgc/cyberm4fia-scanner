@@ -1,7 +1,112 @@
 {
-  "entries": [],
+  "entries": [
+    {
+      "target": "retain-io.business",
+      "vuln_type": "Missing_Security_Header",
+      "payload": "Prevents XSS and data injection attacks",
+      "technique": "",
+      "waf_bypassed": "",
+      "confidence": 50,
+      "url": "https://retain-io.business/",
+      "param": "Content-Security-Policy",
+      "timestamp": "2026-03-28T12:23:39.533004",
+      "last_seen": "2026-03-28T12:23:39.533016",
+      "success_count": 1
+    },
+    {
+      "target": "retain-io.business",
+      "vuln_type": "Missing_Security_Header",
+      "payload": "Enforces HTTPS connections",
+      "technique": "",
+      "waf_bypassed": "",
+      "confidence": 50,
+      "url": "https://retain-io.business/",
+      "param": "Strict-Transport-Security",
+      "timestamp": "2026-03-28T12:23:39.533757",
+      "last_seen": "2026-03-28T12:23:39.533760",
+      "success_count": 1
+    },
+    {
+      "target": "retain-io.business",
+      "vuln_type": "Missing_Security_Header",
+      "payload": "Prevents MIME type sniffing",
+      "technique": "",
+      "waf_bypassed": "",
+      "confidence": 50,
+      "url": "https://retain-io.business/",
+      "param": "X-Content-Type-Options",
+      "timestamp": "2026-03-28T12:23:39.534535",
+      "last_seen": "2026-03-28T12:23:39.534542",
+      "success_count": 1
+    },
+    {
+      "target": "retain-io.business",
+      "vuln_type": "Missing_Security_Header",
+      "payload": "Prevents clickjacking attacks",
+      "technique": "",
+      "waf_bypassed": "",
+      "confidence": 50,
+      "url": "https://retain-io.business/",
+      "param": "X-Frame-Options",
+      "timestamp": "2026-03-28T12:23:39.534898",
+      "last_seen": "2026-03-28T12:23:39.534903",
+      "success_count": 1
+    },
+    {
+      "target": "retain-io.business",
+      "vuln_type": "Missing_Security_Header",
+      "payload": "Legacy XSS filter (still useful for old browsers)",
+      "technique": "",
+      "waf_bypassed": "",
+      "confidence": 50,
+      "url": "https://retain-io.business/",
+      "param": "X-XSS-Protection",
+      "timestamp": "2026-03-28T12:23:39.535307",
+      "last_seen": "2026-03-28T12:23:39.535310",
+      "success_count": 1
+    },
+    {
+      "target": "retain-io.business",
+      "vuln_type": "Missing_Security_Header",
+      "payload": "Controls referrer information leakage",
+      "technique": "",
+      "waf_bypassed": "",
+      "confidence": 50,
+      "url": "https://retain-io.business/",
+      "param": "Referrer-Policy",
+      "timestamp": "2026-03-28T12:23:39.535745",
+      "last_seen": "2026-03-28T12:23:39.535748",
+      "success_count": 1
+    },
+    {
+      "target": "retain-io.business",
+      "vuln_type": "Missing_Security_Header",
+      "payload": "Controls browser feature access (camera, mic, geolocation)",
+      "technique": "",
+      "waf_bypassed": "",
+      "confidence": 50,
+      "url": "https://retain-io.business/",
+      "param": "Permissions-Policy",
+      "timestamp": "2026-03-28T12:23:39.536249",
+      "last_seen": "2026-03-28T12:23:39.536252",
+      "success_count": 1
+    },
+    {
+      "target": "retain-io.business",
+      "vuln_type": "CSP_Bypass",
+      "payload": "<img src=x onerror=alert('No-CSP')>",
+      "technique": "",
+      "waf_bypassed": "",
+      "confidence": 50,
+      "url": "https://retain-io.business/",
+      "param": "",
+      "timestamp": "2026-03-28T12:23:39.536906",
+      "last_seen": "2026-03-28T12:23:39.537003",
+      "success_count": 1
+    }
+  ],
   "stats": {
-    "total_remembered": 0,
-    "total_recalls": 11
+    "total_remembered": 8,
+    "total_recalls": 20
   }
 }

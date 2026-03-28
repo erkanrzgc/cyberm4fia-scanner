@@ -112,6 +112,15 @@ class EndpointFuzzer:
                 
                 # Check for successful discovery
                 if resp.status_code in [200, 204, 301, 302, 307, 308, 401, 403]:
+                    # Skip trailing-slash redirects (Next.js/Vercel normalization)
+                    if resp.status_code in (301, 307, 308):
+                        location = resp.headers.get("location", "")
+                        # Normalize: if redirect only adds or removes trailing slash, skip
+                        if location.rstrip("/") == test_url.rstrip("/") or \
+                           location == test_url + "/" or \
+                           location == test_url.rstrip("/"):
+                            continue
+
                     # Filter out soft 404s
                     if not self._is_soft_404(resp):
                         log_success(f"[HTTP {resp.status_code}] Found: /{word} (Size: {len(resp.content)} bytes)")
