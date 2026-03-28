@@ -34,3 +34,4 @@ memory/
 
 # External MCP tools (cloned, not tracked)
 tools/mcp-for-security/
+data/payload_memory.json
