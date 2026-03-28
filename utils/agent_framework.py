@@ -1,17 +1,26 @@
 """
 cyberm4fia-scanner — Multi-Agent Framework
-Foundation for autonomous pentesting with specialized AI agents.
-Inspired by PentAGI and Revelion architectures.
+Autonomous AI-driven pentesting with Planner-Executor-Summarizer loop.
+Inspired by HackSynth, PentestGPT, and PentAGI architectures.
+
+The AI DRIVES the scan — it decides what to scan next based on results,
+rather than just analyzing results after the fact.
 """
 
 import json
+import time
+import signal
+import importlib
 from datetime import datetime
 from dataclasses import dataclass, field
 from typing import Optional
+from urllib.parse import urlparse
 
 from utils.colors import Colors, log_info, log_success, log_warning, log_error
 from utils.request import ScanExceptions
 
+
+# ─── Data Classes ───────────────────────────────────────────────────────
 
 @dataclass
 class AgentTask:
@@ -19,7 +28,7 @@ class AgentTask:
     id: str
     description: str
     agent_role: str
-    status: str = "pending"  # pending, running, completed, failed
+    status: str = "pending"
     result: Optional[dict] = None
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
     completed_at: str = ""
@@ -50,314 +59,254 @@ class MissionReport:
         }
 
 
-class Agent:
-    """
-    Base AI agent with role-specific behavior.
-    Each agent has a unique system prompt and processes tasks through think→act→report cycle.
-    """
+# ─── Agent Memory ───────────────────────────────────────────────────────
 
-    def __init__(self, name, role, system_prompt, ai_client=None):
-        self.name = name
-        self.role = role
-        self.system_prompt = system_prompt
-        self.ai_client = ai_client
-        self.memory = []  # Agent's working memory for current mission
-        self.task_history = []
+class AgentMemory:
+    """Persistent context across agent iterations."""
 
-    def think(self, context):
-        """
-        Analyze context and plan next action.
-        
-        Args:
-            context: Dict with target info, previous results, etc.
-            
-        Returns:
-            Analysis string from AI or rule-based logic.
-        """
-        if self.ai_client and getattr(self.ai_client, "available", False):
-            prompt = self._build_prompt("think", context)
-            try:
-                response = self.ai_client.generate(
-                    prompt=prompt,
-                    system=self.system_prompt,
-                    model_role=self.role,
+    def __init__(self, target: str):
+        self.target = target
+        self.iterations = []
+        self.modules_run = set()
+        self.all_findings = []
+        self.tech_stack = []
+        self.discovered_endpoints = []
+        self.waf_detected = None
+        self.recon_data = {}
+
+    def add_iteration(self, plan: dict, results: dict, summary: str):
+        self.iterations.append({
+            "plan": plan,
+            "results": results,
+            "summary": summary,
+            "timestamp": time.time(),
+        })
+
+    def add_findings(self, findings: list):
+        self.all_findings.extend(findings)
+
+    def get_context_window(self, max_chars: int = 3000) -> str:
+        """Build context for the planner from memory."""
+        ctx = [f"Target: {self.target}"]
+
+        if self.tech_stack:
+            techs = ", ".join(
+                t.get("name", "?") for t in self.tech_stack[:10]
+                if isinstance(t, dict)
+            )
+            ctx.append(f"Tech Stack: {techs}")
+
+        if self.waf_detected:
+            ctx.append(f"WAF Detected: {self.waf_detected}")
+
+        ctx.append(f"Modules already run: {', '.join(sorted(self.modules_run)) or 'none'}")
+        ctx.append(f"Total findings: {len(self.all_findings)}")
+
+        # Critical/High findings
+        important = [
+            f for f in self.all_findings
+            if f.get("severity", "").lower() in ("critical", "high")
+        ]
+        if important:
+            ctx.append("Critical/High findings:")
+            for f in important[:5]:
+                ctx.append(
+                    f"  - {f.get('type', '?')}: {f.get('url', '?')} "
+                    f"[{f.get('severity', '?')}]"
                 )
-                self.memory.append({"action": "think", "result": response})
-                return response
-            except ScanExceptions as e:
-                log_warning(f"[{self.name}] AI think failed: {e}")
 
-        # Fallback: rule-based analysis
-        return self._rule_based_think(context)
+        # Last iteration summary
+        if self.iterations:
+            ctx.append(f"\nLast iteration:\n{self.iterations[-1]['summary'][:500]}")
 
-    def act(self, context):
-        """
-        Execute an action based on context.
-        
-        Args:
-            context: Dict with target info and think results.
-            
-        Returns:
-            Action result dict.
-        """
-        if self.ai_client and getattr(self.ai_client, "available", False):
-            prompt = self._build_prompt("act", context)
+        return "\n".join(ctx)[:max_chars]
+
+
+# ─── System Prompts ─────────────────────────────────────────────────────
+
+PLANNER_SYSTEM = """You are an elite penetration tester AI agent controlling cyberm4fia-scanner.
+You analyze scan results and decide the NEXT best scanning action.
+
+Available modules:
+- recon: Network recon (ports, DNS, WHOIS, IP info)
+- tech_detect: Technology fingerprinting
+- header_audit: Security header analysis
+- xss: Cross-Site Scripting
+- sqli: SQL Injection
+- lfi: Local File Inclusion
+- cmdi: Command Injection
+- ssrf: Server-Side Request Forgery
+- ssti: Server-Side Template Injection
+- xxe: XML External Entity
+- csrf: CSRF scanner
+- cors: CORS misconfiguration
+- jwt: JWT token attacks
+- open_redirect: Open Redirect
+- header_inject: HTTP Header Injection
+- dom_xss: DOM-based XSS
+- smuggling: HTTP Request Smuggling
+- deserialization: Insecure Deserialization
+- proto_pollution: Prototype Pollution
+- business_logic: Business logic flaws
+- race_condition: Race conditions
+- forbidden_bypass: 403 bypass
+- file_upload: File upload vulns
+- account_takeover: Account takeover
+- auth_bypass: Auth bypass
+- csp_bypass: CSP bypass
+- cookie_hsts: Cookie & HSTS audit
+- subdomain: Subdomain enumeration
+- secrets: Secret/credential scanner
+
+Rules:
+1. Always start with recon + tech_detect + header_audit if no prior data exists
+2. Choose modules based on discovered technology (PHP→LFI, Java→deserialization, etc.)
+3. If WAF detected, prioritize bypass-capable modules
+4. Don't repeat modules unless you have new attack vectors
+5. Run max 3 modules per iteration
+6. When scanning is complete, set "done": true
+
+Respond ONLY with valid JSON:
+{"reasoning": "why I chose this", "modules": ["mod1", "mod2"], "priority": "high", "done": false}"""
+
+SUMMARIZER_SYSTEM = """You are a cybersecurity scan analyst. Given raw results,
+produce a concise tactical summary for the planner AI.
+
+Include: key findings, new attack surface, what failed/blocked, recommended next steps.
+Keep it under 150 words. Be precise and technical."""
+
+
+# ─── Module Executor ────────────────────────────────────────────────────
+
+MODULE_MAP = {
+    "recon":             ("modules.recon", "run_recon", False),
+    "tech_detect":       ("modules.tech_detect", "scan_technology", False),
+    "header_audit":      ("modules.passive", "scan_passive", False),
+    "xss":               ("modules.xss", "scan_xss", True),
+    "sqli":              ("modules.sqli", "scan_sqli", True),
+    "lfi":               ("modules.lfi", "scan_lfi", True),
+    "cmdi":              ("modules.cmdi", "scan_cmdi", True),
+    "ssrf":              ("modules.ssrf", "scan_ssrf", True),
+    "ssti":              ("modules.ssti", "scan_ssti", False),
+    "xxe":               ("modules.xxe", "scan_xxe", False),
+    "csrf":              ("modules.csrf", "scan_csrf", True),
+    "cors":              ("modules.cors", "scan_cors", False),
+    "jwt":               ("modules.jwt_attack", "scan_jwt", False),
+    "open_redirect":     ("modules.open_redirect", "scan_open_redirect", False),
+    "header_inject":     ("modules.header_inject", "scan_header_inject", False),
+    "dom_xss":           ("modules.dom_xss", "scan_dom_xss", False),
+    "smuggling":         ("modules.smuggling", "scan_smuggling", False),
+    "deserialization":   ("modules.deserialization", "scan_deserialization", False),
+    "proto_pollution":   ("modules.proto_pollution", "scan_proto_pollution", False),
+    "business_logic":    ("modules.business_logic", "scan_business_logic", False),
+    "race_condition":    ("modules.race_condition", "scan_race_condition", False),
+    "forbidden_bypass":  ("modules.forbidden_bypass", "scan_forbidden_bypass", False),
+    "file_upload":       ("modules.file_upload", "scan_file_upload", False),
+    "account_takeover":  ("modules.account_takeover", "scan_account_takeover", False),
+    "auth_bypass":       ("modules.auth_bypass", "scan_auth_bypass", False),
+    "csp_bypass":        ("modules.csp_bypass", "scan_csp_bypass", False),
+    "cookie_hsts":       ("modules.cookie_hsts_audit", "scan_cookie_hsts", False),
+    "subdomain":         ("modules.subdomain", "scan_subdomains", False),
+    "secrets":           ("modules.secrets_scanner", "scan_secrets", False),
+    "cloud_enum":        ("modules.cloud_enum", "scan_cloud_storage", False),
+}
+
+
+def _get_forms(target, delay=0, _cache={}):
+    """Crawl and cache forms (singleton per target)."""
+    if target in _cache:
+        return _cache[target]
+    try:
+        from modules.dynamic_crawler import run_dynamic_spider
+        log_info("  Crawling for forms...")
+        pages = run_dynamic_spider(target, delay=delay)
+        forms = []
+        for page in (pages or []):
+            forms.extend(page.get("forms", []))
+        _cache[target] = forms
+        log_info(f"  Found {len(forms)} forms across {len(pages or [])} pages")
+    except Exception:
+        _cache[target] = []
+    return _cache[target]
+
+
+def execute_module(mod_id, target, memory, delay=0):
+    """Execute a single scanner module and return results."""
+    if mod_id not in MODULE_MAP:
+        log_warning(f"  Unknown module '{mod_id}', skipping")
+        return None
+
+    mod_path, func_name, needs_forms = MODULE_MAP[mod_id]
+    memory.modules_run.add(mod_id)
+
+    try:
+        module = importlib.import_module(mod_path)
+        func = getattr(module, func_name)
+        start = time.time()
+
+        if needs_forms:
+            forms = _get_forms(target, delay)
+            result = func(target, forms, delay)
+        elif mod_id == "recon":
+            result = func(target, deep=False)
+        elif mod_id == "subdomain":
+            domain = urlparse(target).hostname
+            result = func(domain)
+        elif mod_id == "secrets":
+            import httpx
             try:
-                response = self.ai_client.generate(
-                    prompt=prompt,
-                    system=self.system_prompt,
-                    model_role=self.role,
-                )
-                result = {"action": "act", "result": response, "raw": context}
-                self.memory.append(result)
-                return result
-            except ScanExceptions as e:
-                log_warning(f"[{self.name}] AI act failed: {e}")
+                resp = httpx.get(target, timeout=10, verify=False)
+                result = func(target, resp.text)
+            except Exception:
+                result = []
+        else:
+            result = func(target)
 
-        return self._rule_based_act(context)
+        elapsed = time.time() - start
 
-    def report(self, findings):
-        """
-        Generate a report from agent findings.
-        
-        Args:
-            findings: List of finding dicts from this agent's work.
-            
-        Returns:
-            Report string.
-        """
-        if self.ai_client and getattr(self.ai_client, "available", False):
-            prompt = self._build_prompt("report", {"findings": findings})
-            try:
-                return self.ai_client.generate(
-                    prompt=prompt,
-                    system=self.system_prompt,
-                    model_role=self.role,
-                )
-            except ScanExceptions:
-                pass
+        # Extract metadata
+        if mod_id == "tech_detect" and isinstance(result, list):
+            memory.tech_stack = result
+            for t in result:
+                if isinstance(t, dict) and t.get("type") == "waf":
+                    memory.waf_detected = t.get("name", "Unknown WAF")
 
-        return self._rule_based_report(findings)
+        if mod_id == "recon" and isinstance(result, dict):
+            memory.recon_data = result
 
-    def _build_prompt(self, action_type, context):
-        """Build a role-specific prompt."""
-        ctx_str = json.dumps(context, default=str, indent=2)[:2000]
-        memory_str = ""
-        if self.memory:
-            recent = self.memory[-3:]
-            memory_str = f"\n\nRecent memory:\n{json.dumps(recent, default=str)[:500]}"
+        # Store findings
+        if isinstance(result, list):
+            findings = [r for r in result if isinstance(r, dict) and r.get("type")]
+            memory.add_findings(findings)
 
-        return f"[{action_type.upper()}] As {self.name} ({self.role}):\n\nContext:\n{ctx_str}{memory_str}"
+        log_success(f"  ✓ {mod_id} ({elapsed:.1f}s)")
+        return result
 
-    def _rule_based_think(self, context):
-        return f"[{self.name}] Analyzing context with {len(context)} items"
-
-    def _rule_based_act(self, context):
-        return {"agent": self.name, "action": "rule_based", "context_size": len(context)}
-
-    def _rule_based_report(self, findings):
-        return f"[{self.name}] {len(findings)} finding(s) collected"
-
-    def reset(self):
-        """Clear agent memory for new mission."""
-        self.memory = []
+    except Exception as e:
+        log_error(f"  ✗ {mod_id}: {e}")
+        return {"error": str(e)}
 
 
-class ReconAgent(Agent):
-    """Reconnaissance specialist — tech detection, port scan, subdomain enum."""
-
-    SYSTEM_PROMPT = """You are a cybersecurity reconnaissance specialist agent.
-Your job is to gather intelligence about the target:
-- Identify technologies, frameworks, and versions
-- Discover open ports and running services
-- Find subdomains and related assets
-- Map the attack surface
-
-Output structured JSON with your findings.
-Always be thorough but efficient. Prioritize high-value targets."""
-
-    def __init__(self, ai_client=None):
-        super().__init__(
-            name="ReconAgent",
-            role="analysis",
-            system_prompt=self.SYSTEM_PROMPT,
-            ai_client=ai_client,
-        )
-
-    def _rule_based_think(self, context):
-        target = context.get("target", "unknown")
-        return f"Planning reconnaissance for {target}: tech detect → port scan → subdomain enum"
-
-    def _rule_based_act(self, context):
-        """Run reconnaissance modules."""
-        target = context.get("target", "")
-        results = {
-            "agent": self.name,
-            "target": target,
-            "recommended_modules": ["recon", "waf_detect", "crawler"],
-            "priority_checks": [
-                "Technology fingerprinting",
-                "Port scanning (top 100)",
-                "Subdomain enumeration",
-                "WAF detection",
-                "Directory discovery",
-            ],
-        }
-        self.memory.append({"action": "recon_plan", "result": results})
-        return results
-
-    def _rule_based_report(self, findings):
-        tech_count = len([f for f in findings if "tech" in str(f.get("type", "")).lower()])
-        return f"Recon complete: {len(findings)} findings, {tech_count} technologies identified"
-
-
-class ExploitAgent(Agent):
-    """Exploitation specialist — payload crafting, WAF bypass, exploit chaining."""
-
-    SYSTEM_PROMPT = """You are a cybersecurity exploitation specialist agent.
-Your job is to find and exploit vulnerabilities:
-- Craft and test payloads for web vulnerabilities (XSS, SQLi, CMDi, LFI, SSRF)
-- Bypass WAF protections using advanced evasion techniques
-- Chain vulnerabilities for maximum impact
-- Generate proof-of-concept for each finding
-
-Output structured JSON with exploit results.
-Always include evidence and reproduction steps."""
-
-    def __init__(self, ai_client=None):
-        super().__init__(
-            name="ExploitAgent",
-            role="exploit",
-            system_prompt=self.SYSTEM_PROMPT,
-            ai_client=ai_client,
-        )
-
-    def _rule_based_think(self, context):
-        vulns = context.get("vulnerabilities", [])
-        tech = context.get("tech_stack", {})
-        return (f"Planning exploitation: {len(vulns)} potential vulns, "
-                f"tech stack: {list(tech.keys())[:5]}")
-
-    def _rule_based_act(self, context):
-        vulns = context.get("vulnerabilities", [])
-        results = {
-            "agent": self.name,
-            "vuln_count": len(vulns),
-            "recommended_exploits": [],
-            "chain_opportunities": [],
-        }
-
-        for vuln in vulns:
-            vtype = vuln.get("type", "").lower()
-            sev = vuln.get("severity", "medium").lower()
-
-            if sev in ("critical", "high"):
-                results["recommended_exploits"].append({
-                    "vuln_type": vtype,
-                    "url": vuln.get("url", ""),
-                    "priority": "high",
-                    "techniques": self._suggest_techniques(vtype),
-                })
-
-        self.memory.append({"action": "exploit_plan", "result": results})
-        return results
-
-    def _suggest_techniques(self, vuln_type):
-        """Suggest exploitation techniques by vuln type."""
-        techniques = {
-            "sqli": ["UNION-based extraction", "Boolean blind", "Time-based blind", "Stacked queries"],
-            "xss": ["DOM manipulation", "Event handler injection", "SVG payload", "CSP bypass"],
-            "cmdi": ["Pipe injection", "Command chaining", "Backtick execution", "Reverse shell"],
-            "lfi": ["Path traversal", "PHP filter chain", "Log poisoning", "Proc self"],
-            "ssrf": ["Cloud metadata", "Internal port scan", "Protocol smuggling"],
-            "ssti": ["Template sandbox escape", "Object introspection", "RCE via template"],
-        }
-        for key, techs in techniques.items():
-            if key in vuln_type:
-                return techs
-        return ["Manual analysis required"]
-
-    def _rule_based_report(self, findings):
-        crits = len([f for f in findings if f.get("severity") == "critical"])
-        highs = len([f for f in findings if f.get("severity") == "high"])
-        return f"Exploitation complete: {crits} critical, {highs} high severity findings"
-
-
-class ReportAgent(Agent):
-    """Reporting specialist — findings summary, risk assessment, remediation."""
-
-    SYSTEM_PROMPT = """You are a cybersecurity reporting specialist agent.
-Your job is to create clear, actionable reports:
-- Summarize findings with business impact
-- Assign risk scores and prioritize remediation
-- Write executive summaries for leadership
-- Provide technical details for developers
-
-Output clear, structured reports with remediation steps."""
-
-    def __init__(self, ai_client=None):
-        super().__init__(
-            name="ReportAgent",
-            role="summary",
-            system_prompt=self.SYSTEM_PROMPT,
-            ai_client=ai_client,
-        )
-
-    def _rule_based_think(self, context):
-        findings = context.get("findings", [])
-        return f"Preparing report for {len(findings)} findings"
-
-    def _rule_based_act(self, context):
-        findings = context.get("findings", [])
-        severity_counts = {}
-        for f in findings:
-            sev = f.get("severity", "medium").lower()
-            severity_counts[sev] = severity_counts.get(sev, 0) + 1
-
-        return {
-            "agent": self.name,
-            "total_findings": len(findings),
-            "severity_breakdown": severity_counts,
-            "risk_level": self._assess_risk(severity_counts),
-        }
-
-    def _assess_risk(self, severity_counts):
-        """Assess overall risk level."""
-        if severity_counts.get("critical", 0) > 0:
-            return "CRITICAL"
-        if severity_counts.get("high", 0) > 0:
-            return "HIGH"
-        if severity_counts.get("medium", 0) > 0:
-            return "MEDIUM"
-        return "LOW"
-
-    def _rule_based_report(self, findings):
-        sev_counts = {}
-        for f in findings:
-            sev = f.get("severity", "medium")
-            sev_counts[sev] = sev_counts.get(sev, 0) + 1
-
-        lines = [f"Security Assessment Report — {len(findings)} findings"]
-        for sev, count in sorted(sev_counts.items()):
-            lines.append(f"  {sev.upper()}: {count}")
-        return "\n".join(lines)
-
+# ─── Agent Orchestrator ─────────────────────────────────────────────────
 
 class AgentOrchestrator:
     """
-    Coordinates multiple agents for autonomous pentesting missions.
-    
-    Flow:
-    1. ReconAgent scans target → tech stack, ports, attack surface
-    2. ExploitAgent tests vulnerabilities → findings with PoC
-    3. ReportAgent summarizes → executive + technical report
+    AI-driven pentesting orchestrator with Planner-Executor-Summarizer loop.
+
+    Flow (per iteration):
+    1. PLANNER (AI) → analyzes context, decides which modules to run
+    2. EXECUTOR → runs the chosen modules
+    3. SUMMARIZER (AI) → summarizes results, feeds back to planner
+    4. Repeat until AI says "done" or max iterations reached
     """
 
+    MAX_ITERATIONS = 5
+    MAX_TIME = 600  # 10 minutes
+
     def __init__(self, ai_client=None):
-        # Auto-detect DualModelAI if no client provided
         if ai_client is None:
             try:
-                from utils.ai import get_dual_ai, get_ai
+                from utils.ai import get_dual_ai, get_ai, init_ai, init_dual_ai
                 dual = get_dual_ai()
                 if dual and dual.available:
                     ai_client = dual
@@ -365,152 +314,319 @@ class AgentOrchestrator:
                     ai = get_ai()
                     if ai.available:
                         ai_client = ai
+                    else:
+                        ai_client = init_ai()
             except Exception:
                 pass
 
         self.ai_client = ai_client
-        self.recon = ReconAgent(ai_client=ai_client)
-        self.exploit = ExploitAgent(ai_client=ai_client)
-        self.reporter = ReportAgent(ai_client=ai_client)
-        self.agents = [self.recon, self.exploit, self.reporter]
+        self.interrupted = False
+
+    def _get_ai_client(self, role="exploit"):
+        """Get the best AI client for a role."""
+        if self.ai_client is None:
+            return None
+        # DualModelAI
+        if hasattr(self.ai_client, "get_client_for_role"):
+            return self.ai_client.get_client_for_role(role)
+        # OllamaClient
+        if getattr(self.ai_client, "available", False):
+            return self.ai_client
+        return None
+
+    def _handle_interrupt(self, signum, frame):
+        print(f"\n{Colors.YELLOW}⚠ Agent interrupted. Finishing current iteration...{Colors.END}")
+        self.interrupted = True
+
+    def _ai_plan(self, memory):
+        """Ask AI to decide the next scan step."""
+        client = self._get_ai_client("exploit")
+        if not client or not getattr(client, "available", False):
+            # Fallback: deterministic plan
+            return self._fallback_plan(memory)
+
+        from utils.ai import _extract_json
+        context = memory.get_context_window()
+
+        prompt = f"""Current scan state:
+
+{context}
+
+Based on this data, what should I scan next? Pick the most effective modules (max 3).
+If we have enough data, set "done": true.
+
+Respond with JSON only."""
+
+        try:
+            response = client.generate(
+                prompt, system=PLANNER_SYSTEM,
+                temperature=0.3, model_role="exploit",
+            )
+            result = _extract_json(response)
+            if result and isinstance(result, dict) and result.get("modules"):
+                return result
+        except Exception as e:
+            log_warning(f"  Planner AI error: {e}")
+
+        return self._fallback_plan(memory)
+
+    def _fallback_plan(self, memory):
+        """Deterministic fallback when AI is unavailable."""
+        if not memory.modules_run:
+            return {
+                "reasoning": "Starting with reconnaissance (fallback mode)",
+                "modules": ["recon", "tech_detect", "header_audit"],
+                "priority": "high",
+                "done": False,
+            }
+
+        # Phase 2: Core vulnerability scanning
+        core_vulns = {"xss", "sqli", "lfi", "cmdi", "ssrf", "ssti"}
+        remaining = core_vulns - memory.modules_run
+        if remaining:
+            mods = list(remaining)[:3]
+            return {
+                "reasoning": f"Running core vuln scanners: {', '.join(mods)}",
+                "modules": mods,
+                "priority": "high",
+                "done": False,
+            }
+
+        # Phase 3: Advanced testing
+        advanced = {"xxe", "csrf", "cors", "jwt", "smuggling", "deserialization"}
+        remaining = advanced - memory.modules_run
+        if remaining:
+            mods = list(remaining)[:3]
+            return {
+                "reasoning": f"Running advanced scanners: {', '.join(mods)}",
+                "modules": mods,
+                "priority": "medium",
+                "done": False,
+            }
+
+        return {"reasoning": "All key modules completed", "modules": [], "done": True}
+
+    def _ai_summarize(self, results, memory):
+        """Ask AI to summarize scan results."""
+        client = self._get_ai_client("analysis")
+        if not client or not getattr(client, "available", False):
+            return self._fallback_summarize(results, memory)
+
+        result_text = []
+        for mod_id, data in results.items():
+            if isinstance(data, list):
+                severities = {}
+                for d in data:
+                    if isinstance(d, dict):
+                        sev = d.get("severity", "info")
+                        severities[sev] = severities.get(sev, 0) + 1
+                sev_str = ", ".join(f"{k}:{v}" for k, v in severities.items())
+                result_text.append(f"- {mod_id}: {len(data)} findings ({sev_str or 'raw'})")
+            elif isinstance(data, dict):
+                if "error" in data:
+                    result_text.append(f"- {mod_id}: ERROR - {data['error']}")
+                else:
+                    result_text.append(f"- {mod_id}: completed")
+            else:
+                result_text.append(f"- {mod_id}: {str(data)[:80]}")
+
+        prompt = f"""Summarize these scan results for {memory.target}:
+
+{chr(10).join(result_text)}
+
+Total findings: {len(memory.all_findings)}
+Modules run: {', '.join(sorted(memory.modules_run))}
+
+Give a tactical summary for planning the next scan step."""
+
+        try:
+            response = client.generate(
+                prompt, system=SUMMARIZER_SYSTEM,
+                temperature=0.2, model_role="analysis",
+            )
+            if response:
+                return response
+        except Exception:
+            pass
+
+        return self._fallback_summarize(results, memory)
+
+    def _fallback_summarize(self, results, memory):
+        """Simple rule-based summary when AI is unavailable."""
+        lines = [f"Scan update for {memory.target}:"]
+        for mod_id, data in results.items():
+            if isinstance(data, list):
+                lines.append(f"  {mod_id}: {len(data)} results")
+            elif isinstance(data, dict) and "error" in data:
+                lines.append(f"  {mod_id}: failed")
+            else:
+                lines.append(f"  {mod_id}: completed")
+        lines.append(f"Total findings: {len(memory.all_findings)}")
+        return "\n".join(lines)
 
     def run_mission(self, target, scope=None):
         """
-        Run a full pentesting mission on a target.
+        Run the AI-driven pentesting loop.
 
-        Executes the real scan pipeline via ``scan_target`` and wraps each
-        phase with agent think/act/report cycles for AI-enriched analysis.
-
-        Args:
-            target: Target URL or hostname.
-            scope: Optional scope restrictions.
-
-        Returns:
-            MissionReport with all findings.
+        The AI plans → executor runs → AI summarizes → repeat.
         """
-        from scanner import scan_target
-        from core.scan_options import build_default_scan_options, get_scan_mode_runtime
+        start_time = time.time()
+        memory = AgentMemory(target)
+        old_handler = signal.getsignal(signal.SIGINT)
+        signal.signal(signal.SIGINT, self._handle_interrupt)
 
         mission = MissionReport(
             target=target,
             start_time=datetime.now().isoformat(),
-            agents_used=[a.name for a in self.agents],
+            agents_used=["Planner", "Executor", "Summarizer"],
         )
 
-        print(f"\n{Colors.BOLD}{Colors.CYAN}{'=' * 55}")
-        print(f"  Multi-Agent Pentesting Mission")
-        print(f"{'=' * 55}{Colors.END}")
+        # ── Banner ──
+        print(f"\n{Colors.BOLD}{Colors.CYAN}{'═' * 58}")
+        print(f"  🤖 AGENT MODE — AI-Driven Penetration Test")
         print(f"  Target: {target}")
-        print(f"  Agents: {', '.join(a.name for a in self.agents)}")
-        print()
+        print(f"  Max iterations: {self.MAX_ITERATIONS} | Timeout: {self.MAX_TIME}s")
+        print(f"{'═' * 58}{Colors.END}\n")
 
-        context = {"target": target, "scope": scope or {}}
+        ai_available = bool(self._get_ai_client("exploit"))
+        if not ai_available:
+            log_warning("AI not available — running in deterministic fallback mode")
+            log_info("For AI-driven mode: ollama serve && ollama pull WhiteRabbitNeo")
 
-        # Phase 1: Reconnaissance (agent plans, then real scan runs)
-        log_info(f"[Phase 1] {self.recon.name} -- Reconnaissance")
-        recon_think = self.recon.think(context)
-        log_info(f"  Think: {recon_think[:100]}")
-        recon_result = self.recon.act(context)
-        mission.tasks.append(AgentTask(
-            id="recon_1", description="Reconnaissance scan",
-            agent_role="recon", status="completed", result=recon_result
-        ))
+        for iteration in range(1, self.MAX_ITERATIONS + 1):
+            elapsed = time.time() - start_time
+            if elapsed > self.MAX_TIME:
+                log_warning(f"Time limit reached ({self.MAX_TIME}s)")
+                break
 
-        # Phase 2: Run the real scan pipeline
-        log_info(f"[Phase 2] {self.exploit.name} -- Running scan pipeline")
-        exploit_think = self.exploit.think(context)
-        log_info(f"  Think: {exploit_think[:100]}")
+            if self.interrupted:
+                break
 
-        # Build options — enable all modules for a comprehensive agent scan
-        options = build_default_scan_options()
-        options.update({
-            "xss": True, "sqli": True, "lfi": True, "cmdi": True,
-            "ssrf": True, "ssti": True, "xxe": True, "crawl": True,
-            "passive": True, "csrf": True, "secrets": True,
-            "ai": bool(self.ai_client),
-            "html": True,
-        })
+            print(f"\n{Colors.BOLD}{Colors.MAGENTA}{'─' * 58}")
+            print(f"  Iteration {iteration}/{self.MAX_ITERATIONS}")
+            print(f"{'─' * 58}{Colors.END}")
 
-        mode, delay, _ = get_scan_mode_runtime("normal")
-        runtime_options = dict(options)
+            # Brief pause for interrupt opportunity
+            print(f"{Colors.DIM}  Ctrl+C to stop after this iteration{Colors.END}")
+            try:
+                time.sleep(1.5)
+            except KeyboardInterrupt:
+                self.interrupted = True
+                break
 
-        try:
-            scan_result = scan_target(
-                target, mode, delay, options, runtime_options,
-                summary_printer=None,
-                persist_console_log=True,
-            )
+            # ── PLAN ──
+            icon = "🧠" if ai_available else "📋"
+            print(f"\n  {Colors.CYAN}{icon} PLANNER:{Colors.END}", end=" ")
+            plan = self._ai_plan(memory)
 
-            vulns = scan_result.get("vulnerabilities", [])
-            findings = scan_result.get("findings", [])
-            context["vulnerabilities"] = vulns
-            context["scan_result"] = scan_result
-            mission.findings.extend(findings or vulns)
+            reasoning = plan.get("reasoning", "")
+            modules = plan.get("modules", [])[:3]
+            done = plan.get("done", False)
+            priority = plan.get("priority", "medium")
+
+            print(reasoning)
+            if modules:
+                print(f"  {Colors.BOLD}→ {', '.join(modules)} [{priority}]{Colors.END}")
+
+            if done or not modules:
+                log_success("AI determined scan is complete ✓")
+                break
+
+            # ── EXECUTE ──
+            print(f"\n  {Colors.YELLOW}⚡ EXECUTOR:{Colors.END}")
+            results = {}
+            for mod_id in modules:
+                result = execute_module(mod_id, target, memory, delay=0)
+                if result is not None:
+                    results[mod_id] = result
 
             mission.tasks.append(AgentTask(
-                id="exploit_1", description="Vulnerability scan",
-                agent_role="exploit", status="completed",
-                result={"vuln_count": len(vulns), "finding_count": len(findings)},
+                id=f"iter_{iteration}",
+                description=f"Ran: {', '.join(modules)}",
+                agent_role="executor",
+                status="completed",
+                result={"modules": modules, "finding_count": len(memory.all_findings)},
             ))
 
-        except Exception as e:
-            log_error(f"Scan pipeline failed: {e}")
-            mission.tasks.append(AgentTask(
-                id="exploit_1", description="Vulnerability scan",
-                agent_role="exploit", status="failed",
-                result={"error": str(e)},
-            ))
+            # ── SUMMARIZE ──
+            icon = "📝" if ai_available else "📊"
+            print(f"\n  {Colors.GREEN}{icon} SUMMARIZER:{Colors.END}")
+            summary = self._ai_summarize(results, memory)
+            # Show truncated summary
+            for line in summary.split("\n")[:6]:
+                if line.strip():
+                    print(f"  {line.strip()}")
 
-        # Phase 3: Agent-enriched reporting
-        context["findings"] = mission.findings
-        log_info(f"[Phase 3] {self.reporter.name} -- Report Generation")
-        report_result = self.reporter.act(context)
-        report_text = self.reporter.report(mission.findings)
-        mission.summary = report_text
-        mission.tasks.append(AgentTask(
-            id="report_1", description="Report generation",
-            agent_role="report", status="completed", result=report_result
-        ))
+            memory.add_iteration(plan, results, summary)
 
-        # Finalize
+        # ── Restore signal handler ──
+        signal.signal(signal.SIGINT, old_handler)
+        self.interrupted = False
+
+        # ── Final Report ──
+        total_time = time.time() - start_time
+        mission.findings = memory.all_findings
         mission.end_time = datetime.now().isoformat()
         mission.status = "completed"
 
-        log_success(f"Mission completed: {len(mission.findings)} finding(s)")
-        self._print_mission_summary(mission)
+        # Generate final AI summary if available
+        client = self._get_ai_client("summary")
+        if client and getattr(client, "available", False) and memory.all_findings:
+            try:
+                from utils.ai import generate_scan_summary, get_runtime_stats
+                stats = {"requests": 0, "waf": 0}
+                final_summary = generate_scan_summary(
+                    client, memory.all_findings, target, stats
+                )
+                if final_summary:
+                    mission.summary = final_summary
+            except Exception:
+                pass
 
-        # Reset agent memories
-        for agent in self.agents:
-            agent.reset()
+        if not mission.summary:
+            mission.summary = (
+                f"Agent scan of {target}: {len(memory.all_findings)} findings "
+                f"in {len(memory.iterations)} iterations ({total_time:.0f}s)"
+            )
 
+        self._print_final_report(mission, memory, total_time)
         return mission
 
-    def delegate(self, task_description, agent):
-        """
-        Delegate a specific task to a specific agent.
-        
-        Args:
-            task_description: What the agent should do.
-            agent: Agent instance.
-            
-        Returns:
-            Agent result dict.
-        """
-        log_info(f"Delegating to {agent.name}: {task_description[:60]}")
-        context = {"task": task_description}
-        result = agent.act(context)
-        return result
+    def _print_final_report(self, mission, memory, total_time):
+        """Print formatted final report."""
+        findings = memory.all_findings
+        severity_counts = {}
+        for f in findings:
+            sev = f.get("severity", "info").lower()
+            severity_counts[sev] = severity_counts.get(sev, 0) + 1
 
-    def _print_mission_summary(self, mission):
-        """Print formatted mission summary."""
-        print(f"\n{Colors.BOLD}{Colors.GREEN}{'─' * 55}")
-        print(f"  ✅ Mission Complete")
-        print(f"{'─' * 55}{Colors.END}")
-        print(f"  Target:   {mission.target}")
-        print(f"  Duration: {mission.start_time[:19]} → {mission.end_time[:19]}")
-        print(f"  Tasks:    {len(mission.tasks)}")
-        print(f"  Findings: {len(mission.findings)}")
-        print(f"  Status:   {mission.status}")
+        print(f"\n{Colors.BOLD}{Colors.GREEN}{'═' * 58}")
+        print(f"  ✅ AGENT MISSION COMPLETE")
+        print(f"{'═' * 58}{Colors.END}")
+        print(f"  Target:     {mission.target}")
+        print(f"  Iterations: {len(memory.iterations)}")
+        print(f"  Modules:    {', '.join(sorted(memory.modules_run))}")
+        print(f"  Time:       {total_time:.1f}s")
+        print(f"  Findings:   {len(findings)}")
+
+        if severity_counts:
+            sev_str = "  Severity:   "
+            parts = []
+            for sev in ("critical", "high", "medium", "low", "info"):
+                count = severity_counts.get(sev, 0)
+                if count:
+                    color = {
+                        "critical": Colors.RED, "high": Colors.RED,
+                        "medium": Colors.YELLOW, "low": Colors.CYAN,
+                        "info": Colors.DIM,
+                    }.get(sev, "")
+                    parts.append(f"{color}{sev}: {count}{Colors.END}")
+            print(sev_str + " | ".join(parts))
+
         if mission.summary:
-            print(f"\n  Summary:\n  {mission.summary[:200]}")
+            print(f"\n  {Colors.BOLD}Executive Summary:{Colors.END}")
+            for line in mission.summary.split("\n")[:5]:
+                if line.strip():
+                    print(f"  {line.strip()}")
+
         print()
