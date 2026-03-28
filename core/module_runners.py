@@ -684,6 +684,38 @@ def _run_business_logic(state):
     )
 
 
+def _run_forbidden_bypass(state):
+    from modules.forbidden_bypass import scan_forbidden_bypass
+
+    return scan_forbidden_bypass(
+        state["url"],
+        pages=state.get("crawled_pages", []),
+        delay=state["delay"],
+    )
+
+
+def _run_file_upload(state):
+    from modules.file_upload import scan_file_upload
+
+    return scan_file_upload(
+        state["url"],
+        forms=state.get("crawled_forms", []),
+        delay=state["delay"],
+    )
+
+
+def _run_account_takeover(state):
+    from modules.account_takeover import scan_account_takeover
+
+    return scan_account_takeover(state["url"], delay=state["delay"])
+
+
+def _run_auth_bypass(state):
+    from modules.auth_bypass import scan_auth_bypass
+
+    return scan_auth_bypass(state["url"], delay=state["delay"])
+
+
 def _run_chain_analysis(state):
     from utils.vuln_chain import analyze_chains
 
