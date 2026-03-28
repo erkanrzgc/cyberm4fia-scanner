@@ -157,6 +157,12 @@ Available modules:
 - cookie_hsts: Cookie & HSTS audit
 - subdomain: Subdomain enumeration
 - secrets: Secret/credential scanner
+- rfi: Remote File Inclusion
+- api_scanner: API endpoint security testing
+- email_harvest: Email address harvesting
+- endpoint_fuzzer: Endpoint/directory discovery
+- subdomain_takeover: Subdomain takeover detection
+- spray: Service brute-force (requires recon first)
 
 Rules:
 1. Always start with recon + tech_detect + header_audit if no prior data exists
@@ -209,6 +215,12 @@ MODULE_MAP = {
     "subdomain":         ("modules.subdomain", "scan_subdomains", False),
     "secrets":           ("modules.secrets_scanner", "scan_secrets", False),
     "cloud_enum":        ("modules.cloud_enum", "scan_cloud_storage", False),
+    "rfi":               ("modules.rfi", "scan_rfi", True),
+    "api_scanner":       ("modules.api_scanner", "scan_api", False),
+    "email_harvest":     ("modules.email_harvest", "scan_email_harvest", False),
+    "endpoint_fuzzer":   ("modules.endpoint_fuzzer", "scan_fuzzer_async", False),
+    "subdomain_takeover":("modules.subdomain_takeover", "scan_subdomain_takeover", False),
+    "spray":             ("modules.spray", "scan_spray", False),
 }
 
 
@@ -259,6 +271,25 @@ def execute_module(mod_id, target, memory, delay=0):
                 result = func(target, resp.text)
             except Exception:
                 result = []
+        elif mod_id == "endpoint_fuzzer":
+            import asyncio
+            try:
+                result = asyncio.run(func(target))
+            except Exception:
+                result = func(target)
+        elif mod_id == "spray":
+            # Needs host + open_ports from recon
+            host = urlparse(target).hostname
+            open_ports = []
+            if memory.recon_data and isinstance(memory.recon_data, dict):
+                open_ports = memory.recon_data.get("open_ports", [])
+            if open_ports:
+                result = func(host, open_ports)
+            else:
+                log_warning("  spray: no open ports from recon, skipping")
+                result = []
+        elif mod_id == "subdomain_takeover":
+            result = func(target)
         else:
             result = func(target)
 
