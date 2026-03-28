@@ -548,6 +548,24 @@ Give a tactical summary for planning the next scan step."""
                 result={"modules": modules, "finding_count": len(memory.all_findings)},
             ))
 
+            # ── ESCALATE (Chain Engine) ──
+            new_high = [
+                f for f in memory.all_findings
+                if isinstance(f, dict)
+                and f.get("severity", "").lower() in ("critical", "high")
+                and not f.get("proven")
+            ]
+            if new_high:
+                try:
+                    from utils.vuln_chain import run_escalations
+                    print(f"\n  {Colors.RED}🔗 CHAIN ENGINE:{Colors.END}")
+                    proven = run_escalations(new_high)
+                    if proven:
+                        memory.add_findings(proven)
+                        mission.findings.extend(proven)
+                except Exception as e:
+                    log_warning(f"  Chain engine error: {e}")
+
             # ── SUMMARIZE ──
             icon = "📝" if ai_available else "📊"
             print(f"\n  {Colors.GREEN}{icon} SUMMARIZER:{Colors.END}")
