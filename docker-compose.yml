@@ -1,18 +1,39 @@
 # ─────────────────────────────────────────────────────
 #  cyberm4fia-scanner — Docker Compose
-#  Scanner + Ollama + AI Models — tek komutla çalışır
+#
+#  2 mod:
+#    1) Sadece scanner (Ollama Windows'ta GPU ile çalışıyorsa)
+#       → docker compose up scanner
+#    2) Scanner + Ollama (hepsi Linux'ta, GPU yoksa CPU)
+#       → docker compose --profile with-ollama up
 # ─────────────────────────────────────────────────────
 
 services:
-  # ── Ollama (AI Engine) ──
+  # ── Scanner ──
+  scanner:
+    build: .
+    container_name: cyberm4fia-scanner
+    environment:
+      # Windows'taki Ollama IP adresini yaz:
+      # Örnek: OLLAMA_URL=http://192.168.1.50:11434
+      - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
+    entrypoint: ["python3", "scanner.py"]
+    stdin_open: true
+    tty: true
+    # Windows'taki Ollama'ya erişim için:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # ── Ollama (opsiyonel — sadece Linux'ta GPU yokken) ──
   ollama:
     image: ollama/ollama:latest
     container_name: cyberm4fia-ollama
+    profiles: ["with-ollama"]
     ports:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
-    # GPU varsa açın (yoksa CPU'da çalışır):
+    # GPU varsa:
     # deploy:
     #   resources:
     #     reservations:
@@ -27,10 +48,11 @@ services:
       timeout: 5s
       retries: 3
 
-  # ── Model Loader (Ollama başlayınca modelleri indirir) ──
+  # ── Model Loader (sadece with-ollama profile kullanılınca) ──
   model-loader:
     image: ollama/ollama:latest
     container_name: cyberm4fia-model-loader
+    profiles: ["with-ollama"]
     depends_on:
       ollama:
         condition: service_healthy
@@ -42,21 +64,6 @@ services:
       "
     environment:
       - OLLAMA_HOST=http://ollama:11434
-
-  # ── Scanner ──
-  scanner:
-    build: .
-    container_name: cyberm4fia-scanner
-    depends_on:
-      ollama:
-        condition: service_healthy
-    environment:
-      - OLLAMA_URL=http://ollama:11434
-    # Scan komutu burada verilir:
-    # docker compose run scanner -u https://target.com --all
-    entrypoint: ["python3", "scanner.py"]
-    stdin_open: true
-    tty: true
 
 volumes:
   ollama_data:
