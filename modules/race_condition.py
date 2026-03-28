@@ -227,7 +227,7 @@ def _detect_race_targets(url, forms, delay=0):
 def scan_race_condition(url, forms=None, delay=0, concurrent=50, cookie=None):
     """
     Main Race Condition scanner entry point.
-    Tests endpoints for TOCTOU and concurrency bugs.
+    Tests endpoints for TOCTOU, concurrency bugs, and rate limit bypass.
     """
     log_info(f"Starting Race Condition Scanner (concurrent={concurrent})...")
 
@@ -303,8 +303,165 @@ def scan_race_condition(url, forms=None, delay=0, concurrent=50, cookie=None):
         except ScanExceptions as e:
             log_warning(f"Race test failed for {target_url}: {e}")
 
+    # ── Rate Limit Bypass Tests ──────────────────────────────────────────
+    log_info("Testing Rate Limit Bypass techniques...")
+    rate_limit_findings = _test_rate_limit_bypass(url, concurrent, cookies, delay)
+    all_findings.extend(rate_limit_findings)
+
     if not all_findings:
-        log_info("No race conditions detected.")
+        log_info("No race conditions or rate limit bypasses detected.")
 
     log_success(f"Race condition scan complete. {len(all_findings)} finding(s).")
     return all_findings
+
+
+# ─────────────────────────────────────────────────────
+# Rate Limit Bypass Techniques (Az0x7 checklist)
+# ─────────────────────────────────────────────────────
+RATE_LIMIT_IP_HEADERS = [
+    "X-Forwarded-For", "X-Forwarded-Host", "X-Client-IP",
+    "X-Remote-IP", "X-Remote-Addr", "X-Host",
+    "X-Originating-IP", "X-Real-Ip", "True-Client-IP",
+]
+
+NULL_CHAR_PAYLOADS = ["%00", "%0d%0a", "%09", "%0C", "%20", "%0"]
+
+HOST_BYPASS_VALUES = ["localhost", "127.0.0.1", "0.0.0.0"]
+
+
+async def _rate_limit_burst_with_ip_rotation(url, concurrent=30):
+    """Send concurrent requests each with a different X-Forwarded-For IP."""
+    import random
+    limits = httpx.Limits(
+        max_connections=concurrent, max_keepalive_connections=concurrent
+    )
+    async with httpx.AsyncClient(
+        limits=limits, verify=False, follow_redirects=True
+    ) as client:
+        tasks = []
+        for i in range(concurrent):
+            fake_ip = f"{random.randint(1,254)}.{random.randint(1,254)}.{random.randint(1,254)}.{random.randint(1,254)}"
+            headers = {
+                "X-Forwarded-For": fake_ip,
+                "X-Real-Ip": fake_ip,
+                "X-Client-IP": fake_ip,
+            }
+            tasks.append(
+                _send_request(client, "POST", url, headers=headers)
+            )
+        return await asyncio.gather(*tasks)
+
+
+async def _rate_limit_burst_with_null_chars(url, email="test@test.com", concurrent=20):
+    """Send requests with null-char appended email to bypass rate limits."""
+    limits = httpx.Limits(
+        max_connections=concurrent, max_keepalive_connections=concurrent
+    )
+    async with httpx.AsyncClient(
+        limits=limits, verify=False, follow_redirects=True
+    ) as client:
+        tasks = []
+        for i, null_char in enumerate(NULL_CHAR_PAYLOADS * 4):
+            modified_email = f"{email}{null_char}"
+            tasks.append(
+                _send_request(
+                    client, "POST", url,
+                    data={"email": modified_email},
+                )
+            )
+            if len(tasks) >= concurrent:
+                break
+        return await asyncio.gather(*tasks)
+
+
+async def _rate_limit_burst_with_host_header(url, concurrent=15):
+    """Send requests with varying Host headers to bypass rate limits."""
+    limits = httpx.Limits(
+        max_connections=concurrent, max_keepalive_connections=concurrent
+    )
+    async with httpx.AsyncClient(
+        limits=limits, verify=False, follow_redirects=True
+    ) as client:
+        tasks = []
+        for host in HOST_BYPASS_VALUES * 5:
+            tasks.append(
+                _send_request(
+                    client, "POST", url,
+                    headers={"Host": host},
+                )
+            )
+            if len(tasks) >= concurrent:
+                break
+        return await asyncio.gather(*tasks)
+
+
+def _test_rate_limit_bypass(url, concurrent=30, cookies=None, delay=0):
+    """Test rate limit bypass via IP rotation, null chars, and Host header tricks."""
+    findings = []
+
+    # Technique 1: IP Rotation via X-Forwarded-For
+    try:
+        results = asyncio.run(
+            _rate_limit_burst_with_ip_rotation(url, concurrent=concurrent)
+        )
+        valid = [r for r in results if r.get("status", 0) > 0]
+        success_count = sum(1 for r in valid if r["status"] in (200, 201, 302))
+        blocked_count = sum(1 for r in valid if r["status"] in (429, 403))
+
+        if success_count >= concurrent * 0.8 and blocked_count == 0:
+            findings.append({
+                "type": "Rate Limit Bypass",
+                "url": url,
+                "vuln": "IP Rotation Bypass",
+                "description": f"Rate limit bypassed via X-Forwarded-For IP rotation ({success_count}/{concurrent} passed)",
+                "severity": "HIGH",
+                "technique": "X-Forwarded-For IP rotation per request",
+            })
+            log_success(f"⚡ Rate limit bypass! IP rotation: {success_count}/{concurrent} passed")
+    except ScanExceptions:
+        pass
+
+    # Technique 2: Null Character Injection
+    try:
+        results = asyncio.run(
+            _rate_limit_burst_with_null_chars(url, concurrent=20)
+        )
+        valid = [r for r in results if r.get("status", 0) > 0]
+        success_count = sum(1 for r in valid if r["status"] in (200, 201, 302))
+
+        if success_count >= 15:
+            findings.append({
+                "type": "Rate Limit Bypass",
+                "url": url,
+                "vuln": "Null Char Bypass",
+                "description": f"Rate limit bypassed via null char email injection ({success_count}/20 passed)",
+                "severity": "MEDIUM",
+                "technique": "Null character (%00, %0d%0a) appended to parameters",
+            })
+            log_success(f"⚡ Rate limit bypass! Null chars: {success_count}/20 passed")
+    except ScanExceptions:
+        pass
+
+    # Technique 3: Host Header Manipulation
+    try:
+        results = asyncio.run(
+            _rate_limit_burst_with_host_header(url, concurrent=15)
+        )
+        valid = [r for r in results if r.get("status", 0) > 0]
+        success_count = sum(1 for r in valid if r["status"] in (200, 201, 302))
+
+        if success_count >= 12:
+            findings.append({
+                "type": "Rate Limit Bypass",
+                "url": url,
+                "vuln": "Host Header Bypass",
+                "description": f"Rate limit bypassed via Host header change ({success_count}/15 passed)",
+                "severity": "MEDIUM",
+                "technique": "Host header: localhost/127.0.0.1",
+            })
+            log_success(f"⚡ Rate limit bypass! Host header: {success_count}/15 passed")
+    except ScanExceptions:
+        pass
+
+    return findings
+

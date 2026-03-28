@@ -203,7 +203,41 @@ with ScanContext(target, mode, delay, options).activate():
 6. Run `python3 scripts/generate_docs.py` → updates README/usagewithai automatically.
 7. Write at least one unit test under `tests/`.
 
----
+### Recommended Scan Order
+
+When advising users or building scan profiles, follow this logical order:
+
+```
+ 1. RECON + OSINT    → Port scan, Shodan, WHOIS, ASN
+ 2. TECH DETECT      → Technology fingerprinting (WordPress, Nginx, React, etc.)
+ 3. CLOUD + TAKEOVER → S3 bucket enum, subdomain takeover check
+ 4. FUZZER           → Hidden file/directory discovery
+ 5. CRAWLER          → Discover all pages and forms
+ 6. XSS + SQLi       → Most common web vulnerabilities
+ 7. SSTI + XXE       → Template and XML injection
+ 8. LFI + CMDi + SSRF→ File read, command execution, internal network
+ 9. API Scanner      → REST/GraphQL endpoint security
+10. REDIRECT + CORS  → Configuration errors
+11. SPRAY + EMAIL    → Credential testing + email harvesting
+12. CHAIN + REPORT   → Attack chain analysis + report generation
+```
+
+### Module Dependency Map
+
+Modules feed data into each other. Know the flow when recommending modules:
+
+| Source Module | Feeds Into | Data Provided |
+|---------------|-----------|---------------|
+| `recon.py` | All modules | IP, server info, open ports, banners |
+| `tech_detect.py` | All modules | Technology info → target-specific payloads |
+| `crawler.py` | XSS, SQLi, LFI, CMDi, SSRF, CSRF, SSTI | Discovered URLs and forms |
+| `fuzzer` | All modules | Hidden endpoints (admin panels, phpinfo) |
+| `smart_payload.py` | xss, sqli, cmdi, lfi | Context-aware targeted payloads |
+| `xss.py` | `xss_exploit.py` | Found XSS → cookie stealer, keylogger |
+| `sqli.py` | `sqli_exploit.py` | Found SQLi → DB dump, table extraction |
+| `cmdi.py` | `cmdi_shell.py`, `revshell.py` | Found CMDi → interactive/reverse shell |
+| `recon.py` | `spray.py` | Open ports → default credential spray |
+| `vuln_chain.py` | Reporting | All findings → attack chain analysis |
 
 ## 6. Testing Rules
 

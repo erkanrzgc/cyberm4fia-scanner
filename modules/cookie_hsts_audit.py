@@ -229,6 +229,68 @@ def _analyze_cookie(cookie: dict, url: str, is_https: bool) -> list:
                 }
             )
 
+    # Predictable Session ID Detection
+    if is_session:
+        value = cookie.get("value", "")
+        if value:
+            findings.extend(_check_predictable_session(name, value, url))
+
+    return findings
+
+
+def _check_predictable_session(name: str, value: str, url: str) -> list:
+    """Detect predictable/weak session IDs via entropy and pattern analysis."""
+    findings = []
+    import math
+
+    # Check 1: Very short session ID (< 16 chars)
+    if len(value) < 16:
+        findings.append({
+            "type": "Insecure_Cookie",
+            "severity": "high",
+            "cookie_name": name,
+            "missing_flag": "Weak_Session_ID",
+            "is_session_cookie": True,
+            "description": f"Session cookie '{name}' has very short value ({len(value)} chars) — easily brute-forced",
+            "exploit_scenario": f"Short session ID ({len(value)} chars) can be guessed or brute-forced",
+            "url": url,
+        })
+
+    # Check 2: Purely numeric session ID
+    if value.isdigit():
+        findings.append({
+            "type": "Insecure_Cookie",
+            "severity": "high",
+            "cookie_name": name,
+            "missing_flag": "Numeric_Session_ID",
+            "is_session_cookie": True,
+            "description": f"Session cookie '{name}' is purely numeric ({value[:8]}...) — sequential/predictable",
+            "exploit_scenario": "Numeric session IDs are often sequential and can be enumerated",
+            "url": url,
+        })
+
+    # Check 3: Low entropy (Shannon entropy)
+    if len(value) >= 8:
+        char_freq = {}
+        for c in value:
+            char_freq[c] = char_freq.get(c, 0) + 1
+        entropy = 0.0
+        for count in char_freq.values():
+            p = count / len(value)
+            if p > 0:
+                entropy -= p * math.log2(p)
+        if entropy < 2.5:
+            findings.append({
+                "type": "Insecure_Cookie",
+                "severity": "medium",
+                "cookie_name": name,
+                "missing_flag": "Low_Entropy_Session",
+                "is_session_cookie": True,
+                "description": f"Session cookie '{name}' has low entropy ({entropy:.1f} bits) — potentially predictable",
+                "exploit_scenario": f"Low entropy ({entropy:.1f}) suggests the session ID may follow a pattern",
+                "url": url,
+            })
+
     return findings
 
 

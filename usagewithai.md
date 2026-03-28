@@ -138,8 +138,8 @@ scanner.py                          ← Main orchestrator
 |---|---|---|---|
 | `1-Fast Recon` | Recon, subdomain discovery, endpoint fuzzing, technology intel, and passive checks. | `--fuzz`, `--passive`, `--recon`, `--subdomain`, `--tech` | `--crawl`, `--osint`, `--headless` |
 | `2-Core Web Vulns` | Core web checks like XSS, SQLi, file inclusion, CMDi, CSRF, CORS, and DOM XSS. | `--cmdi`, `--cors`, `--csrf`, `--dom-xss`, `--header-inject`, `--lfi`, `--passive`, `--rfi`, `--sqli`, `--xss` | `--secrets`, `--oob`, `--headless`, `--exploit` |
-| `3-Advanced / Modern` | JWT, deserialization, SSTI, race, prototype pollution, SSRF, business logic, API, OOB, and XXE coverage. | `--api-scan`, `--bizlogic`, `--deser`, `--jwt`, `--oob`, `--proto`, `--race`, `--redirect`, `--smuggle`, `--ssrf`, `--ssti`, `--xxe` | `--tech`, `--passive`, `--chain`, `--exploit` |
-| `4-All-In-One` | Enables nearly every scan module except opt-in extras like AI and SARIF. | `(auto via --all)`, `--api-scan`, `--bizlogic`, `--chain`, `--cloud`, `--cmdi`, `--cors`, `--crawl`, `--csrf`, `--deser`, `--dom-xss`, `--email`, `--fuzz`, `--header-inject`, `--headless`, `--html`, `--jwt`, `--lfi`, `--oob`, `--osint`, `--passive`, `--proto`, `--race`, `--recon`, `--redirect`, `--rfi`, `--secrets`, `--smuggle`, `--spray`, `--sqli`, `--ssrf`, `--ssti`, `--subdomain`, `--takeover`, `--tech`, `--xss`, `--xxe`, `SSH/FTP Brute-Force`, `Scan Drift Detection` | `--wordlist`, `--exploit` |
+| `3-Advanced / Modern` | JWT, deserialization, SSTI, race, prototype pollution, SSRF, business logic, API, OOB, and XXE coverage. | `--api-scan`, `--ato`, `--auth-bypass`, `--bizlogic`, `--deser`, `--file-upload`, `--forbidden-bypass`, `--jwt`, `--oob`, `--proto`, `--race`, `--redirect`, `--smuggle`, `--ssrf`, `--ssti`, `--xxe` | `--tech`, `--passive`, `--chain`, `--exploit` |
+| `4-All-In-One` | Enables nearly every scan module except opt-in extras like AI and SARIF. | `(auto via --all)`, `--api-scan`, `--ato`, `--auth-bypass`, `--bizlogic`, `--chain`, `--cloud`, `--cmdi`, `--cors`, `--crawl`, `--csrf`, `--deser`, `--dom-xss`, `--email`, `--file-upload`, `--forbidden-bypass`, `--fuzz`, `--header-inject`, `--headless`, `--html`, `--jwt`, `--lfi`, `--oob`, `--osint`, `--passive`, `--proto`, `--race`, `--recon`, `--redirect`, `--rfi`, `--secrets`, `--smuggle`, `--spray`, `--sqli`, `--ssrf`, `--ssti`, `--subdomain`, `--takeover`, `--tech`, `--xss`, `--xxe`, `SSH/FTP Brute-Force`, `Scan Drift Detection` | `--wordlist`, `--exploit` |
 | `5-Custom Choice` | Ask every module prompt one by one. | `manual selection` | - |
 <!-- END GENERATED: attack_profiles -->
 
@@ -307,6 +307,10 @@ Each scan creates results under `scans/<target>/`:
 |---|---|
 | `-h, --help` | show this help message and exit |
 | `--exploit` | Enable exploit follow-up actions/prompts after scan results |
+| `--forbidden-bypass` | 403/401 forbidden bypass scanner |
+| `--file-upload` | File upload vulnerability scanner |
+| `--ato` | Account takeover scanner |
+| `--auth-bypass` | 2FA & authentication bypass scanner |
 | `--max-requests N` | Stop a scan after N requests (0 disables the budget) |
 | `--request-timeout SECONDS` | Default per-request timeout in seconds |
 | `--max-host-concurrency N` | Limit simultaneous in-flight requests per host (0 disables the limit) |

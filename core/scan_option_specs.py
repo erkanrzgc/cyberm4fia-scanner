@@ -152,6 +152,10 @@ SCAN_OPTION_DEFAULTS = {
     "proto": False,
     "deser": False,
     "bizlogic": False,
+    "forbidden_bypass": False,
+    "file_upload": False,
+    "ato": False,
+    "auth_bypass": False,
     "osint": False,
     "chain": False,
     "wordlist": False,
@@ -232,6 +236,10 @@ PROFILE_PRESETS = {
             "xxe",
             "api_scan",
             "oob",
+            "forbidden_bypass",
+            "file_upload",
+            "ato",
+            "auth_bypass",
         }
     ),
     "4": ALL_ENABLED_OPTION_KEYS,
@@ -619,6 +627,22 @@ PARSER_ARGUMENT_SPECS = (
         {"action": "store_true", "help": "Business logic flaw scanner"},
     ),
     ArgumentSpec(
+        ("--forbidden-bypass",),
+        {"action": "store_true", "dest": "forbidden_bypass", "help": "403/401 forbidden bypass scanner"},
+    ),
+    ArgumentSpec(
+        ("--file-upload",),
+        {"action": "store_true", "dest": "file_upload", "help": "File upload vulnerability scanner"},
+    ),
+    ArgumentSpec(
+        ("--ato",),
+        {"action": "store_true", "help": "Account takeover scanner"},
+    ),
+    ArgumentSpec(
+        ("--auth-bypass",),
+        {"action": "store_true", "dest": "auth_bypass", "help": "2FA & authentication bypass scanner"},
+    ),
+    ArgumentSpec(
         ("--scope",),
         {
             "default": "",
@@ -833,6 +857,26 @@ INTERACTIVE_CUSTOM_PROMPT_GROUPS = (
             InteractivePromptSpec(
                 "bizlogic",
                 "[?] Business Logic Flaws? (y/N)",
+                "N",
+            ),
+            InteractivePromptSpec(
+                "forbidden_bypass",
+                "[?] 403/401 Bypass? (y/N)",
+                "N",
+            ),
+            InteractivePromptSpec(
+                "file_upload",
+                "[?] File Upload Vulns? (y/N)",
+                "N",
+            ),
+            InteractivePromptSpec(
+                "ato",
+                "[?] Account Takeover? (y/N)",
+                "N",
+            ),
+            InteractivePromptSpec(
+                "auth_bypass",
+                "[?] 2FA & Auth Bypass? (y/N)",
                 "N",
             ),
             InteractivePromptSpec(
