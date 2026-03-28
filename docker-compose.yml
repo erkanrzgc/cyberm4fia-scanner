@@ -1,0 +1,62 @@
+# ─────────────────────────────────────────────────────
+#  cyberm4fia-scanner — Docker Compose
+#  Scanner + Ollama + AI Models — tek komutla çalışır
+# ─────────────────────────────────────────────────────
+
+services:
+  # ── Ollama (AI Engine) ──
+  ollama:
+    image: ollama/ollama:latest
+    container_name: cyberm4fia-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    # GPU varsa açın (yoksa CPU'da çalışır):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ── Model Loader (Ollama başlayınca modelleri indirir) ──
+  model-loader:
+    image: ollama/ollama:latest
+    container_name: cyberm4fia-model-loader
+    depends_on:
+      ollama:
+        condition: service_healthy
+    entrypoint: >
+      sh -c "
+        echo '🤖 Pulling AI models...' &&
+        ollama pull qwen3:1.7b &&
+        echo '✅ Models ready!'
+      "
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+
+  # ── Scanner ──
+  scanner:
+    build: .
+    container_name: cyberm4fia-scanner
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      - OLLAMA_URL=http://ollama:11434
+    # Scan komutu burada verilir:
+    # docker compose run scanner -u https://target.com --all
+    entrypoint: ["python3", "scanner.py"]
+    stdin_open: true
+    tty: true
+
+volumes:
+  ollama_data:
