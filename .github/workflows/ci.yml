@@ -22,7 +22,10 @@ jobs:
         run: pip install ruff
 
       - name: Run ruff lint
-        run: ruff check . --select F821,F811 --ignore E501 || true
+        run: ruff check .
+
+      - name: Run ruff format check
+        run: ruff format --check --diff .
 
   test:
     name: Test
@@ -39,7 +42,7 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest
+          pip install ".[dev]"
 
       - name: Run tests
         run: pytest tests/ -v --tb=short

@@ -18,9 +18,12 @@ from core.module_registry import iter_async_module_specs
 
 
 async def _run_module(name: str, func, *args):
-    """Run a scan module in a thread (they're sync/CPU-bound)."""
+    """Run a scan module — native async if coroutine, otherwise in a thread."""
     try:
-        result = await asyncio.to_thread(func, *args)
+        if asyncio.iscoroutinefunction(func):
+            result = await func(*args)
+        else:
+            result = await asyncio.to_thread(func, *args)
         return name, result or []
     except Exception as e:
         log_warning(f"Module {name} error: {e}")

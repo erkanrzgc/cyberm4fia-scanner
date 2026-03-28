@@ -342,7 +342,6 @@ def scan_deserialization(url, delay=0):
     if not all_findings:
         try:
             from utils.ai_exploit_agent import get_exploit_agent, ExploitContext
-            from urllib.parse import urlparse, parse_qs
             agent = get_exploit_agent()
             if agent and agent.available:
                 from utils.waf import waf_detector
@@ -379,4 +378,115 @@ def scan_deserialization(url, delay=0):
             pass
 
     log_success(f"Deserialization scan complete. {len(all_findings)} finding(s).")
+    return all_findings
+
+
+# ── Async version ─────────────────────────────────────────────────────────
+
+async def async_scan_deserialization(url, delay=0):
+    """Async version of scan_deserialization — uses async HTTP for non-blocking I/O."""
+    import asyncio
+    from utils.async_request import async_smart_request, get_async_client
+
+    log_info("Starting Insecure Deserialization Scanner (async)...")
+    all_findings = []
+
+    async with get_async_client() as client:
+
+        # Scan cookies
+        try:
+            resp = await async_smart_request(client, "get", url, delay=delay, timeout=10)
+            for header_name, header_value in resp.headers.items():
+                if header_name.lower() == "set-cookie":
+                    parts = header_value.split(";")[0].split("=", 1)
+                    if len(parts) == 2:
+                        cookie_name, cookie_value = parts
+                        raw_findings = _detect_serialization(cookie_value, f"Cookie: {cookie_name}")
+                        all_findings.extend(raw_findings)
+                        decoded, _ = _decode_value(cookie_value)
+                        if isinstance(decoded, bytes):
+                            decoded_str = decoded.decode("utf-8", errors="ignore")
+                            all_findings.extend(_detect_serialization(decoded_str, f"Cookie (decoded): {cookie_name}"))
+                            for lang, sig_data in SIGNATURES.items():
+                                for magic in sig_data["magic_bytes"]:
+                                    if decoded.startswith(magic):
+                                        all_findings.append({
+                                            "type": "Insecure Deserialization",
+                                            "language": lang,
+                                            "source": f"Cookie (magic bytes): {cookie_name}",
+                                            "description": sig_data["description"],
+                                            "risk": sig_data["risk"],
+                                            "severity": "CRITICAL",
+                                        })
+        except ScanExceptions:
+            pass
+
+        # Scan response body
+        try:
+            resp = await async_smart_request(client, "get", url, delay=delay, timeout=10)
+            all_findings.extend(_detect_serialization(resp.text, "Response Body"))
+            hidden_inputs = re.findall(
+                r'<input[^>]*type=["\']hidden["\'][^>]*value=["\']([^"\']+)["\']',
+                resp.text, re.IGNORECASE,
+            )
+            for value in hidden_inputs:
+                all_findings.extend(_detect_serialization(value, "Hidden Input"))
+                decoded, _ = _decode_value(value)
+                if isinstance(decoded, bytes):
+                    decoded_str = decoded.decode("utf-8", errors="ignore")
+                    all_findings.extend(_detect_serialization(decoded_str, "Hidden Input (decoded)"))
+        except ScanExceptions:
+            pass
+
+        # Injection probes (parallel)
+        async def _probe(lang, payload):
+            results = []
+            error_sigs = {
+                "php": ["unserialize()", "Serialization", "__wakeup", "O:"],
+                "java": ["InvalidClassException", "ClassNotFoundException", "ObjectInputStream", "java.io."],
+                "dotnet": ["ViewState", "System.Runtime", "BinaryFormatter", "ObjectStateFormatter"],
+            }
+            try:
+                headers = {"Cookie": f"session={payload}"}
+                resp = await async_smart_request(client, "get", url, headers=headers, delay=delay, timeout=5)
+                for sig in error_sigs.get(lang, []):
+                    if sig.lower() in resp.text.lower():
+                        results.append({
+                            "type": "Insecure Deserialization", "language": lang,
+                            "source": "Injection Probe",
+                            "evidence": f"Error signature '{sig}' in response",
+                            "severity": "CRITICAL", "url": url,
+                            "description": f"{lang.upper()} deserialization confirmed — error leaked",
+                        })
+                        break
+
+                resp2 = await async_smart_request(client, "post", url, data={"data": payload}, delay=delay, timeout=5)
+                for sig in error_sigs.get(lang, []):
+                    if sig.lower() in resp2.text.lower():
+                        results.append({
+                            "type": "Insecure Deserialization", "language": lang,
+                            "source": "POST Injection",
+                            "evidence": f"Error signature '{sig}' in response",
+                            "severity": "CRITICAL", "url": url,
+                            "description": f"{lang.upper()} deserialization via POST body",
+                        })
+                        break
+            except ScanExceptions:
+                pass
+            return results
+
+        probe_tasks = []
+        for lang, probe_payloads in PROBE_PAYLOADS.items():
+            for payload in probe_payloads:
+                probe_tasks.append(_probe(lang, payload))
+
+        probe_results = await asyncio.gather(*probe_tasks, return_exceptions=True)
+        for result in probe_results:
+            if isinstance(result, list):
+                all_findings.extend(result)
+
+    for f in all_findings:
+        f["url"] = url
+
+    log_success(f"Deserialization scan (async) complete. {len(all_findings)} finding(s).")
     return all_findings

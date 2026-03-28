@@ -326,3 +326,113 @@ def scan_lfi(url, forms, delay, options=None, threads=None):
             pass
 
     return vulns
+
+
+# ── Async version ─────────────────────────────────────────────────────────
+
+async def async_scan_lfi(url, forms, delay, options=None):
+    """Async version of scan_lfi — uses asyncio.gather instead of ThreadPoolExecutor."""
+    import asyncio
+    from utils.async_request import async_smart_request, get_async_client
+
+    options = options or {}
+    target_context = options.get("target_context")
+
+    payloads = list(LFI_PAYLOADS)
+    if target_context:
+        payloads = PayloadFilter.filter_payloads(payloads, target_context)
+
+    log_info(f"Testing LFI (async) with {len(payloads)} payloads...")
+    vulns = []
+
+    async with get_async_client() as client:
+
+        async def _test_param(param, params, parsed):
+            all_payloads = list(payloads)
+
+            # Baseline
+            baseline_url = urlunparse(parsed._replace(query=urlencode(params, doseq=True)))
+            try:
+                baseline_resp = await async_smart_request(client, "get", baseline_url, delay=delay)
+                baseline_text = baseline_resp.text
+            except ScanExceptions:
+                baseline_text = ""
+
+            for payload in all_payloads:
+                test_params = params.copy()
+                test_params[param] = [payload]
+                test_url = urlunparse(parsed._replace(query=urlencode(test_params, doseq=True)))
+                try:
+                    resp = await async_smart_request(client, "get", test_url, delay=delay)
+                    os_type, sig = detect_lfi(resp.text, baseline_text=baseline_text)
+                    if os_type:
+                        increment_vulnerability_count()
+                        log_vuln("LFI VULNERABILITY FOUND!")
+                        log_success(f"Param: {param} | OS: {os_type} | Signature: {sig}")
+                        return {
+                            "type": "LFI_Param", "param": param, "payload": payload,
+                            "os": os_type, "signature": sig, "url": test_url,
+                            "wrapper_content": _detect_php_wrapper_output(resp.text, payload),
+                        }
+                except ScanExceptions:
+                    pass
+            return None
+
+        async def _test_form(inp, inputs, method, target):
+            all_payloads = list(payloads)
+
+            baseline_data = {n: "test" for n in inputs}
+            try:
+                baseline_resp = await async_smart_request(
+                    client, method, target,
+                    data=baseline_data if method == "post" else None,
+                    params=baseline_data if method != "post" else None,
+                    delay=delay,
+                )
+                baseline_text = baseline_resp.text
+            except ScanExceptions:
+                baseline_text = ""
+
+            for payload in all_payloads:
+                data = {n: "test" for n in inputs}
+                data[inp] = payload
+                try:
+                    resp = await async_smart_request(
+                        client, method, target,
+                        data=data if method == "post" else None,
+                        params=data if method != "post" else None,
+                        delay=delay,
+                    )
+                    os_type, sig = detect_lfi(resp.text, baseline_text=baseline_text)
+                    if os_type:
+                        increment_vulnerability_count()
+                        log_vuln("LFI VULNERABILITY FOUND!")
+                        return {
+                            "type": "LFI_Form", "field": inp, "payload": payload,
+                            "os": os_type, "signature": sig, "url": target, "method": method,
+                            "wrapper_content": _detect_php_wrapper_output(resp.text, payload),
+                        }
+                except ScanExceptions:
+                    pass
+            return None
+
+        tasks = []
+        parsed = urlparse(url)
+        params = parse_qs(parsed.query)
+        for param in params.keys():
+            tasks.append(_test_param(param, params, parsed))
+
+        for form in forms:
+            action = form.get("action") or url
+            method = form.get("method", "get").lower()
+            target = urljoin(url, action)
+            inputs = [i.get("name") for i in form.find_all(["input", "textarea"]) if i.get("name")]
+            for inp in inputs:
+                tasks.append(_test_form(inp, inputs, method, target))
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for result in results:
+            if isinstance(result, dict):
+                vulns.append(result)
+
+    return vulns

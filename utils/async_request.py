@@ -20,7 +20,7 @@ from utils.request import (
     get_default_timeout,
     get_global_headers,
     get_max_retries,
-    get_request_delay,
+    host_rate_limiter,
     increment_error_count,
     increment_retry_count,
     increment_waf_block_count,
@@ -34,7 +34,7 @@ async def async_smart_request(
 ):
     """Async version of smart_request with retry and HTTP/2."""
     if delay is None:
-        delay = get_request_delay()
+        delay = host_rate_limiter.get_delay(url)
 
     _raise_if_scan_cancelled()
     _reserve_request_budget()
@@ -76,7 +76,7 @@ async def async_smart_request(
             if resp.status_code in (403, 429):
                 if resp.status_code == 403:
                     increment_waf_block_count()
-                # Adaptive rate limiting on 429
+                # Adaptive per-host rate limiting on 429
                 if resp.status_code == 429 and attempt < max_retries:
                     retry_after = resp.headers.get("retry-after", "")
                     try:
@@ -84,6 +84,7 @@ async def async_smart_request(
                     except (ValueError, TypeError):
                         wait_time = (2**attempt) * 2
                     await asyncio.sleep(wait_time)
+                    host_rate_limiter.bump_delay(url, factor=1.5, ceiling=5.0)
                     increment_retry_count()
                     continue
 
@@ -171,3 +172,52 @@ def run_async_scan(urls, scan_callback, concurrency=20, delay=None):
     return asyncio.run(
         async_scan_urls(urls, scan_callback, concurrency=concurrency, delay=delay)
     )
+
+
+# ── Managed async client for module-level async scanning ──────────────────
+
+class AsyncClientManager:
+    """Context manager that provides a shared httpx.AsyncClient for async modules.
+
+    Usage:
+        async with AsyncClientManager() as client:
+            resp = await client.get("http://example.com")
+
+    Or use the module-level helper:
+        async with get_async_client() as client:
+            ...
+    """
+
+    def __init__(self, concurrency=50):
+        self._concurrency = concurrency
+        self._client = None
+
+    async def __aenter__(self):
+        headers = get_global_headers()
+        async_headers = {}
+        cookie_str = headers.get("Cookie")
+        if cookie_str:
+            async_headers["Cookie"] = cookie_str
+
+        limits = httpx.Limits(
+            max_keepalive_connections=self._concurrency,
+            max_connections=self._concurrency,
+        )
+        self._client = httpx.AsyncClient(
+            http2=True,
+            verify=is_ssl_verification_enabled(),
+            limits=limits,
+            headers=async_headers,
+            follow_redirects=False,
+        )
+        return self._client
+
+    async def __aexit__(self, *exc):
+        if self._client:
+            await self._client.aclose()
+        self._client = None
+
+
+def get_async_client(concurrency=50):
+    """Return an AsyncClientManager for use in async with blocks."""
+    return AsyncClientManager(concurrency=concurrency)
