@@ -668,9 +668,10 @@ def _run_proto_pollution(state):
 
 
 def _run_deserialization(state):
-    from modules.deserialization import scan_deserialization
+    import asyncio
+    from modules.deserialization import async_scan_deserialization
 
-    return scan_deserialization(state["url"], state["delay"])
+    return asyncio.run(async_scan_deserialization(state["url"], state["delay"]))
 
 
 def _run_business_logic(state):

@@ -53,6 +53,66 @@ _host_semaphores = {}
 lock = threading.Lock()
 
 
+class HostRateLimiter:
+    """Per-host rate limiting with adaptive backoff.
+
+    Tracks separate delay values per host so a 429 from host-A
+    doesn't slow down requests to host-B.
+    """
+
+    def __init__(self):
+        self._host_delays: dict[str, float] = {}
+        self._lock = threading.Lock()
+
+    def get_delay(self, url: str) -> float:
+        """Return the delay for the host in *url*, falling back to the global default."""
+        host = urlparse(url).netloc or ""
+        with self._lock:
+            return self._host_delays.get(host, Config.REQUEST_DELAY)
+
+    def bump_delay(self, url: str, factor: float = 1.5, ceiling: float = 5.0):
+        """Increase the delay for a specific host (e.g. after a 429)."""
+        host = urlparse(url).netloc or ""
+        with self._lock:
+            current = self._host_delays.get(host, Config.REQUEST_DELAY)
+            self._host_delays[host] = min(current * factor, ceiling)
+            return self._host_delays[host]
+
+    def set_delay(self, url: str, value: float):
+        """Set an explicit delay for a host."""
+        host = urlparse(url).netloc or ""
+        with self._lock:
+            self._host_delays[host] = float(value)
+
+    def set_minimum(self, url: str, minimum: float):
+        """Ensure a host's delay is at least *minimum*."""
+        host = urlparse(url).netloc or ""
+        with self._lock:
+            current = self._host_delays.get(host, Config.REQUEST_DELAY)
+            if current < minimum:
+                self._host_delays[host] = minimum
+
+    def reset(self):
+        """Clear all per-host delays."""
+        with self._lock:
+            self._host_delays.clear()
+
+    def snapshot(self) -> dict[str, float]:
+        """Return a copy of all per-host delays."""
+        with self._lock:
+            return dict(self._host_delays)
+
+    def restore(self, data: dict[str, float]):
+        """Restore per-host delays from a snapshot."""
+        with self._lock:
+            self._host_delays.clear()
+            self._host_delays.update(data)
+
+
+# Module-level singleton
+host_rate_limiter = HostRateLimiter()
+
+
 class RequestControlError(RuntimeError):
     """Base class for scan/runtime request guardrails."""
 
@@ -357,7 +417,7 @@ def smart_request(
     _reserve_request_budget()
 
     if delay is None:
-        delay = get_request_delay()
+        delay = host_rate_limiter.get_delay(url)
 
     if use_random_delay():
         time.sleep(delay * random.uniform(0.5, 1.5))
@@ -438,9 +498,8 @@ def smart_request(
                     log_warning(
                         f"WAF Detected: {detected} - Auto-calibrating request delays to avoid bans."
                     )
-                    # Throttle default delay to evade automated dropping
-                    if get_request_delay() < 1.0:
-                        set_request_delay(1.0)
+                    # Throttle this host's delay to evade automated dropping
+                    host_rate_limiter.set_minimum(url, 1.0)
 
             # Active WAF blocking detection
             if resp.status_code in (403, 406, 429, 503):
@@ -469,10 +528,8 @@ def smart_request(
                         f"(attempt {attempt + 1}/{max_retries + 1})"
                     )
                     time.sleep(wait_time)
-                    # Increase global delay to prevent future 429s
-                    with lock:
-                        if get_request_delay() < 2.0:
-                            set_request_delay(min(get_request_delay() * 1.5, 3.0))
+                    # Increase this host's delay to prevent future 429s
+                    host_rate_limiter.bump_delay(url, factor=1.5, ceiling=5.0)
                     increment_retry_count()
                     continue  # Retry the request
 
@@ -595,6 +652,7 @@ def snapshot_runtime_state():
             "path_blacklist": tuple(Config.PATH_BLACKLIST),
             "cancel_event": Config.CANCEL_EVENT,
             "global_headers": dict(_global_headers),
+            "host_delays": host_rate_limiter.snapshot(),
             "stats": {
                 "total_requests": Stats.total_requests,
                 "vulnerabilities_found": Stats.vulnerabilities_found,
@@ -638,6 +696,7 @@ def restore_runtime_state(state):
     _global_headers.clear()
     _global_headers.update(state.get("global_headers", {}))
     _host_semaphores.clear()
+    host_rate_limiter.restore(state.get("host_delays", {}))
     _reset_session()
 
 

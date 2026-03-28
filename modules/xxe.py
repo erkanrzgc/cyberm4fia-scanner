@@ -313,3 +313,162 @@ def scan_xxe(url, delay=0):
 
     log_success(f"XXE scan complete. Found {len(findings)} issue(s).")
     return findings
+
+
+# ── Async version ─────────────────────────────────────────────────────────
+
+async def async_scan_xxe(url, delay=0):
+    """Async version of scan_xxe — uses async HTTP for non-blocking I/O."""
+    import asyncio
+    from utils.async_request import async_smart_request, get_async_client
+
+    log_info(f"Starting XXE scan (async) on {url}")
+    findings = []
+
+    async with get_async_client() as client:
+
+        async def _test_payload(ep_url, payload):
+            try:
+                resp = await async_smart_request(
+                    client, "post", ep_url,
+                    data=payload,
+                    headers={"Content-Type": "application/xml", "Accept": "*/*"},
+                    delay=delay, timeout=10,
+                )
+                return resp.text, resp.status_code
+            except ScanExceptions:
+                return None, None
+
+        async def _detect_endpoints():
+            xml_endpoints = []
+            test_xml = '<?xml version="1.0"?><test>1</test>'
+            xml_paths = [
+                "/api/upload", "/api/import", "/api/xml", "/xmlrpc.php",
+                "/soap", "/wsdl", "/api/v1/import", "/api/v2/import",
+                "/api/parse", "/api/data", "/upload", "/import",
+            ]
+
+            async def _check(path):
+                try:
+                    test_url = url.rstrip("/") + path
+                    resp = await async_smart_request(
+                        client, "post", test_url,
+                        data=test_xml,
+                        headers={"Content-Type": "application/xml"},
+                        delay=delay, timeout=5,
+                    )
+                    if resp.status_code not in (404, 405):
+                        return {
+                            "url": test_url,
+                            "status": resp.status_code,
+                            "accepts_xml": "xml" in resp.headers.get("content-type", "").lower(),
+                        }
+                except ScanExceptions:
+                    pass
+                return None
+
+            results = await asyncio.gather(*[_check(p) for p in xml_paths], return_exceptions=True)
+            for r in results:
+                if isinstance(r, dict):
+                    xml_endpoints.append(r)
+
+            # Also test main URL
+            try:
+                resp = await async_smart_request(
+                    client, "post", url,
+                    data=test_xml,
+                    headers={"Content-Type": "application/xml"},
+                    delay=delay, timeout=5,
+                )
+                if resp.status_code not in (404, 405):
+                    xml_endpoints.append({"url": url, "status": resp.status_code, "accepts_xml": True})
+            except ScanExceptions:
+                pass
+
+            return xml_endpoints
+
+        xml_endpoints = await _detect_endpoints()
+        if not xml_endpoints:
+            log_info("No XML-accepting endpoints discovered.")
+            xml_endpoints = [{"url": url, "status": 0, "accepts_xml": False}]
+
+        for ep in xml_endpoints:
+            ep_url = ep["url"]
+            log_info(f"Testing XXE on: {ep_url}")
+
+            # Test Linux file read
+            body, status = await _test_payload(ep_url, XXE_FILE_READ)
+            if body:
+                for sig in LINUX_SIGNATURES:
+                    if sig in body:
+                        findings.append({
+                            "type": "XXE", "url": ep_url,
+                            "payload": "file:///etc/passwd",
+                            "evidence": f"Response contains '{sig}'",
+                            "severity": "CRITICAL",
+                            "description": f"XXE File Read confirmed at {ep_url}. /etc/passwd content leaked.",
+                        })
+                        log_success(f"[CRITICAL] XXE File Read: {ep_url}")
+                        break
+
+            # Test Windows file read
+            body, status = await _test_payload(ep_url, XXE_FILE_READ_WIN)
+            if body:
+                for sig in WINDOWS_SIGNATURES:
+                    if sig.lower() in body.lower():
+                        findings.append({
+                            "type": "XXE", "url": ep_url,
+                            "payload": "file:///c:/windows/win.ini",
+                            "evidence": f"Response contains '{sig}'",
+                            "severity": "CRITICAL",
+                            "description": f"XXE File Read (Windows) confirmed at {ep_url}.",
+                        })
+                        log_success(f"[CRITICAL] XXE Windows File Read: {ep_url}")
+                        break
+
+            # Test SSRF via XXE
+            body, status = await _test_payload(ep_url, XXE_SSRF)
+            if body:
+                for sig in AWS_SIGNATURES:
+                    if sig in body:
+                        findings.append({
+                            "type": "XXE-SSRF", "url": ep_url,
+                            "payload": "http://169.254.169.254/...",
+                            "evidence": f"AWS metadata leaked: '{sig}'",
+                            "severity": "CRITICAL",
+                            "description": f"XXE-SSRF confirmed at {ep_url}. AWS instance metadata accessible.",
+                        })
+                        log_success(f"[CRITICAL] XXE-SSRF AWS Metadata: {ep_url}")
+                        break
+
+            # Test XInclude
+            body, status = await _test_payload(ep_url, XXE_XINCLUDE)
+            if body:
+                for sig in LINUX_SIGNATURES:
+                    if sig in body:
+                        findings.append({
+                            "type": "XXE-XInclude", "url": ep_url,
+                            "payload": "xi:include file:///etc/passwd",
+                            "evidence": f"XInclude file read: '{sig}'",
+                            "severity": "CRITICAL",
+                            "description": f"XInclude injection at {ep_url}.",
+                        })
+                        log_success(f"[CRITICAL] XInclude injection: {ep_url}")
+                        break
+
+            # Check for XML parser errors
+            if body and any(
+                err in body.lower()
+                for err in ["xml parsing error", "xmlsyntaxerror", "premature end",
+                            "entity", "dtd", "doctype", "xerces", "sax"]
+            ):
+                findings.append({
+                    "type": "XXE-Potential", "url": ep_url,
+                    "severity": "MEDIUM",
+                    "evidence": "XML parser error messages detected",
+                    "description": f"XML parser error messages at {ep_url}. Blind XXE may be possible.",
+                })
+                log_warning(f"[MEDIUM] XML parser errors at: {ep_url}")
+
+    log_success(f"XXE scan (async) complete. Found {len(findings)} issue(s).")
+    return findings

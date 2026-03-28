@@ -154,7 +154,123 @@ class TestScanSession:
         session = ScanSession()
         session.add_pending_urls(["a", "b", "c"])
         session.add_pending_urls(["b", "c", "d"])
-        assert len(session.data["pending_urls"]) == 4
+        assert len(session.get_pending_urls()) == 4
+
+    def test_atomic_save_creates_file(self):
+        """Atomic write should produce a valid JSON file."""
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+            path = f.name
+        os.unlink(path)  # start clean
+
+        try:
+            session = ScanSession(path)
+            session.set_target("https://t.com", "normal", {})
+            session.save()
+
+            assert os.path.isfile(path)
+            with open(path) as f:
+                data = json.load(f)
+            assert data["target"] == "https://t.com"
+        finally:
+            if os.path.isfile(path):
+                os.unlink(path)
+            bak = path + ".bak"
+            if os.path.isfile(bak):
+                os.unlink(bak)
+
+    def test_backup_created_on_second_save(self):
+        """Second save should create a .bak file."""
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+            path = f.name
+        os.unlink(path)
+
+        try:
+            session = ScanSession(path)
+            session.set_target("https://t.com", "normal", {})
+            session.save()
+            assert not os.path.isfile(path + ".bak")
+
+            session.mark_url_done("https://t.com/a")
+            session.save()
+            assert os.path.isfile(path + ".bak")
+        finally:
+            for p in (path, path + ".bak"):
+                if os.path.isfile(p):
+                    os.unlink(p)
+
+    def test_corruption_recovery_from_backup(self):
+        """If main file is corrupt, load should recover from .bak."""
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+            path = f.name
+
+        try:
+            # Create a valid session and save twice to get a .bak
+            session = ScanSession(path)
+            session.set_target("https://t.com", "normal", {})
+            session.mark_url_done("https://t.com/page1")
+            session.save()  # first save
+            session.mark_url_done("https://t.com/page2")
+            session.save()  # second save creates .bak
+
+            # Corrupt the main file
+            with open(path, "w") as f:
+                f.write("{corrupt json!!")
+
+            loaded = ScanSession.load(path)
+            assert loaded.data["target"] == "https://t.com"
+            assert loaded.is_url_done("https://t.com/page1")
+        finally:
+            for p in (path, path + ".bak"):
+                if os.path.isfile(p):
+                    os.unlink(p)
+
+    def test_auto_checkpoint(self):
+        """After CHECKPOINT_INTERVAL URLs, session should auto-save."""
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+            path = f.name
+        os.unlink(path)
+
+        try:
+            session = ScanSession(path)
+            session.set_target("https://t.com", "normal", {})
+
+            # Mark exactly CHECKPOINT_INTERVAL URLs
+            for i in range(ScanSession.CHECKPOINT_INTERVAL):
+                session.mark_url_done(f"https://t.com/page{i}")
+
+            # File should exist now (auto-saved)
+            assert os.path.isfile(path)
+            with open(path) as f:
+                data = json.load(f)
+            assert len(data["scanned_urls"]) == ScanSession.CHECKPOINT_INTERVAL
+        finally:
+            for p in (path, path + ".bak"):
+                if os.path.isfile(p):
+                    os.unlink(p)
+
+    def test_vuln_deduplication(self):
+        """add_vulnerabilities should skip duplicates."""
+        session = ScanSession()
+        vuln = {"type": "XSS", "url": "https://t.com", "payload": "<script>", "param": "q", "field": "q"}
+        session.add_vulnerabilities([vuln])
+        session.add_vulnerabilities([vuln])  # duplicate
+        session.add_vulnerabilities([dict(vuln, payload="<img>")])  # different payload
+
+        assert len(session.data["vulnerabilities"]) == 2
+
+    def test_load_nonexistent_file(self):
+        """Loading a missing file should return a fresh session."""
+        session = ScanSession.load("/tmp/nonexistent_session_xyz123.json")
+        assert not session.is_resume
+        assert session.data["target"] == ""
+
+    def test_o1_url_lookup_performance(self):
+        """is_url_done should be O(1) — set-based."""
+        session = ScanSession()
+        for i in range(1000):
+            session.mark_url_done(f"https://t.com/{i}")
+        assert session.is_url_done("https://t.com/500")
+        assert not session.is_url_done("https://t.com/9999")
 
     def test_restore_config_merges_saved_options_with_explicit_overrides(self):
         session = ScanSession()

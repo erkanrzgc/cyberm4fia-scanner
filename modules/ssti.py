@@ -216,3 +216,76 @@ def scan_ssti(url, delay=0):
 
     log_success(f"SSTI scan complete. Found {len(findings)} vulnerability(ies).")
     return findings
+
+
+# ── Async version ─────────────────────────────────────────────────────────
+
+async def async_scan_ssti(url, delay=0):
+    """Async version of scan_ssti — uses async HTTP for non-blocking I/O."""
+    from utils.async_request import async_smart_request, get_async_client
+
+    log_info(f"Starting SSTI scan (async) on {url}")
+    findings = []
+
+    parsed = urlparse(url)
+    params = parse_qs(parsed.query, keep_blank_values=True)
+
+    if not params:
+        log_info("No parameters found for SSTI testing")
+        return findings
+
+    async with get_async_client() as client:
+
+        async def _inject(param, payload, method="get"):
+            p = parse_qs(urlparse(url).query, keep_blank_values=True)
+            if param not in p:
+                p[param] = [""]
+            p[param] = [payload]
+            new_query = urlencode(p, doseq=True)
+            test_url = urlunparse(parsed._replace(query=new_query))
+            try:
+                if method == "get":
+                    resp = await async_smart_request(client, "get", test_url, delay=delay, timeout=8)
+                else:
+                    resp = await async_smart_request(client, "post", url, data={param: payload}, delay=delay, timeout=8)
+                return resp.text, resp.status_code
+            except ScanExceptions:
+                return None, None
+
+        for param in params:
+            log_info(f"Testing parameter: {param}")
+
+            for entry in SSTI_PAYLOADS:
+                payload = entry["payload"]
+                expected = entry["expect"]
+                engine = entry["engine"]
+
+                body, status = await _inject(param, payload, delay)
+                if body is None:
+                    continue
+
+                if expected in body:
+                    clean_body, _ = await _inject(param, "harmless_test_string", delay)
+                    if clean_body and expected not in clean_body:
+                        finding = {
+                            "type": "SSTI",
+                            "url": url,
+                            "field": param,
+                            "payload": payload,
+                            "engine": engine,
+                            "evidence": f"Response contains '{expected}'",
+                            "severity": "CRITICAL",
+                            "description": (
+                                f"Server-Side Template Injection in '{param}' parameter. "
+                                f"Engine: {engine}. This can lead to Remote Code Execution."
+                            ),
+                        }
+                        findings.append(finding)
+                        log_success(
+                            f"[CRITICAL] SSTI found! Param: {param} | "
+                            f"Engine: {engine} | Payload: {payload}"
+                        )
+                        break
+
+    log_success(f"SSTI scan (async) complete. Found {len(findings)} vulnerability(ies).")
+    return findings

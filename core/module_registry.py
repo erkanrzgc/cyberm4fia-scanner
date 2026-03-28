@@ -102,9 +102,9 @@ def _load_sqli():
 
 
 def _load_lfi():
-    from modules.lfi import scan_lfi
+    from modules.lfi import async_scan_lfi
 
-    return scan_lfi
+    return async_scan_lfi
 
 
 def _load_rfi():
@@ -114,27 +114,27 @@ def _load_rfi():
 
 
 def _load_cmdi():
-    from modules.cmdi import scan_cmdi
+    from modules.cmdi import async_scan_cmdi
 
-    return scan_cmdi
+    return async_scan_cmdi
 
 
 def _load_ssrf():
-    from modules.ssrf import scan_ssrf
+    from modules.ssrf import async_scan_ssrf
 
-    return scan_ssrf
+    return async_scan_ssrf
 
 
 def _load_ssti():
-    from modules.ssti import scan_ssti
+    from modules.ssti import async_scan_ssti
 
-    return scan_ssti
+    return async_scan_ssti
 
 
 def _load_xxe():
-    from modules.xxe import scan_xxe
+    from modules.xxe import async_scan_xxe
 
-    return scan_xxe
+    return async_scan_xxe
 
 
 def _load_dom_xss():

@@ -180,3 +180,73 @@ class TestRequestControls:
 
         with pytest.raises(ScanCancelled):
             smart_request("get", "https://example.com", delay=0)
+
+
+class TestHostRateLimiter:
+    """Tests for per-host rate limiting."""
+
+    def test_default_delay_falls_back_to_global(self):
+        from utils.request import host_rate_limiter
+        host_rate_limiter.reset()
+        delay = host_rate_limiter.get_delay("https://example.com/page")
+        assert delay == Config.REQUEST_DELAY
+
+    def test_per_host_delay_independent(self):
+        from utils.request import host_rate_limiter
+        host_rate_limiter.reset()
+        host_rate_limiter.set_delay("https://slow.com/page", 3.0)
+        host_rate_limiter.set_delay("https://fast.com/page", 0.1)
+
+        assert host_rate_limiter.get_delay("https://slow.com/other") == 3.0
+        assert host_rate_limiter.get_delay("https://fast.com/other") == 0.1
+        assert host_rate_limiter.get_delay("https://unknown.com") == Config.REQUEST_DELAY
+
+    def test_bump_delay_increases(self):
+        from utils.request import host_rate_limiter
+        host_rate_limiter.reset()
+        host_rate_limiter.set_delay("https://target.com", 1.0)
+
+        new_delay = host_rate_limiter.bump_delay("https://target.com", factor=2.0, ceiling=10.0)
+        assert new_delay == 2.0
+
+        new_delay = host_rate_limiter.bump_delay("https://target.com", factor=2.0, ceiling=10.0)
+        assert new_delay == 4.0
+
+    def test_bump_delay_respects_ceiling(self):
+        from utils.request import host_rate_limiter
+        host_rate_limiter.reset()
+        host_rate_limiter.set_delay("https://target.com", 4.0)
+
+        new_delay = host_rate_limiter.bump_delay("https://target.com", factor=2.0, ceiling=5.0)
+        assert new_delay == 5.0
+
+    def test_set_minimum_only_increases(self):
+        from utils.request import host_rate_limiter
+        host_rate_limiter.reset()
+        host_rate_limiter.set_delay("https://target.com", 2.0)
+
+        host_rate_limiter.set_minimum("https://target.com", 1.0)
+        assert host_rate_limiter.get_delay("https://target.com") == 2.0
+
+        host_rate_limiter.set_minimum("https://target.com", 3.0)
+        assert host_rate_limiter.get_delay("https://target.com") == 3.0
+
+    def test_snapshot_and_restore(self):
+        from utils.request import host_rate_limiter
+        host_rate_limiter.reset()
+        host_rate_limiter.set_delay("https://a.com", 1.5)
+        host_rate_limiter.set_delay("https://b.com", 2.5)
+
+        snap = host_rate_limiter.snapshot()
+        host_rate_limiter.reset()
+        assert host_rate_limiter.get_delay("https://a.com") == Config.REQUEST_DELAY
+
+        host_rate_limiter.restore(snap)
+        assert host_rate_limiter.get_delay("https://a.com") == 1.5
+        assert host_rate_limiter.get_delay("https://b.com") == 2.5
+
+    def test_reset_clears_all(self):
+        from utils.request import host_rate_limiter
+        host_rate_limiter.set_delay("https://target.com", 5.0)
+        host_rate_limiter.reset()
+        assert host_rate_limiter.get_delay("https://target.com") == Config.REQUEST_DELAY
