@@ -103,7 +103,7 @@ The scanner now defaults to a powerful **Interactive Setup Wizard** built with `
 
 ```bash
 # Start Interactive Interface directly with a target
-cyberm4fia https://hedef.com
+cyberm4fia https://target.com
 ```
 
 This will instantly display the banner and directly ask you for the scan modes, attack profiles, and runtime behavior!
