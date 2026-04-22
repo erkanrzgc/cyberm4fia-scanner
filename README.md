@@ -1,28 +1,21 @@
 <h1 align="center">cyberm4fia-scanner</h1>
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/erkanrzgc/ai-house/main/resources/icons/icon_128.png">
-    <img src="https://raw.githubusercontent.com/erkanrzgc/ai-house/main/resources/icons/icon_128.png" width="80">
-  </picture>
+  <img src="https://img.shields.io/badge/mission-offensive%20security%20via%20AI-red?style=for-the-badge" alt="mission">
 </p>
 
-<p align="center">
-
-```
+<table align="center"><tr><td valign="middle">
+<pre>
  ██████╗██╗   ██╗██████╗ ███████╗██████╗ ███╗   ███╗██╗  ██╗███████╗██╗ █████╗
 ██╔════╝╚██╗ ██╔╝██╔══██╗██╔════╝██╔══██╗████╗ ████║██║  ██║██╔════╝██║██╔══██╗
 ██║      ╚████╔╝ ██████╔╝█████╗  ██████╔╝██╔████╔██║███████║█████╗  ██║███████║
 ██║       ╚██╔╝  ██╔══██╗██╔══╝  ██╔══██╗██║╚██╔╝██║╚════██║██╔══╝  ██║██╔══██║
 ╚██████╗   ██║   ██████╔╝███████╗██║  ██║██║ ╚═╝ ██║     ██║██║     ██║██║  ██║
  ╚═════╝   ╚═╝   ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
-```
-
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/mission-offensive%20security%20via%20AI-red?style=for-the-badge" alt="mission">
-</p>
+</pre>
+</td><td valign="middle">
+<img src="https://raw.githubusercontent.com/erkanrzgc/ai-house/main/resources/icons/icon_256.png" width="150">
+</td></tr></table>
 
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.11+-blue?style=flat-square&logo=python" alt="python">
