@@ -1,6 +1,37 @@
-# cyberm4fia-scanner
+<p align="center">
+  <img src="assets/banner.jpg" width="700">
+</p>
 
-> Modular red team security scanner for web applications, APIs, networks, and cloud infrastructure.
+<h1 align="center">cyberm4fia-scanner</h1>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/mission-offensive%20security%20via%20AI-red?style=for-the-badge" alt="mission">
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/python-3.11+-blue?style=flat-square&logo=python" alt="python">
+  <img src="https://img.shields.io/badge/modules-59+-purple?style=flat-square" alt="modules">
+  <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="license">
+  <img src="https://img.shields.io/badge/AI-dual%20model-orange?style=flat-square" alt="AI">
+  <img src="https://img.shields.io/github/last-commit/erkanrzgc/cyberm4fia-scanner?style=flat-square" alt="last commit">
+</p>
+
+<p align="center">
+  <b>cyberm4fia-scanner</b> is an AI-powered autonomous penetration testing framework for web applications, APIs, networks, and cloud infrastructure.
+</p>
+
+<p align="center">
+
+```
+ ██████╗██╗   ██╗██████╗ ███████╗██████╗ ███╗   ███╗██╗  ██╗███████╗██╗ █████╗ 
+██╔════╝╚██╗ ██╔╝██╔══██╗██╔════╝██╔══██╗████╗ ████║██║  ██║██╔════╝██║██╔══██╗
+██║      ╚████╔╝ ██████╔╝█████╗  ██████╔╝██╔████╔██║███████║█████╗  ██║███████║
+██║       ╚██╔╝  ██╔══██╗██╔══╝  ██╔══██╗██║╚██╔╝██║╚════██║██╔══╝  ██║██╔══██║
+╚██████╗   ██║   ██████╔╝███████╗██║  ██║██║ ╚═╝ ██║     ██║██║     ██║██║  ██║
+ ╚═════╝   ╚═╝   ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
+```
+
+</p>
 
 ---
 
@@ -337,4 +368,3 @@ pytest tests/ -v
 ## License
 
 This project is licensed under the MIT License. See the LICENSE file for more details.
-
