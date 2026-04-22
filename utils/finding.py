@@ -95,6 +95,14 @@ class Finding:
     attack_path_refs: Optional[list[str]] = None
     extra: Optional[dict] = None
 
+    # Validation pipeline fields (0-Day Machine hallucination gate system)
+    validation_stage: str = "suspected"  # suspected → evidence_confirmed → verified → confirmed → exploitable
+    validation_gates: Optional[dict] = None
+    validation_history: Optional[list[dict]] = None
+    promoted_at: str = ""
+    demoted_at: str = ""
+    demote_reason: str = ""
+
     def to_dict(self) -> dict:
         """Convert to dict (JSON-serializable)."""
         d = asdict(self)

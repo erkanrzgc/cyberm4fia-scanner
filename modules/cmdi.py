@@ -220,22 +220,48 @@ def _test_blind_cmdi_sequential(url, forms, delay, target_context=None):
                 pass
 
     # Forms
-    for form in forms:
-        action = form.get("action") or url
-        method = form.get("method", "get").lower()
-        target = urljoin(url, action)
-        all_inputs = form.find_all(["input", "textarea"])
-        inputs = [
-            i.get("name")
-            for i in all_inputs
-            if i.get("name")
-            and i.get("type", "text") not in ["submit", "hidden", "button", "image"]
-        ]
-        hidden_data = {
-            i.get("name"): i.get("value", "")
-            for i in all_inputs
-            if i.get("type") == "hidden" and i.get("name")
-        }
+    flattened_forms = []
+    for f in forms:
+        if isinstance(f, list):
+            flattened_forms.extend(f)
+        else:
+            flattened_forms.append(f)
+
+    for form in flattened_forms:
+        if hasattr(form, "find_all"):
+            action = form.get("action") or url
+            method = form.get("method", "get").lower()
+            target = urljoin(url, action)
+            all_inputs = form.find_all(["input", "textarea"])
+            inputs = [
+                i.get("name")
+                for i in all_inputs
+                if i.get("name")
+                and i.get("type", "text") not in ["submit", "hidden", "button", "image"]
+            ]
+            hidden_data = {
+                i.get("name"): i.get("value", "")
+                for i in all_inputs
+                if i.get("type") == "hidden" and i.get("name")
+            }
+        else:
+            action = form.get("action") or url
+            method = form.get("method", "get").lower()
+            target = urljoin(url, action)
+            raw_inputs = form.get("inputs", [])
+            inputs = []
+            hidden_data = {}
+            for i in raw_inputs:
+                if isinstance(i, dict):
+                    n = i.get("name")
+                    t = i.get("type", "text")
+                    if n:
+                        if t == "hidden":
+                            hidden_data[n] = i.get("value", "")
+                        elif t not in ["submit", "hidden", "button", "image"]:
+                            inputs.append(n)
+            if not inputs and raw_inputs and isinstance(raw_inputs[0], str):
+                inputs = raw_inputs
 
         for inp in inputs:
             for payload in sleep_payloads:
@@ -328,27 +354,52 @@ def scan_cmdi(url, forms, delay, options=None, threads=None):
                 executor.submit(_test_cmdi_param, param, params, parsed, delay, target_context)
             )
 
-        for form in forms:
-            action = form.get("action") or url
-            method = form.get("method", "get").lower()
-            target = urljoin(url, action)
-            all_inputs = form.find_all(["input", "textarea"])
-            inputs = [
-                i.get("name")
-                for i in all_inputs
-                if i.get("name")
-                and i.get("type", "text") not in ["submit", "hidden", "button", "image"]
-            ]
-            hidden_data = {
-                i.get("name"): i.get("value", "")
-                for i in all_inputs
-                if i.get("type") == "hidden" and i.get("name")
-            }
+        flattened_forms = []
+        for f in forms:
+            if isinstance(f, list):
+                flattened_forms.extend(f)
+            else:
+                flattened_forms.append(f)
 
-            # Add submit button
-            submit_btn = form.find("input", {"type": "submit"})
-            if submit_btn and submit_btn.get("name"):
-                hidden_data[submit_btn.get("name")] = submit_btn.get("value", "Submit")
+        for form in flattened_forms:
+            if hasattr(form, "find_all"):
+                action = form.get("action") or url
+                method = form.get("method", "get").lower()
+                target = urljoin(url, action)
+                all_inputs = form.find_all(["input", "textarea"])
+                inputs = [
+                    i.get("name")
+                    for i in all_inputs
+                    if i.get("name")
+                    and i.get("type", "text") not in ["submit", "hidden", "button", "image"]
+                ]
+                hidden_data = {
+                    i.get("name"): i.get("value", "")
+                    for i in all_inputs
+                    if i.get("type") == "hidden" and i.get("name")
+                }
+                # Add submit button
+                submit_btn = form.find("input", {"type": "submit"})
+                if submit_btn and submit_btn.get("name"):
+                    hidden_data[submit_btn.get("name")] = submit_btn.get("value", "Submit")
+            else:
+                action = form.get("action") or url
+                method = form.get("method", "get").lower()
+                target = urljoin(url, action)
+                raw_inputs = form.get("inputs", [])
+                inputs = []
+                hidden_data = {}
+                for i in raw_inputs:
+                    if isinstance(i, dict):
+                        n = i.get("name")
+                        t = i.get("type", "text")
+                        if n:
+                            if t == "hidden" or t == "submit":
+                                hidden_data[n] = i.get("value", "Submit" if t == "submit" else "")
+                            elif t not in ["button", "image"]:
+                                inputs.append(n)
+                if not inputs and raw_inputs and isinstance(raw_inputs[0], str):
+                    inputs = raw_inputs
 
             for inp in inputs:
                 futures.append(
@@ -510,17 +561,43 @@ async def async_scan_cmdi(url, forms, delay, options=None):
         for param in params.keys():
             tasks.append(_test_param(param, params, parsed))
 
-        for form in forms:
-            action = form.get("action") or url
-            method = form.get("method", "get").lower()
-            target = urljoin(url, action)
-            all_inputs = form.find_all(["input", "textarea"])
-            inputs = [i.get("name") for i in all_inputs if i.get("name")
-                      and i.get("type", "text") not in ["submit", "hidden", "button", "image"]]
-            hidden_data = {
-                i.get("name"): i.get("value", "")
-                for i in all_inputs if i.get("type") == "hidden" and i.get("name")
-            }
+        flattened_forms = []
+        for f in forms:
+            if isinstance(f, list):
+                flattened_forms.extend(f)
+            else:
+                flattened_forms.append(f)
+
+        for form in flattened_forms:
+            if hasattr(form, "find_all"):
+                action = form.get("action") or url
+                method = form.get("method", "get").lower()
+                target = urljoin(url, action)
+                all_inputs = form.find_all(["input", "textarea"])
+                inputs = [i.get("name") for i in all_inputs if i.get("name")
+                          and i.get("type", "text") not in ["submit", "hidden", "button", "image"]]
+                hidden_data = {
+                    i.get("name"): i.get("value", "")
+                    for i in all_inputs if i.get("type") == "hidden" and i.get("name")
+                }
+            else:
+                action = form.get("action") or url
+                method = form.get("method", "get").lower()
+                target = urljoin(url, action)
+                raw_inputs = form.get("inputs", [])
+                inputs = []
+                hidden_data = {}
+                for i in raw_inputs:
+                    if isinstance(i, dict):
+                        n = i.get("name")
+                        t = i.get("type", "text")
+                        if n:
+                            if t == "hidden":
+                                hidden_data[n] = i.get("value", "")
+                            elif t not in ["submit", "hidden", "button", "image"]:
+                                inputs.append(n)
+                if not inputs and raw_inputs and isinstance(raw_inputs[0], str):
+                    inputs = raw_inputs
             for inp in inputs:
                 tasks.append(_test_form(inp, inputs, hidden_data, method, target))
 

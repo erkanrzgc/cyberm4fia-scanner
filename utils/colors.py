@@ -7,15 +7,18 @@ from utils.request import ScanExceptions
 
 console = Console(record=True)
 
+
 class Colors:
     RED = "\033[91m"
     GREEN = "\033[92m"
     YELLOW = "\033[93m"
     BLUE = "\033[94m"
+    MAGENTA = "\033[95m"
     CYAN = "\033[96m"
     WHITE = "\033[97m"
     GREY = "\033[90m"
     BOLD = "\033[1m"
+    DIM = "\033[2m"
     END = "\033[0m"
 
 
@@ -34,20 +37,26 @@ def print_gradient_banner():
     if QUIET_MODE:
         return
     banner = r"""
- ██████╗██╗   ██╗██████╗ ███████╗██████╗ ███╗   ███╗██╗  ██╗███████╗██╗ █████╗ 
+ ██████╗██╗   ██╗██████╗ ███████╗██████╗ ███╗   ███╗██╗  ██╗███████╗██╗ █████╗
 ██╔════╝╚██╗ ██╔╝██╔══██╗██╔════╝██╔══██╗████╗ ████║██║  ██║██╔════╝██║██╔══██╗
 ██║      ╚████╔╝ ██████╔╝█████╗  ██████╔╝██╔████╔██║███████║█████╗  ██║███████║
 ██║       ╚██╔╝  ██╔══██╗██╔══╝  ██╔══██╗██║╚██╔╝██║╚════██║██╔══╝  ██║██╔══██║
 ╚██████╗   ██║   ██████╔╝███████╗██║  ██║██║ ╚═╝ ██║     ██║██║     ██║██║  ██║
  ╚═════╝   ╚═╝   ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
 """
-    lines = banner.strip().split("\n")
+    lines = banner.strip("\n").split("\n")
     start, end = (230, 230, 230), (40, 40, 40)
     for i, line in enumerate(lines):
         ratio = i / max(len(lines) - 1, 1)
         r, g, b = [int(start[j] + (end[j] - start[j]) * ratio) for j in range(3)]
         hex_color = f"#{r:02x}{g:02x}{b:02x}"
         console.print(f"[{hex_color}]{line}[/]")
+
+    description = (
+        "cyberm4fia-scanner is an AI-powered autonomous penetration testing framework\n"
+        "for web applications, APIs, networks, and cloud infrastructure."
+    )
+    console.print(f"[dim white]{description}[/]")
     console.print(f"[#646464]{'─' * 80}[/]\n")
 
 
@@ -65,13 +74,15 @@ def save_console_log():
     """Export recorded console output to log file"""
     if LOG_FILE:
         import re
+
         try:
             with open(LOG_FILE, "w", encoding="utf-8") as f:
                 raw_text = console.export_text(clear=False)
-                clean_text = re.sub(r'\x1b\[[0-9;]*m', '', raw_text)
+                clean_text = re.sub(r"\x1b\[[0-9;]*m", "", raw_text)
                 f.write(clean_text)
         except ScanExceptions:
             pass
+
 
 def _write_log(level, msg):
     """Write message to log file (Deprecated, using save_console_log at end)"""
@@ -82,14 +93,18 @@ def log_info(msg):
     if not QUIET_MODE:
         console.print(f"[white bold][*][/] {msg}")
 
+
 def log_success(msg):
     console.print(f"[green][+][/] {msg}")
+
 
 def log_warning(msg):
     console.print(f"[yellow][!][/] {msg}")
 
+
 def log_error(msg):
     console.print(f"[red][-][/] {msg}")
+
 
 def log_vuln(msg):
     console.print(f"[red bold][!!!][/] [red]{msg}[/]")

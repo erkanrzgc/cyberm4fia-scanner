@@ -261,13 +261,18 @@ def print_restored_config_summary(target, mode, options, provided_dests=None):
     console.print(table)
 
 
-def interactive_menu():
+def interactive_menu(initial_url=""):
     """Interactive menu for scan options"""
     _print_interactive_section(
         "Interactive Setup",
         "Configure target, mode, profile, and runtime behavior.",
     )
-    url = get_input("\n[?] Target URL:", "")
+    
+    url = initial_url
+    if url:
+        console.print(f"[bold cyan][?] Target URL:[/] [white]{url}[/]")
+    else:
+        url = get_input("\n[?] Target URL:", "")
 
     resume_path = get_input(
         INTERACTIVE_RESUME_PROMPT.prompt,

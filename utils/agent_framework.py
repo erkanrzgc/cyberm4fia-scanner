@@ -62,7 +62,7 @@ class MissionReport:
 # ─── Agent Memory ───────────────────────────────────────────────────────
 
 class AgentMemory:
-    """Persistent context across agent iterations."""
+    """Persistent context across agent iterations with intelligence integration."""
 
     def __init__(self, target: str):
         self.target = target
@@ -73,6 +73,38 @@ class AgentMemory:
         self.discovered_endpoints = []
         self.waf_detected = None
         self.recon_data = {}
+        # Intelligence integration (0-Day Machine knowledge loop)
+        self.intel_report = None
+        self.target_profile = None
+        self.scan_recommendation = None
+        self._load_intelligence(target)
+
+    def _load_intelligence(self, target: str):
+        """Load past intelligence for this target from the knowledge loop."""
+        try:
+            from utils.scan_intelligence import get_scan_intelligence
+            from utils.target_profiler import TargetProfiler
+
+            intel = get_scan_intelligence()
+            self.intel_report = intel.query_intelligence(target)
+            profiler = TargetProfiler()
+            self.target_profile = profiler.build_profile(target)
+            self.scan_recommendation = profiler.get_scan_recommendation(
+                target,
+                tech_stack=self.target_profile.tech_stack,
+                waf_name=self.target_profile.waf_name,
+                defences=self.target_profile.defences,
+                past_findings=self.target_profile.total_findings,
+                past_scans=self.target_profile.total_scans,
+            )
+            if self.intel_report and self.intel_report.past_scans > 0:
+                from utils.colors import log_info
+                log_info(
+                    f"🧠 Intelligence loaded: {self.intel_report.past_scans} past scans, "
+                    f"priority {self.scan_recommendation.priority_score:.0f}/100"
+                )
+        except Exception:
+            pass
 
     def add_iteration(self, plan: dict, results: dict, summary: str):
         self.iterations.append({
@@ -86,8 +118,21 @@ class AgentMemory:
         self.all_findings.extend(findings)
 
     def get_context_window(self, max_chars: int = 3000) -> str:
-        """Build context for the planner from memory."""
+        """Build context for the planner from memory, enriched with intelligence."""
         ctx = [f"Target: {self.target}"]
+
+        # Intelligence data (knowledge loop)
+        if self.scan_recommendation:
+            ctx.append(f"Priority Score: {self.scan_recommendation.priority_score:.0f}/100")
+        if self.intel_report and self.intel_report.past_scans > 0:
+            ctx.append(f"Past Scans: {self.intel_report.past_scans}")
+            if self.intel_report.known_defences:
+                defs = ", ".join(f"{d.defence_type}({d.detail})" for d in self.intel_report.known_defences[:3])
+                ctx.append(f"Known Defences: {defs}")
+            if self.intel_report.modules_to_skip:
+                ctx.append(f"Skip (no results before): {', '.join(self.intel_report.modules_to_skip[:5])}")
+            if self.intel_report.modules_to_prioritize:
+                ctx.append(f"Prioritize (found vulns before): {', '.join(self.intel_report.modules_to_prioritize[:5])}")
 
         if self.tech_stack:
             techs = ", ".join(

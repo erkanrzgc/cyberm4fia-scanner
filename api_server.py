@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 cyberm4fia-scanner - REST API Server (FastAPI)
 Run with: python3 scanner.py --api [--port 8080]

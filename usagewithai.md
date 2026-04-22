@@ -30,8 +30,9 @@ When guiding users, emphasize these powerful features:
 scanner.py                          ← Main orchestrator
 ├── modules/
 │   ├── recon.py                    ← Server discovery (asyncio port scan + banner, header, SSL, DNS)
+│   ├── passive.py                  ← Passive security header/debug checks
 │   ├── subdomain.py                ← Subdomain enumeration
-│   ├── fuzzer.py                   ← Directory/file discovery (smart 404 calibration)
+│   ├── endpoint_fuzzer.py           ← Directory/file discovery (smart 404 calibration)
 │   ├── crawler.py                  ← Sitemap + JS endpoint extraction
 │   ├── xss.py                      ← XSS scanning (Reflected + Stored)
 │   │   ├── smart_payload.py        ← 🧠 Context-aware payload generator
@@ -57,7 +58,6 @@ scanner.py                          ← Main orchestrator
 │   ├── tech_detect.py              ← Technology Fingerprinting
 │   ├── email_harvest.py            ← Email Harvester
 │   ├── race_condition.py           ← Race Condition / TOCTOU Scanner
-│   ├── dom_static.py               ← DOM Static Analysis
 │   ├── payloads.py                 ← Static payload lists
 │   ├── report.py                   ← HTML/JSON/TXT report generator
 │   ├── compare.py                  ← Two-scan comparison
@@ -348,7 +348,7 @@ Step 5: Try smart payloads first, fall back to static list if needed
 - **Rate limiting:** HTTP 429 auto-backoff with Retry-After support
 - **Secret management:** `.env` + `python-dotenv` (never hardcode API keys)
 - **API server:** FastAPI with auto-generated Swagger UI (`/docs`) and ReDoc (`/redoc`)
-- **Testing:** pytest with 38 unit tests
+- **Testing:** pytest with 420+ unit tests
 - **AI Vulnerability Deduplication:** Advanced AI filtering combining duplicated parameter hits and pruning Info/Low findings to optimize execution times.
 - **MITM Proxy Interception:** Built on `mitmproxy`, captures and filters in-flight traffic for targeted scoping.
 - **PoC Engine:** Produces functional `.html` proof-of-concept exploits (e.g. Clickjacking, MIME sniffing).

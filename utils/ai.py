@@ -157,7 +157,7 @@ class OllamaClient:
             resp = httpx.post(
                 f"{base_url or self.base_url}/api/chat",
                 json=payload,
-                timeout=300,
+                timeout=180,
             )
 
             if resp.status_code == 200:
@@ -169,7 +169,7 @@ class OllamaClient:
                 log_error(f"Ollama error: {resp.status_code}")
                 return None
         except httpx.TimeoutException:
-            log_warning("AI response timed out (300s)")
+            log_warning("AI response timed out (180s)")
             return None
         except ScanExceptions as e:
             log_warning(f"AI error: {e}")
@@ -453,16 +453,25 @@ def generate_remediation(client: OllamaClient, vulns: list) -> list:
     )
 
     remediations = []
+    # Group by vulnerability type to avoid redundant AI calls and timeouts
+    vulns_by_type = {}
     for vuln in filtered_vulns:
-        vuln_type = vuln.get("type", "Unknown")
-        url = vuln.get("url", "N/A")
-        payload = vuln.get("payload", "N/A")
+        v_type = vuln.get("type", "Unknown")
+        if v_type not in vulns_by_type:
+            vulns_by_type[v_type] = []
+        vulns_by_type[v_type].append(vuln)
+
+    for vuln_type, type_vulns in vulns_by_type.items():
+        # Use the first one as representative
+        rep_vuln = type_vulns[0]
+        url = rep_vuln.get("url", "N/A")
+        payload = rep_vuln.get("payload", "N/A")
 
         prompt = f"""Generate a specific remediation for this vulnerability:
 
 Type: {vuln_type}
-URL: {url}
-Payload used: {payload}
+Example URL: {url}
+Example Payload used: {payload}
 
 Provide:
 1. **Quick Fix**: Immediate mitigation (1 line)
@@ -473,13 +482,16 @@ Be specific and developer-friendly. Include code examples."""
 
         response = client.generate(prompt, system=SECURITY_SYSTEM_PROMPT,
                                     model_role="remediation")
-        remediations.append(
-            {
-                "vuln_type": vuln_type,
-                "url": url,
-                "remediation": response,
-            }
-        )
+        
+        # Apply the same remediation to all vulnerabilities of this type
+        for v in type_vulns:
+            remediations.append(
+                {
+                    "vuln_type": vuln_type,
+                    "url": v.get("url", "N/A"),
+                    "remediation": response,
+                }
+            )
 
     return remediations
 

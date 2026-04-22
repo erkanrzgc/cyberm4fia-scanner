@@ -369,3 +369,46 @@ c:\windows\win.ini
 c:\windows\system32\drivers\etc\hosts
 c:\boot.ini
 %WINDIR%\win.ini
+
+# ─── Cloud / Serverless Specific ───
+# AWS Lambda
+/var/task/handler.py
+/var/task/index.js
+/var/task/index.py
+/var/task/app.py
+/var/task/.env
+/var/task/serverless.yml
+/var/task/package.json
+/var/task/requirements.txt
+/var/runtime/bootstrap
+/tmp/.env
+# AWS ECS / EC2
+/proc/self/environ
+/run/secrets/aws_session_token
+/var/run/secrets/eks.amazonaws.com/serviceaccount/token
+# Azure Functions
+/home/site/wwwroot/host.json
+/home/site/wwwroot/local.settings.json
+/home/site/wwwroot/function.json
+/home/site/wwwroot/.env
+/home/site/wwwroot/web.config
+# GCP Cloud Functions
+/srv/function.py
+/srv/main.py
+/srv/requirements.txt
+/srv/.env
+/workspace/.env
+# Vercel / Next.js
+/var/task/.next/BUILD_ID
+/var/task/.next/prerender-manifest.json
+/var/task/.next/routes-manifest.json
+/var/task/next.config.js
+/var/task/.vercel/project.json
+# Docker / Container
+/proc/1/environ
+/proc/self/mountinfo
+/.dockerenv
+/run/secrets/kubernetes.io/serviceaccount/token
+/run/secrets/kubernetes.io/serviceaccount/ca.crt
+/var/run/docker.sock
+

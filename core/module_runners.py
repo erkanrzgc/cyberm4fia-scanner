@@ -43,9 +43,24 @@ def _run_tech_intel(state):
 
     state["tech_results"] = scan_technology(state["url"], delay=state["delay"])
     
-    # Store tech context globally in options so async modules can use it
+    # Convert tech_results list into a category→name dict that PayloadFilter expects
+    # e.g. [{"category": "Language", "name": "PHP"}, ...] → {"lang": "php", "os": "linux"}
     if "options" in state:
-        state["options"]["target_context"] = state["tech_results"]
+        _category_map = {
+            "Language": "lang",
+            "Web Server": "server",
+            "Database": "db",
+            "OS": "os",
+            "Framework": "framework",
+        }
+        tech_context = {}
+        for item in (state["tech_results"] or []):
+            if item.get("type") != "technology":
+                continue
+            key = _category_map.get(item.get("category", ""), "")
+            if key and item.get("name"):
+                tech_context[key] = item["name"].lower()
+        state["options"]["target_context"] = tech_context
 
     try:
         from utils.cve_feed import enrich_with_cves
@@ -809,6 +824,44 @@ def _run_ai_analysis(state):
     except Exception:
         pass
 
+    # ── Feed scan intelligence (0-Day Machine knowledge loop) ──
+    try:
+        from utils.scan_intelligence import get_scan_intelligence
+        intel = get_scan_intelligence()
+        target = state.get("url", "")
+        waf_name = state.get("waf_name", "")
+        tech_results = state.get("tech_results", [])
+        tech_stack = "[]"
+        if tech_results:
+            import json as _json
+            tech_stack = _json.dumps([t.get("name", "") for t in tech_results if isinstance(t, dict)])
+
+        scan_id = state.get("scan_id", "")
+        campaign_id = state.get("campaign_id", "")
+
+        for vuln in findings:
+            intel.record_scan_result(
+                target=target,
+                vuln_type=vuln.get("type", vuln.get("finding_type", "Unknown")),
+                payload=vuln.get("payload", ""),
+                success=True,
+                waf_name=waf_name,
+                tech_stack=tech_stack,
+                module=vuln.get("module", ""),
+                confidence=vuln.get("confidence_score", 0),
+                response_code=vuln.get("status_code", 0),
+                scan_id=scan_id,
+                campaign_id=campaign_id,
+            )
+
+        # Record WAF as a defence
+        if waf_name:
+            intel.record_defence(target, "waf", waf_name)
+
+        log_info(f"Intelligence updated: {len(findings)} finding(s) recorded for knowledge loop")
+    except Exception:
+        pass
+
     return []
 
 
@@ -964,3 +1017,83 @@ def _run_severity_summary(state):
 
     print_severity_summary(state["all_vulns"])
     return []
+
+
+# ── Hidden Parameter Discovery runner ────────────────────────────────────────
+
+def _run_param_discovery(state):
+    """Discover hidden parameters on crawled endpoints and inject into scan URLs."""
+    import asyncio
+    from modules.param_discovery import async_discover_params, build_enriched_urls
+    from core.module_registry import canonicalize_scan_urls
+
+    urls = state.get("urls_to_scan", [])
+    delay = state.get("delay", 0)
+    options = state.get("options", {})
+
+    try:
+        discovered = asyncio.run(
+            async_discover_params(urls, delay, options)
+        )
+    except RuntimeError:
+        # Already inside an event loop
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(
+                asyncio.run,
+                async_discover_params(urls, delay, options),
+            )
+            discovered = future.result()
+
+    if discovered:
+        enriched = build_enriched_urls(discovered)
+        if enriched:
+            state["urls_to_scan"] = canonicalize_scan_urls(
+                state["urls_to_scan"] + enriched
+            )
+        # Store discovered endpoints for API injection module
+        state["discovered_api_endpoints"] = discovered
+
+    return []
+
+
+# ── API Body Injection runner ────────────────────────────────────────────────
+
+def _run_api_injection(state):
+    """Run API body injection tests on discovered endpoints."""
+    from modules.api_inject import scan_api_injection
+
+    url = state.get("url", "")
+    delay = state.get("delay", 0)
+    options = state.get("options", {})
+
+    # Gather API endpoints from various discovery sources
+    api_endpoints = []
+
+    # From dynamic crawler
+    for scan_url in state.get("urls_to_scan", []):
+        from modules.api_inject import _detect_api_endpoint
+        if _detect_api_endpoint(scan_url):
+            api_endpoints.append(scan_url)
+
+    # From param discovery
+    for disc in state.get("discovered_api_endpoints", []):
+        api_endpoints.append(disc["url"])
+
+    if not api_endpoints:
+        return []
+
+    return scan_api_injection(url, api_endpoints, delay, options)
+
+
+# ── Guaranteed Security Checks runner ────────────────────────────────────────
+
+def _run_guaranteed_checks(state):
+    """Run guaranteed security checks that produce findings on any target."""
+    from modules.guaranteed_checks import scan_guaranteed
+
+    url = state.get("url", "")
+    delay = state.get("delay", 0)
+    options = state.get("options", {})
+
+    return scan_guaranteed(url, delay, options)

@@ -391,6 +391,7 @@ ATTACK_PROFILE_SPECS = (
 ATTACK_PROFILE_MAP = {spec.choice: spec for spec in ATTACK_PROFILE_SPECS}
 
 PARSER_ARGUMENT_SPECS = (
+    ArgumentSpec(("target",), {"nargs": "?", "default": "", "help": "Target URL (positional)"}),
     ArgumentSpec(("-u", "--url"), {"help": "Target URL"}),
     ArgumentSpec(
         ("-m", "--mode"),

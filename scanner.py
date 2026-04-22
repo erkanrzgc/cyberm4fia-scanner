@@ -242,6 +242,32 @@ def scan_target(
 
         log_info(f"Target: {url} | Mode: {mode.title()}")
 
+        # ── Campaign & Intelligence Integration (0-Day Machine) ──
+        campaign = None
+        scan_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+        campaign_id = ""
+        try:
+            from utils.campaign_manager import CampaignManager
+            cm = CampaignManager()
+            campaign = cm.create_campaign(url)
+            campaign_id = campaign.id
+        except Exception:
+            pass
+
+        # Pre-scan intelligence briefing
+        try:
+            from utils.scan_intelligence import get_scan_intelligence
+            intel = get_scan_intelligence()
+            target_profile = intel.get_target_profile(url)
+            if target_profile.total_scans > 0:
+                log_info(
+                    f"\U0001f9e0 Intelligence: {target_profile.total_scans} past scans, "
+                    f"{target_profile.total_findings} findings, "
+                    f"WAF: {target_profile.waf_name or 'none'}"
+                )
+        except Exception:
+            pass
+
         phase_state = {
             "url": url,
             "mode": mode,
@@ -257,6 +283,8 @@ def scan_target(
             "summary_printer": summary_printer,
             "report_stats_factory": scan_ctx.report_stats,
             "summary_stats_factory": scan_ctx.collect_stats,
+            "scan_id": scan_id,
+            "campaign_id": campaign_id,
         }
 
         pre_scan_vulns = run_phase_modules("pre_scan", options, phase_state)
@@ -387,6 +415,49 @@ def scan_target(
         if persist_console_log:
             save_console_log()
 
+        # ── Validation Pipeline (0-Day Machine hallucination gates) ──
+        try:
+            from utils.validation_pipeline import ValidationPipeline
+            pipeline = ValidationPipeline(verify_replay=options.get("verify", False))
+            validated, suspected = pipeline.validate_batch(all_vulns)
+
+            v_count = len(validated)
+            s_count = len(suspected)
+            if v_count + s_count > 0:
+                log_info(
+                    f"\U0001f50d Validation: {v_count} confirmed, {s_count} suspected (hallucination bin)"
+                )
+
+            # Store in campaign
+            if campaign:
+                try:
+                    cm = CampaignManager()
+                    if validated:
+                        cm.add_findings(campaign.id, validated, validated=True)
+                    if suspected:
+                        cm.add_findings(campaign.id, suspected, validated=False)
+                except Exception:
+                    pass
+        except Exception:
+            validated = all_vulns
+            suspected = []
+
+        # ── Complete campaign ──
+        if campaign:
+            try:
+                duration = 0.0
+                try:
+                    from utils.request import get_runtime_stats as _grs
+                    rs = _grs()
+                    if rs.get("start_time"):
+                        duration = (datetime.now() - datetime.fromtimestamp(rs["start_time"])).total_seconds()
+                except Exception:
+                    pass
+                cm = CampaignManager()
+                cm.complete_campaign(campaign.id, duration=duration)
+            except Exception:
+                pass
+
         from utils.finding import build_scan_artifacts
 
         artifacts = phase_state.get("scan_artifacts")
@@ -397,7 +468,7 @@ def scan_target(
             observations = built_artifacts["observations"]
             findings = built_artifacts["findings"]
             attack_paths = built_artifacts["attack_paths"]
-            
+
         finding_count = phase_state.get("finding_count", len(findings))
         stats = scan_ctx.collect_stats(finding_count)
         return {
@@ -412,6 +483,9 @@ def scan_target(
             "recon_data": phase_state.get("recon_data"),
             "stats": stats,
             "total_vulns": finding_count,
+            "campaign_id": campaign_id,
+            "validated_count": len(validated),
+            "suspected_count": len(suspected),
         }
 
 def main():
@@ -449,8 +523,12 @@ def main():
 
     provided_dests = getattr(args, "_provided_dests", set())
 
-    if args.url or args.resume or getattr(args, "target_list", None):
-        url = args.url or ""
+    url_from_args = getattr(args, "target", "") or getattr(args, "url", "") or ""
+    cli_flags = provided_dests - {"url", "quiet"}
+    is_cli_mode = bool(cli_flags) or bool(getattr(args, "target_list", None)) or bool(getattr(args, "resume", None))
+
+    if is_cli_mode:
+        url = url_from_args
         if url and not url.startswith(("http://", "https://")):
             url = "http://" + url
 
@@ -488,7 +566,7 @@ def main():
 
     else:
         try:
-            url, mode, delay, options = interactive_menu()
+            url, mode, delay, options = interactive_menu(initial_url=url_from_args)
         except KeyboardInterrupt:
             print(f"\n{Colors.YELLOW}[!] Cancelled{Colors.END}")
             sys.exit(0)

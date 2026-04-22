@@ -99,12 +99,14 @@
 
 ## Quick Start
 
-The scanner now defaults to a powerful **Interactive Setup Wizard** built with `rich`. It allows you to select your target, mode, attack profile, and configure settings visually:
+The scanner now defaults to a powerful **Interactive Setup Wizard** built with `rich`. You can easily run it from anywhere in your terminal by just passing the target URL:
 
 ```bash
-# Start Interactive Interface
-python3 scanner.py
+# Start Interactive Interface directly with a target
+cyberm4fia https://hedef.com
 ```
+
+This will instantly display the banner and directly ask you for the scan modes, attack profiles, and runtime behavior!
 
 If you prefer classical CLI usage:
 

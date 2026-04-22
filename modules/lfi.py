@@ -266,15 +266,31 @@ def scan_lfi(url, forms, delay, options=None, threads=None):
             )
 
         # Forms
-        for form in forms:
-            action = form.get("action") or url
-            method = form.get("method", "get").lower()
-            target = urljoin(url, action)
-            inputs = [
-                i.get("name")
-                for i in form.find_all(["input", "textarea"])
-                if i.get("name")
-            ]
+        flattened_forms = []
+        for f in forms:
+            if isinstance(f, list):
+                flattened_forms.extend(f)
+            else:
+                flattened_forms.append(f)
+
+        for form in flattened_forms:
+            if hasattr(form, "find_all"):
+                action = form.get("action") or url
+                method = form.get("method", "get").lower()
+                target = urljoin(url, action)
+                inputs = [
+                    i.get("name")
+                    for i in form.find_all(["input", "textarea"])
+                    if i.get("name")
+                ]
+            else:
+                action = form.get("action") or url
+                method = form.get("method", "get").lower()
+                target = urljoin(url, action)
+                inputs = [i.get("name") for i in form.get("inputs", []) if isinstance(i, dict) and i.get("name")]
+                if not inputs and form.get("inputs") and isinstance(form.get("inputs")[0], str):
+                    inputs = form.get("inputs")
+
             for inp in inputs:
                 futures.append(
                     executor.submit(
@@ -422,11 +438,27 @@ async def async_scan_lfi(url, forms, delay, options=None):
         for param in params.keys():
             tasks.append(_test_param(param, params, parsed))
 
-        for form in forms:
-            action = form.get("action") or url
-            method = form.get("method", "get").lower()
-            target = urljoin(url, action)
-            inputs = [i.get("name") for i in form.find_all(["input", "textarea"]) if i.get("name")]
+        flattened_forms = []
+        for f in forms:
+            if isinstance(f, list):
+                flattened_forms.extend(f)
+            else:
+                flattened_forms.append(f)
+
+        for form in flattened_forms:
+            if hasattr(form, "find_all"):
+                action = form.get("action") or url
+                method = form.get("method", "get").lower()
+                target = urljoin(url, action)
+                inputs = [i.get("name") for i in form.find_all(["input", "textarea"]) if i.get("name")]
+            else:
+                action = form.get("action") or url
+                method = form.get("method", "get").lower()
+                target = urljoin(url, action)
+                inputs = [i.get("name") for i in form.get("inputs", []) if isinstance(i, dict) and i.get("name")]
+                if not inputs and form.get("inputs") and isinstance(form.get("inputs")[0], str):
+                    inputs = form.get("inputs")
+
             for inp in inputs:
                 tasks.append(_test_form(inp, inputs, method, target))
 

@@ -248,6 +248,7 @@ ASYNC_MODULES = (
 from core.module_runners import (  # noqa: E402, F401
     _run_account_takeover,
     _run_ai_analysis,
+    _run_api_injection,
     _run_api_scan,
     _run_auth_bypass,
     _run_autopwn_postprocess,
@@ -269,6 +270,7 @@ from core.module_runners import (  # noqa: E402, F401
     _run_findings_json,
     _run_forbidden_bypass,
     _run_fuzzer_discovery,
+    _run_guaranteed_checks,
     _run_header_inject,
     _run_headless_discovery,
     _run_html_report,
@@ -279,6 +281,7 @@ from core.module_runners import (  # noqa: E402, F401
     _run_normalize_findings,
     _run_open_redirect,
     _run_osint,
+    _run_param_discovery,
     _run_passive_hook,
     _run_payload_report,
     _run_poc_generation,
@@ -304,6 +307,15 @@ from core.module_runners import (  # noqa: E402, F401
 
 
 PHASE_MODULES = (
+    PhaseModuleSpec(
+        id="guaranteed",
+        option_key=None,
+        name="Guaranteed Security Checks",
+        phase="pre_scan",
+        requires_forms=False,
+        collect_results=True,
+        runner=_run_guaranteed_checks,
+    ),
     PhaseModuleSpec(
         id="recon",
         option_key=None,
@@ -422,6 +434,15 @@ PHASE_MODULES = (
         runner=_run_headless_discovery,
     ),
     PhaseModuleSpec(
+        id="param_discovery",
+        option_key=None,
+        name="Hidden Parameter Discovery",
+        phase="discovery_expand",
+        requires_forms=False,
+        collect_results=False,
+        runner=_run_param_discovery,
+    ),
+    PhaseModuleSpec(
         id="crawl",
         option_key="crawl",
         name="Crawler Discovery",
@@ -537,6 +558,15 @@ PHASE_MODULES = (
         requires_forms=False,
         collect_results=False,
         runner=_run_ssrf_postprocess,
+    ),
+    PhaseModuleSpec(
+        id="api_injection",
+        option_key=None,
+        name="API Body Injection",
+        phase="post_scan",
+        requires_forms=False,
+        collect_results=True,
+        runner=_run_api_injection,
     ),
     PhaseModuleSpec(
         id="redirect",
@@ -823,6 +853,6 @@ def run_phase_modules(phase: str, options: dict, state: dict):
                 collected.extend(result)
                 state["all_vulns"] = list(state.get("all_vulns", [])) + list(result)
         except Exception as e:  # noqa: BLE001 — never let a single module kill the scan
-            mod_name = getattr(spec, "label", None) or getattr(spec, "option_key", "unknown")
+            mod_name = spec.name or spec.option_key or "unknown"
             log_error(f"Module '{mod_name}' crashed: {type(e).__name__}: {e}")
     return collected

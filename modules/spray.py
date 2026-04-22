@@ -116,7 +116,7 @@ def try_ftp(host, port, username, password, timeout=5):
         ftp.login(username, password)
         ftp.quit()
         return True
-    except ScanExceptions:
+    except Exception:
         return False
 
 def try_ssh(host, port, username, password, timeout=5):
@@ -143,7 +143,7 @@ def try_ssh(host, port, username, password, timeout=5):
             "paramiko not installed. SSH brute force skipped. (pip install paramiko)"
         )
         return False
-    except ScanExceptions:
+    except Exception:
         return False
 
 def try_mysql(host, port, username, password, timeout=5):
@@ -165,7 +165,7 @@ def try_mysql(host, port, username, password, timeout=5):
             "pymysql not installed. MySQL brute force skipped. (pip install pymysql)"
         )
         return False
-    except ScanExceptions:
+    except Exception:
         return False
 
 def try_redis(host, port, username, password, timeout=5):
@@ -185,7 +185,7 @@ def try_redis(host, port, username, password, timeout=5):
 
         if "+PONG" in resp or "+OK" in resp:
             return True
-    except ScanExceptions:
+    except Exception:
         pass
     return False
 
@@ -201,7 +201,7 @@ def try_mongodb(host, port, username, password, timeout=5):
                 sock.close()
                 return True
         sock.close()
-    except ScanExceptions:
+    except Exception:
         pass
     return False
 

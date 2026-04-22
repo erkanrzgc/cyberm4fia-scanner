@@ -11,6 +11,18 @@ import random
 import threading
 from urllib.parse import urlparse
 
+class RequestControlError(RuntimeError):
+    """Base class for scan/runtime request guardrails."""
+
+class RequestBudgetExceeded(RequestControlError):
+    """Raised when the configured per-scan request budget is exhausted."""
+
+class ScanCancelled(RequestControlError):
+    """Raised when a running scan has been cancelled."""
+
+class BlockedTargetPath(RequestControlError):
+    """Raised when a request targets a risky blacklisted path."""
+
 # Network/HTTP exceptions — use when wrapping smart_request or httpx calls.
 NetworkExceptions = (
     httpx.RequestError,
@@ -29,6 +41,7 @@ ScanExceptions = (
     json.JSONDecodeError,
     UnicodeError,
     OSError,
+    BlockedTargetPath,
 )
 
 # Legacy alias kept for backward compatibility with any external importers.
@@ -113,20 +126,7 @@ class HostRateLimiter:
 host_rate_limiter = HostRateLimiter()
 
 
-class RequestControlError(RuntimeError):
-    """Base class for scan/runtime request guardrails."""
-
-
-class RequestBudgetExceeded(RequestControlError):
-    """Raised when the configured per-scan request budget is exhausted."""
-
-
-class ScanCancelled(RequestControlError):
-    """Raised when a running scan has been cancelled."""
-
-
-class BlockedTargetPath(RequestControlError):
-    """Raised when a request targets a risky blacklisted path."""
+# Request control exceptions have been moved up
 
 
 def _reset_session():
