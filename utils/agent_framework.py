@@ -16,7 +16,14 @@ from dataclasses import dataclass, field
 from typing import Optional
 from urllib.parse import urlparse
 
-from utils.colors import Colors, log_info, log_success, log_warning, log_error
+from utils.colors import (
+    Colors,
+    log_error,
+    log_info,
+    log_success,
+    log_warning,
+)
+from utils.scan_intelligence import get_scan_intelligence
 from utils.request import ScanExceptions
 
 
@@ -603,6 +610,14 @@ Give a tactical summary for planning the next scan step."""
             print(reasoning)
             if modules:
                 print(f"  {Colors.BOLD}→ {', '.join(modules)} [{priority}]{Colors.END}")
+
+            # Record decision for Auditability (APTS)
+            get_scan_intelligence().record_ai_decision(
+                target=target,
+                module=",".join(modules),
+                reasoning=reasoning,
+                action=f"Priority: {priority}, Done: {done}"
+            )
 
             if done or not modules:
                 log_success("AI determined scan is complete ✓")

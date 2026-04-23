@@ -427,6 +427,10 @@ PARSER_ARGUMENT_SPECS = (
         {"action": "store_true", "help": "Scan for Secrets & API Keys in JS/HTML"},
     ),
     ArgumentSpec(
+        ("--sca",),
+        {"action": "store_true", "help": "Enable Software Composition Analysis (OSV-Scanner)"},
+    ),
+    ArgumentSpec(
         ("--recon",),
         {
             "action": "store_true",

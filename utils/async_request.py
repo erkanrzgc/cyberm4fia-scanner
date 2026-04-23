@@ -61,6 +61,8 @@ async def async_smart_request(
 
     for attempt in range(max_retries + 1):
         try:
+            kwargs.pop("stream", None)
+            kwargs.pop("follow_redirects", None)
             resp = await session.request(
                 method,
                 url,

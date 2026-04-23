@@ -23,6 +23,7 @@ from datetime import datetime
 
 from utils.colors import log_info, log_success, log_vuln, log_warning
 from utils.request import smart_request, increment_vulnerability_count, ScanExceptions
+from modules.osv_scanner import check_tech_stack_vulns, analyze_exposed_manifest
 
 # ── Sensitive Files & Paths ──────────────────────────────────────────────
 SENSITIVE_PATHS = [
@@ -141,6 +142,13 @@ def _check_sensitive_files(url, delay):
                             "matched_signatures": matched_sigs[:3],
                             "evidence": resp.text[:300],
                         })
+                        
+                        # OSV-Scanner Integration: Check dependencies if it's a manifest
+                        if "package.json" in path or "composer.json" in path:
+                            manifest_type = "package.json" if "package.json" in path else "composer.json"
+                            osv_findings = analyze_exposed_manifest(test_url, resp.text, manifest_type)
+                            if osv_findings:
+                                findings.extend(osv_findings)
                 else:
                     # Binary files (zip, tar.gz) — check content-type
                     ct = resp.headers.get("content-type", "")
@@ -315,6 +323,16 @@ def _check_version_disclosure(url, delay):
                 "description": f"CMS/Framework disclosed via meta tag: {gen_value}",
                 "severity": "LOW",
             })
+            
+            # Try to extract version and check OSV
+            version_match = re.search(r'([\d\.]+)', gen_value)
+            if version_match:
+                name_clean = gen_value.replace(version_match.group(1), "").strip().lower()
+                if name_clean:
+                    tech_stack = {name_clean: version_match.group(1).strip(".")}
+                    osv_findings = check_tech_stack_vulns(url, tech_stack)
+                    if osv_findings:
+                        findings.extend(osv_findings)
 
         # Check for error page version disclosure
         error_urls = [

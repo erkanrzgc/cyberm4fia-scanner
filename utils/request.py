@@ -475,8 +475,10 @@ def smart_request(
 
             sess = _get_session(verify=verify, proxies=proxies)
 
-            # Remove unsupported kwargs for httpx
+            # Remove unsupported or duplicate kwargs for httpx
             kwargs.pop("stream", None)
+            kwargs.pop("allow_redirects", None)
+            kwargs.pop("follow_redirects", None)
 
             resp = sess.request(
                 method=method,

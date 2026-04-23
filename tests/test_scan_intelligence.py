@@ -80,3 +80,13 @@ class TestScanIntelligence:
         ctx = report.to_context_string()
         assert "x.com" in ctx
         assert "WAF" in ctx or "waf" in ctx.lower()
+
+    def test_ai_decision_recording(self, intel):
+        intel.record_ai_decision("https://example.com", "xss", "Found a reflected parameter", "Testing payloads")
+        # Query the database directly to verify
+        with intel._conn() as conn:
+            row = conn.execute("SELECT * FROM ai_decisions WHERE target=?", ("https://example.com",)).fetchone()
+            assert row is not None
+            assert row["module"] == "xss"
+            assert row["reasoning"] == "Found a reflected parameter"
+            assert row["action"] == "Testing payloads"

@@ -72,6 +72,9 @@ class Finding:
     param: str = ""
     payload: str = ""
     evidence: str = ""
+    cve: str = ""
+    component: str = ""
+    version: str = ""
     confidence: str = "medium"
     remediation: str = ""
     id: str = ""
@@ -150,6 +153,21 @@ def _sarif_level(severity: str) -> str:
 # Maps vuln 'type' string → (severity, cvss, cwe, title, remediation)
 
 VULN_REGISTRY = {
+    # OSV-Scanner / Software Composition Analysis
+    "Known_Vulnerability_SCA": {
+        "severity": "high",
+        "cvss": 7.0,
+        "cwe": "CWE-1035",
+        "title": "Vulnerable Third-Party Component",
+        "remediation": "Update the affected component to a secure version as recommended by the vendor.",
+    },
+    "Vulnerable_Dependency": {
+        "severity": "high",
+        "cvss": 7.0,
+        "cwe": "CWE-1352",
+        "title": "Exposed Vulnerable Dependency",
+        "remediation": "Update the dependency in the manifest and ensure manifests are not exposed to the public.",
+    },
     # XSS
     "XSS_Param": {
         "severity": "high",
@@ -898,6 +916,9 @@ def normalize_vuln(vuln_dict: dict) -> Finding:
         param=raw.get("param", ""),
         payload=raw.get("payload", ""),
         evidence=raw.get("evidence", ""),
+        cve=raw.get("cve", ""),
+        component=raw.get("component", ""),
+        version=raw.get("version", ""),
         confidence=observation.confidence,
         remediation=registry["remediation"],
         id=_stable_id(
@@ -934,6 +955,9 @@ def normalize_vuln(vuln_dict: dict) -> Finding:
                 "param",
                 "payload",
                 "evidence",
+                "cve",
+                "component",
+                "version",
                 "severity",
                 "confidence",
                 "context",

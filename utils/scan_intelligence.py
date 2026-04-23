@@ -83,6 +83,12 @@ CREATE TABLE IF NOT EXISTS negative_results (
     module TEXT NOT NULL, reason TEXT DEFAULT '', scan_id TEXT DEFAULT '',
     timestamp TEXT NOT NULL, UNIQUE(domain, module, scan_id));
 CREATE INDEX IF NOT EXISTS idx_neg_domain ON negative_results(domain, module);
+
+CREATE TABLE IF NOT EXISTS ai_decisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, target TEXT NOT NULL,
+    module TEXT NOT NULL, reasoning TEXT DEFAULT '', action TEXT DEFAULT '',
+    timestamp TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_ai_decisions_target ON ai_decisions(target);
 """
 
 class ScanIntelligence:
@@ -160,6 +166,13 @@ class ScanIntelligence:
         with self._lock, self._conn() as conn:
             conn.execute("INSERT OR IGNORE INTO negative_results (target,domain,module,reason,scan_id,timestamp) VALUES(?,?,?,?,?,?)",
                          (target, domain, module, reason, scan_id, datetime.now().isoformat()))
+
+    def record_ai_decision(self, target, module, reasoning, action=""):
+        """Record the AI's reasoning and action for auditability."""
+        now = datetime.now().isoformat()
+        with self._lock, self._conn() as conn:
+            conn.execute("INSERT INTO ai_decisions (target, module, reasoning, action, timestamp) VALUES (?, ?, ?, ?, ?)",
+                         (target, module, reasoning, action, now))
 
     def record_defence(self, target, defence_type, detail=""):
         domain = self._domain(target)

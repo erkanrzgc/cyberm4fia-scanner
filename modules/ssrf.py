@@ -176,86 +176,66 @@ def detect_ssrf(text, payload, baseline_text="", baseline_len=0):
 
     return None, None
 
-def _test_ssrf_param(param: str, params: dict, parsed: Any, delay: float, baseline_text: str, baseline_len: int, target_context: Optional[dict] = None) -> Optional[dict]:
-    """Test a single param for SSRF with baseline comparison."""
-    all_payloads = list(SSRF_PAYLOADS)
-    if target_context:
-        all_payloads = PayloadFilter.filter_payloads(all_payloads, target_context)
-        
-    oob_client = get_oob_client()
-    if oob_client and oob_client.ready:
-        all_payloads.append(oob_client.generate_payload("ssrf", param))
+import functools
+from utils.concurrency import run_concurrent_tasks
 
-    for payload in all_payloads:
-        test_params = params.copy()
-        test_params[param] = [payload]
-        test_url = urlunparse(parsed._replace(query=urlencode(test_params, doseq=True)))
-        try:
-            resp = smart_request("get", test_url, delay=delay)
-            category, sig = detect_ssrf(resp.text, payload, baseline_text, baseline_len)
-            if category:
-                increment_vulnerability_count()
-                log_vuln("SSRF VULNERABILITY FOUND!")
-                log_success(f"Param: {param} | Type: {category} | Indicator: {sig}")
-                log_success(f"Payload: {payload}")
-                return {
-                    "type": "SSRF_Param",
-                    "param": param,
-                    "payload": payload,
-                    "category": category,
-                    "signature": sig,
-                    "url": test_url,
-                }
-        except ScanExceptions:
-            pass
+def _test_ssrf_param_payload(payload, param, params, parsed, delay, baseline_text, baseline_len):
+    test_params = params.copy()
+    test_params[param] = [payload]
+    test_url = urlunparse(parsed._replace(query=urlencode(test_params, doseq=True)))
+    try:
+        resp = smart_request("get", test_url, delay=delay)
+        category, sig = detect_ssrf(resp.text, payload, baseline_text, baseline_len)
+        if category:
+            increment_vulnerability_count()
+            log_vuln("SSRF VULNERABILITY FOUND!")
+            log_success(f"Param: {param} | Type: {category} | Indicator: {sig}")
+            log_success(f"Payload: {payload}")
+            return {
+                "type": "SSRF_Param",
+                "param": param,
+                "payload": payload,
+                "category": category,
+                "signature": sig,
+                "url": test_url,
+            }
+    except ScanExceptions:
+        pass
     return None
 
-def _test_ssrf_form(
-    inp: str, inputs: list, hidden_data: dict, method: str, target: str, delay: float, baseline_text: str, baseline_len: int, target_context: Optional[dict] = None
-) -> Optional[dict]:
-    """Test a single form input for SSRF with baseline comparison."""
-    all_payloads = list(SSRF_PAYLOADS)
-    if target_context:
-        all_payloads = PayloadFilter.filter_payloads(all_payloads, target_context)
-
-    oob_client = get_oob_client()
-    if oob_client and oob_client.ready:
-        all_payloads.append(oob_client.generate_payload("ssrf", inp))
-
-    for payload in all_payloads:
-        data = {n: "test" for n in inputs}
-        if hidden_data:
-            data.update(hidden_data)
-        data[inp] = payload
-        try:
-            resp = smart_request(
-                method,
-                target,
-                data=data if method == "post" else None,
-                params=data if method != "post" else None,
-                delay=delay,
-            )
-            category, sig = detect_ssrf(resp.text, payload, baseline_text, baseline_len)
-            if category:
-                increment_vulnerability_count()
-                log_vuln("SSRF VULNERABILITY FOUND!")
-                log_success(f"Form field: {inp} | Type: {category}")
-                log_success(f"Payload: {payload}")
-                return {
-                    "type": "SSRF_Form",
-                    "field": inp,
-                    "payload": payload,
-                    "category": category,
-                    "signature": sig,
-                    "url": target,
-                    "method": method,
-                }
-        except ScanExceptions:
-            pass
+def _test_ssrf_form_payload(payload, inp, inputs, hidden_data, method, target, delay, baseline_text, baseline_len):
+    data = {n: "test" for n in inputs}
+    if hidden_data:
+        data.update(hidden_data)
+    data[inp] = payload
+    try:
+        resp = smart_request(
+            method,
+            target,
+            data=data if method == "post" else None,
+            params=data if method != "post" else None,
+            delay=delay,
+        )
+        category, sig = detect_ssrf(resp.text, payload, baseline_text, baseline_len)
+        if category:
+            increment_vulnerability_count()
+            log_vuln("SSRF VULNERABILITY FOUND!")
+            log_success(f"Form field: {inp} | Type: {category}")
+            log_success(f"Payload: {payload}")
+            return {
+                "type": "SSRF_Form",
+                "field": inp,
+                "payload": payload,
+                "category": category,
+                "signature": sig,
+                "url": target,
+                "method": method,
+            }
+    except ScanExceptions:
+        pass
     return None
 
 def scan_ssrf(url: str, forms: list, delay: float, options: Optional[dict] = None, threads: Optional[int] = None) -> list:
-    """Scan for SSRF vulnerabilities (threaded)."""
     if threads is None:
         threads = get_thread_count()
         
@@ -264,85 +244,53 @@ def scan_ssrf(url: str, forms: list, delay: float, options: Optional[dict] = Non
 
     log_info(f"Testing SSRF with {len(SSRF_PAYLOADS)} payloads ({threads} threads)...")
     vulns = []
+    tasks = []
 
-    # Get baseline response first
     parsed = urlparse(url)
     params = parse_qs(parsed.query)
     baseline_text, baseline_len = _get_baseline(url, params, parsed)
 
-    with ThreadPoolExecutor(max_workers=threads) as ex:
-        futures = []
+    existing_params = list(params.keys())
+    params_to_test = existing_params if existing_params else []
 
-        # Only test params that ACTUALLY EXIST in the URL
-        # (not invented param names — that causes false positives)
-        existing_params = list(params.keys())
+    if params_to_test:
+        log_info(f"  → Testing {len(params_to_test)} URL params: {', '.join(params_to_test)}")
+    else:
+        log_info("  → No URL params to test for SSRF")
 
-        # Test existing URL parameters
-        params_to_test = existing_params if existing_params else []
+    all_payloads = list(SSRF_PAYLOADS)
+    if target_context:
+        all_payloads = PayloadFilter.filter_payloads(all_payloads, target_context)
 
-        if params_to_test:
-            log_info(
-                f"  → Testing {len(params_to_test)} URL params: "
-                f"{', '.join(params_to_test)}"
-            )
-        else:
-            log_info("  → No URL params to test for SSRF")
+    for param in params_to_test:
+        param_payloads = list(all_payloads)
+        oob_client = get_oob_client()
+        if oob_client and oob_client.ready:
+            param_payloads.append(oob_client.generate_payload("ssrf", param))
+            
+        for payload in param_payloads:
+            tasks.append(functools.partial(_test_ssrf_param_payload, payload, param, params, parsed, delay, baseline_text, baseline_len))
 
-        for param in params_to_test:
-            futures.append(
-                ex.submit(
-                    _test_ssrf_param,
-                    param,
-                    params,
-                    parsed,
-                    delay,
-                    baseline_text,
-                    baseline_len,
-                    target_context
-                )  # pyre-ignore
-            )
+    for form in forms:
+        action = form.get("action") or url
+        method = form.get("method", "get").lower()
+        target = urljoin(url, action)
+        all_inputs = form.find_all(["input", "textarea"])
+        inputs = [i.get("name") for i in all_inputs if i.get("name")]
+        hidden_data = {i.get("name"): i.get("value", "") for i in all_inputs if i.get("type") == "hidden" and i.get("name")}
+        url_fields = [inp for inp in inputs if inp.lower() in SSRF_PARAM_NAMES]
 
-        # Forms — only test fields that look like they accept URLs
-        for form in forms:
-            action = form.get("action") or url
-            method = form.get("method", "get").lower()
-            target = urljoin(url, action)
-            all_inputs = form.find_all(["input", "textarea"])
-            inputs = [i.get("name") for i in all_inputs if i.get("name")]
-            hidden_data = {
-                i.get("name"): i.get("value", "")
-                for i in all_inputs
-                if i.get("type") == "hidden" and i.get("name")
-            }
+        for inp in url_fields:
+            inp_payloads = list(all_payloads)
+            oob_client = get_oob_client()
+            if oob_client and oob_client.ready:
+                inp_payloads.append(oob_client.generate_payload("ssrf", inp))
+                
+            for payload in inp_payloads:
+                tasks.append(functools.partial(_test_ssrf_form_payload, payload, inp, inputs, hidden_data, method, target, delay, baseline_text, baseline_len))
 
-            # Only test form fields with URL-like names
-            url_fields = [inp for inp in inputs if inp.lower() in SSRF_PARAM_NAMES]
+    vulns.extend(run_concurrent_tasks(tasks, max_workers=threads))
 
-            for inp in url_fields:
-                futures.append(
-                    ex.submit(
-                        _test_ssrf_form,
-                        inp,
-                        inputs,
-                        hidden_data,
-                        method,
-                        target,
-                        delay,
-                        baseline_text,
-                        baseline_len,
-                        target_context
-                    )  # pyre-ignore
-                )
-
-        for future in as_completed(futures):
-            try:
-                result = future.result()
-                if result:
-                    vulns.append(result)
-            except ScanExceptions:
-                pass
-
-    # ── AI Exploit Agent (Final Escalation) ──
     if not vulns and params:
         try:
             from utils.ai_exploit_agent import get_exploit_agent, ExploitContext
@@ -352,13 +300,7 @@ def scan_ssrf(url: str, forms: list, delay: float, options: Optional[dict] = Non
                 waf_name = getattr(waf_detector, "detected_waf", "") or ""
 
                 for param in params:
-                    ctx = ExploitContext(
-                        url=url,
-                        param=param,
-                        vuln_type="SSRF",
-                        waf=waf_name,
-                        http_method="GET",
-                    )
+                    ctx = ExploitContext(url=url, param=param, vuln_type="SSRF", waf=waf_name, http_method="GET")
                     result = agent.exploit_ssrf(ctx)
                     if result and result.success:
                         increment_vulnerability_count()
@@ -370,10 +312,7 @@ def scan_ssrf(url: str, forms: list, delay: float, options: Optional[dict] = Non
                             "payload": result.payload,
                             "evidence": result.evidence[:200],
                             "severity": "HIGH",
-                            "description": (
-                                f"AI-discovered SSRF in '{param}'. "
-                                f"Confidence: {result.confidence:.0f}%"
-                            ),
+                            "description": f"AI-discovered SSRF in '{param}'. Confidence: {result.confidence:.0f}%",
                             "source": f"AI Agent (Gen-{result.iteration})",
                             "ai_curl": result.curl_command,
                             "ai_poc_script": result.python_script,
@@ -384,7 +323,6 @@ def scan_ssrf(url: str, forms: list, delay: float, options: Optional[dict] = Non
             pass
 
     return vulns
-
 
 # ── Async version ─────────────────────────────────────────────────────────
 

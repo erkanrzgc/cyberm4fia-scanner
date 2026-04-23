@@ -7,6 +7,7 @@ Can bypass WAFs, poison caches, and hijack sessions.
 import socket
 import ssl
 import time
+import os
 
 from urllib.parse import urlparse
 from utils.colors import log_info, log_success, log_warning
@@ -286,6 +287,28 @@ def scan_smuggling(url, delay=0):
     # Test duplicate headers
     log_info("  → Testing duplicate Content-Length...")
     all_findings.extend(_test_header_smuggle(host, port, use_ssl, path))
+
+    # Integrate external Smuggler tool if available
+    smuggler_path = "tools/mcp-for-security/smuggler-mcp/smuggler/smuggler.py"
+    if os.path.exists(smuggler_path):
+        log_info("  → Running advanced Smuggler MCP payload set...")
+        import subprocess
+        try:
+            cmd = ["python3", smuggler_path, "-u", url, "-q", "--no-color"]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            for line in result.stdout.splitlines():
+                if "CRITICAL" in line:
+                    all_findings.append({
+                        "type": "HTTP Request Smuggling",
+                        "variant": "Smuggler Script Match",
+                        "severity": "CRITICAL",
+                        "description": "Detected via advanced Smuggler script",
+                        "evidence": line.strip()
+                    })
+        except subprocess.TimeoutExpired:
+            log_warning("Smuggler script timed out.")
+        except Exception as e:
+            log_warning(f"Error running Smuggler script: {e}")
 
     for f in all_findings:
         f["url"] = url

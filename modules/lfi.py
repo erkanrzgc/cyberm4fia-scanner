@@ -67,176 +67,102 @@ def detect_lfi(text, baseline_text=None):
                 return os_type, sig
     return None, None
 
-def _test_lfi_param(param, params, parsed, delay, target_context=None):
-    """Test a single param for LFI (helper for threading)"""
-    flat_params = {k: v[0] if isinstance(v, list) else v for k, v in params.items()}
-    probe = probe_lfi_context(
-        urlunparse(parsed), param, flat_params, method="get", delay=delay
-    )
-    smart = probe.get("smart_payloads", [])
-    if smart:
-        all_payloads = smart + [p for p in LFI_PAYLOADS if p not in smart]
-    else:
-        all_payloads = LFI_PAYLOADS
-        
-    if target_context:
-        all_payloads = PayloadFilter.filter_payloads(all_payloads, target_context)
+import functools
+from utils.concurrency import run_concurrent_tasks
 
-    # 1. Fetch Baseline to prevent False Positives
-    baseline_url = urlunparse(parsed._replace(query=urlencode(params, doseq=True)))
+def _test_lfi_param_payload(payload, param, params, parsed, delay, baseline_text, smart):
+    test_params = params.copy()
+    test_params[param] = [payload]
+    test_url = urlunparse(parsed._replace(query=urlencode(test_params, doseq=True)))
     try:
-        baseline_resp = smart_request("get", baseline_url, delay=delay)
-        baseline_text = baseline_resp.text
+        resp = smart_request("get", test_url, delay=delay)
+        os_type, sig = detect_lfi(resp.text, baseline_text=baseline_text)
+        if os_type:
+            increment_vulnerability_count()
+            source = "🧠 Smart" if payload in smart else "📋 Static"
+            log_vuln(f"LFI VULNERABILITY FOUND! [{source}]")
+            log_success(f"Param: {param} | OS: {os_type} | Signature: {sig}")
+            log_success(f"Payload: {payload}")
+            if "root:" in resp.text or "[drivers]" in resp.text:
+                lines = [line for line in resp.text.split("\n") if sig in line or "root:" in line][:3]
+                if lines:
+                    print(f"{Colors.BOLD}    --- File Content Preview ---{Colors.END}")
+                    for line in lines: print(f"    {line[:80]}")
+                    print(f"{Colors.BOLD}    -----------------------------{Colors.END}")
+
+            wrapper_content = _detect_php_wrapper_output(resp.text, payload)
+            if wrapper_content:
+                log_success("📄 PHP Source Code Extracted:")
+                print(f"{Colors.BOLD}    --- Source Code Preview ---{Colors.END}")
+                for line in wrapper_content.split("\n")[:10]:
+                    print(f"    {Colors.CYAN}{line[:100]}{Colors.END}")
+                if len(wrapper_content.split("\n")) > 10:
+                    print(f"    {Colors.DIM}... ({len(wrapper_content.split(chr(10)))} lines total){Colors.END}")
+                print(f"{Colors.BOLD}    ----------------------------{Colors.END}")
+
+            return {
+                "type": "LFI_Param",
+                "param": param,
+                "payload": payload,
+                "os": os_type,
+                "signature": sig,
+                "url": test_url,
+                "wrapper_content": wrapper_content,
+            }
     except ScanExceptions:
-        baseline_text = ""
-
-    for payload in all_payloads:
-        test_params = params.copy()
-        test_params[param] = [payload]
-        test_url = urlunparse(parsed._replace(query=urlencode(test_params, doseq=True)))
-        try:
-            resp = smart_request("get", test_url, delay=delay)
-            os_type, sig = detect_lfi(resp.text, baseline_text=baseline_text)
-            if os_type:
-                increment_vulnerability_count()
-                source = "🧠 Smart" if payload in smart else "📋 Static"
-                log_vuln(f"LFI VULNERABILITY FOUND! [{source}]")
-                log_success(f"Param: {param} | OS: {os_type} | Signature: {sig}")
-                log_success(f"Payload: {payload}")
-                if "root:" in resp.text or "[drivers]" in resp.text:
-                    lines = [
-                        line
-                        for line in resp.text.split("\n")
-                        if sig in line or "root:" in line
-                    ][:3]
-                    if lines:
-                        print(
-                            f"{Colors.BOLD}    --- File Content Preview ---{Colors.END}"
-                        )
-                        for line in lines:
-                            print(f"    {line[:80]}")
-                        print(
-                            f"{Colors.BOLD}    -----------------------------{Colors.END}"
-                        )
-
-                # Check for PHP wrapper decoded output
-                wrapper_content = _detect_php_wrapper_output(resp.text, payload)
-                if wrapper_content:
-                    log_success("📄 PHP Source Code Extracted:")
-                    print(f"{Colors.BOLD}    --- Source Code Preview ---{Colors.END}")
-                    for line in wrapper_content.split("\n")[:10]:
-                        print(f"    {Colors.CYAN}{line[:100]}{Colors.END}")
-                    if len(wrapper_content.split("\n")) > 10:
-                        print(
-                            f"    {Colors.DIM}... ({len(wrapper_content.split(chr(10)))} lines total){Colors.END}"
-                        )
-                    print(f"{Colors.BOLD}    ----------------------------{Colors.END}")
-
-                return {
-                    "type": "LFI_Param",
-                    "param": param,
-                    "payload": payload,
-                    "os": os_type,
-                    "signature": sig,
-                    "url": test_url,
-                    "wrapper_content": wrapper_content,
-                }
-        except ScanExceptions:
-            pass
+        pass
     return None
 
-def _test_lfi_form_input(inp, inputs, method, target, delay, target_context=None):
-    """Test a single form input for LFI (helper for threading)"""
-    form_data = {n: "test" for n in inputs}
-    probe = probe_lfi_context(
-        target, inp, {}, method=method, form_data=form_data, delay=delay
-    )
-    smart = probe.get("smart_payloads", [])
-    if smart:
-        all_payloads = smart + [p for p in LFI_PAYLOADS if p not in smart]
-    else:
-        all_payloads = LFI_PAYLOADS
-        
-    if target_context:
-        all_payloads = PayloadFilter.filter_payloads(all_payloads, target_context)
-
-    # 1. Fetch Baseline
-    baseline_data = {n: "test" for n in inputs}
+def _test_lfi_form_payload(payload, inp, inputs, method, target, delay, baseline_text, smart):
+    data = {n: "test" for n in inputs}
+    data[inp] = payload
     try:
-        baseline_resp = smart_request(
+        resp = smart_request(
             method,
             target,
-            data=baseline_data if method == "post" else None,
-            params=baseline_data if method != "post" else None,
+            data=data if method == "post" else None,
+            params=data if method != "post" else None,
             delay=delay,
         )
-        baseline_text = baseline_resp.text
+        os_type, sig = detect_lfi(resp.text, baseline_text=baseline_text)
+        if os_type:
+            increment_vulnerability_count()
+            source = "🧠 Smart" if payload in smart else "📋 Static"
+            log_vuln(f"LFI VULNERABILITY FOUND! [{source}]")
+            log_success(f"Form field: {inp} | OS: {os_type}")
+            log_success(f"Payload: {payload}")
+            if "root:" in resp.text or "[drivers]" in resp.text:
+                lines = [line for line in resp.text.split("\n") if sig in line or "root:" in line][:3]
+                if lines:
+                    print(f"{Colors.BOLD}    --- File Content Preview ---{Colors.END}")
+                    for line in lines: print(f"    {line[:80]}")
+                    print(f"{Colors.BOLD}    -----------------------------{Colors.END}")
+
+            wrapper_content = _detect_php_wrapper_output(resp.text, payload)
+            if wrapper_content:
+                log_success("📄 PHP Source Code Extracted:")
+                print(f"{Colors.BOLD}    --- Source Code Preview ---{Colors.END}")
+                for line in wrapper_content.split("\n")[:10]:
+                    print(f"    {Colors.CYAN}{line[:100]}{Colors.END}")
+                if len(wrapper_content.split("\n")) > 10:
+                    print(f"    {Colors.DIM}... ({len(wrapper_content.split(chr(10)))} lines total){Colors.END}")
+                print(f"{Colors.BOLD}    ----------------------------{Colors.END}")
+
+            return {
+                "type": "LFI_Form",
+                "field": inp,
+                "payload": payload,
+                "os": os_type,
+                "signature": sig,
+                "url": target,
+                "method": method,
+                "wrapper_content": wrapper_content,
+            }
     except ScanExceptions:
-        baseline_text = ""
-
-    for payload in all_payloads:
-        data = {n: "test" for n in inputs}
-        data[inp] = payload
-        try:
-            resp = smart_request(
-                method,
-                target,
-                data=data if method == "post" else None,
-                params=data if method != "post" else None,
-                delay=delay,
-            )
-            os_type, sig = detect_lfi(resp.text, baseline_text=baseline_text)
-            if os_type:
-                increment_vulnerability_count()
-                source = "🧠 Smart" if payload in smart else "📋 Static"
-                log_vuln(f"LFI VULNERABILITY FOUND! [{source}]")
-                log_success(f"Form field: {inp} | OS: {os_type}")
-                log_success(f"Payload: {payload}")
-                if "root:" in resp.text or "[drivers]" in resp.text:
-                    lines = [
-                        line
-                        for line in resp.text.split("\n")
-                        if sig in line or "root:" in line
-                    ][:3]
-                    if lines:
-                        print(
-                            f"{Colors.BOLD}    --- File Content Preview ---{Colors.END}"
-                        )
-                        for line in lines:
-                            print(f"    {line[:80]}")
-                        print(
-                            f"{Colors.BOLD}    -----------------------------{Colors.END}"
-                        )
-
-                # Check for PHP wrapper decoded output
-                wrapper_content = _detect_php_wrapper_output(resp.text, payload)
-                if wrapper_content:
-                    log_success("📄 PHP Source Code Extracted:")
-                    print(f"{Colors.BOLD}    --- Source Code Preview ---{Colors.END}")
-                    for line in wrapper_content.split("\n")[:10]:
-                        print(f"    {Colors.CYAN}{line[:100]}{Colors.END}")
-                    if len(wrapper_content.split("\n")) > 10:
-                        print(
-                            f"    {Colors.DIM}... ({len(wrapper_content.split(chr(10)))} lines total){Colors.END}"
-                        )
-                    print(f"{Colors.BOLD}    ----------------------------{Colors.END}")
-
-                return {
-                    "type": "LFI_Form",
-                    "field": inp,
-                    "payload": payload,
-                    "os": os_type,
-                    "signature": sig,
-                    "url": target,
-                    "method": method,
-                    "wrapper_content": wrapper_content,
-                }
-        except ScanExceptions:
-            pass
+        pass
     return None
 
 def scan_lfi(url, forms, delay, options=None, threads=None):
-    """Scan for Local File Inclusion vulnerabilities (threaded)"""
     from utils.tamper import get_tamper_chain
 
     if threads is None:
@@ -245,7 +171,6 @@ def scan_lfi(url, forms, delay, options=None, threads=None):
     options = options or {}
     target_context = options.get("target_context")
 
-    # Apply tamper chain for WAF bypass variants
     chain = get_tamper_chain()
     payloads = list(LFI_PAYLOADS)
     if chain.active:
@@ -253,60 +178,76 @@ def scan_lfi(url, forms, delay, options=None, threads=None):
 
     log_info(f"Testing LFI with {len(payloads)} payloads ({threads} threads)...")
     vulns = []
+    tasks = []
 
-    with ThreadPoolExecutor(max_workers=threads) as executor:
-        futures = []
+    parsed = urlparse(url)
+    params = parse_qs(parsed.query)
+    
+    for param in params.keys():
+        flat_params = {k: v[0] if isinstance(v, list) else v for k, v in params.items()}
+        probe = probe_lfi_context(urlunparse(parsed), param, flat_params, method="get", delay=delay)
+        smart = probe.get("smart_payloads", [])
+        all_payloads = smart + [p for p in payloads if p not in smart] if smart else payloads
+        if target_context:
+            all_payloads = PayloadFilter.filter_payloads(all_payloads, target_context)
 
-        # URL params
-        parsed = urlparse(url)
-        params = parse_qs(parsed.query)
-        for param in params.keys():
-            futures.append(
-                executor.submit(_test_lfi_param, param, params, parsed, delay, target_context)
-            )
+        baseline_url = urlunparse(parsed._replace(query=urlencode(params, doseq=True)))
+        try:
+            baseline_resp = smart_request("get", baseline_url, delay=delay)
+            baseline_text = baseline_resp.text
+        except ScanExceptions:
+            baseline_text = ""
 
-        # Forms
-        flattened_forms = []
-        for f in forms:
-            if isinstance(f, list):
-                flattened_forms.extend(f)
-            else:
-                flattened_forms.append(f)
+        for payload in all_payloads:
+            tasks.append(functools.partial(_test_lfi_param_payload, payload, param, params, parsed, delay, baseline_text, smart))
 
-        for form in flattened_forms:
-            if hasattr(form, "find_all"):
-                action = form.get("action") or url
-                method = form.get("method", "get").lower()
-                target = urljoin(url, action)
-                inputs = [
-                    i.get("name")
-                    for i in form.find_all(["input", "textarea"])
-                    if i.get("name")
-                ]
-            else:
-                action = form.get("action") or url
-                method = form.get("method", "get").lower()
-                target = urljoin(url, action)
-                inputs = [i.get("name") for i in form.get("inputs", []) if isinstance(i, dict) and i.get("name")]
-                if not inputs and form.get("inputs") and isinstance(form.get("inputs")[0], str):
-                    inputs = form.get("inputs")
+    flattened_forms = []
+    for f in forms:
+        if isinstance(f, list):
+            flattened_forms.extend(f)
+        else:
+            flattened_forms.append(f)
 
-            for inp in inputs:
-                futures.append(
-                    executor.submit(
-                        _test_lfi_form_input, inp, inputs, method, target, delay, target_context
-                    )
-                )
+    for form in flattened_forms:
+        if hasattr(form, "find_all"):
+            action = form.get("action") or url
+            method = form.get("method", "get").lower()
+            target = urljoin(url, action)
+            inputs = [i.get("name") for i in form.find_all(["input", "textarea"]) if i.get("name")]
+        else:
+            action = form.get("action") or url
+            method = form.get("method", "get").lower()
+            target = urljoin(url, action)
+            inputs = [i.get("name") for i in form.get("inputs", []) if isinstance(i, dict) and i.get("name")]
+            if not inputs and form.get("inputs") and isinstance(form.get("inputs")[0], str):
+                inputs = form.get("inputs")
 
-        for future in as_completed(futures):
+        for inp in inputs:
+            form_data = {n: "test" for n in inputs}
+            probe = probe_lfi_context(target, inp, {}, method=method, form_data=form_data, delay=delay)
+            smart = probe.get("smart_payloads", [])
+            all_payloads = smart + [p for p in payloads if p not in smart] if smart else payloads
+            if target_context:
+                all_payloads = PayloadFilter.filter_payloads(all_payloads, target_context)
+
+            baseline_data = {n: "test" for n in inputs}
             try:
-                result = future.result()
-                if result:
-                    vulns.append(result)
+                baseline_resp = smart_request(
+                    method,
+                    target,
+                    data=baseline_data if method == "post" else None,
+                    params=baseline_data if method != "post" else None,
+                    delay=delay,
+                )
+                baseline_text = baseline_resp.text
             except ScanExceptions:
-                pass
+                baseline_text = ""
 
-    # ── AI Exploit Agent (Final Escalation) ──
+            for payload in all_payloads:
+                tasks.append(functools.partial(_test_lfi_form_payload, payload, inp, inputs, method, target, delay, baseline_text, smart))
+
+    vulns.extend(run_concurrent_tasks(tasks, max_workers=threads))
+
     if not vulns and params:
         try:
             from utils.ai_exploit_agent import get_exploit_agent, ExploitContext
@@ -316,13 +257,7 @@ def scan_lfi(url, forms, delay, options=None, threads=None):
                 waf_name = getattr(waf_detector, "detected_waf", "") or ""
 
                 for param in params:
-                    ctx = ExploitContext(
-                        url=url,
-                        param=param,
-                        vuln_type="LFI",
-                        waf=waf_name,
-                        http_method="GET",
-                    )
+                    ctx = ExploitContext(url=url, param=param, vuln_type="LFI", waf=waf_name, http_method="GET")
                     result = agent.exploit_lfi(ctx)
                     if result and result.success:
                         increment_vulnerability_count()
@@ -342,7 +277,6 @@ def scan_lfi(url, forms, delay, options=None, threads=None):
             pass
 
     return vulns
-
 
 # ── Async version ─────────────────────────────────────────────────────────
 

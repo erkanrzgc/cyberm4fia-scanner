@@ -137,6 +137,39 @@ def generate_html_report(vulns, url, mode, scan_dir, stats=None):
 
             exploit_html += "</div>"
 
+        is_sca = f.finding_type in ["Known_Vulnerability_SCA", "Vulnerable_Dependency"] or bool(getattr(f, "cve", ""))
+        
+        sca_details_html = ""
+        if is_sca:
+            cve_disp = html_module.escape(str(getattr(f, "cve", "Unknown CVE")))
+            comp_disp = html_module.escape(str(getattr(f, "component", "Unknown Component")))
+            ver_disp = html_module.escape(str(getattr(f, "version", "Unknown Version")))
+            sca_details_html = f"""
+            <div class="detail-row">
+                <div class="detail-label">CVE</div>
+                <div><code style="color: #ff9f43;">{cve_disp}</code></div>
+            </div>
+            <div class="detail-row">
+                <div class="detail-label">Component</div>
+                <div><code>{comp_disp}</code></div>
+            </div>
+            <div class="detail-row">
+                <div class="detail-label">Version</div>
+                <div><code>{ver_disp}</code></div>
+            </div>
+            """
+        else:
+            sca_details_html = f"""
+            <div class="detail-row">
+                <div class="detail-label">Parameter</div>
+                <div><code>{param}</code></div>
+            </div>
+            <div class="detail-row">
+                <div class="detail-label">Payload</div>
+                <div><code>{payload}</code></div>
+            </div>
+            """
+
         vuln_html += f"""
         <div class="vuln-card {severity}" data-severity="{severity}">
             <h3>
@@ -147,14 +180,7 @@ def generate_html_report(vulns, url, mode, scan_dir, stats=None):
                 <div class="detail-label">Vulnerable URL</div>
                 <div style="word-break: break-all;"><a href="{vurl}" style="color: var(--accent); text-decoration: none;">{vurl}</a></div>
             </div>
-            <div class="detail-row">
-                <div class="detail-label">Parameter</div>
-                <div><code>{param}</code></div>
-            </div>
-            <div class="detail-row">
-                <div class="detail-label">Payload</div>
-                <div><code>{payload}</code></div>
-            </div>
+            {sca_details_html}
             <div class="detail-row">
                 <div class="detail-label">Confidence</div>
                 <div>{confidence}</div>
@@ -497,12 +523,22 @@ def generate_markdown_report(vulns, url, mode, scan_dir, stats=None):
             md += f"- **Endpoint:** `{f.url or 'N/A'}`\n"
             md += f"- **CWE ID:** `{f.cwe}`\n"
             md += f"- **CVSS Score:** `{f.cvss}`\n"
-            md += f"- **Vulnerable Parameter:** `{f.param or 'N/A'}`\n"
+            
+            is_sca = f.finding_type in ["Known_Vulnerability_SCA", "Vulnerable_Dependency"] or bool(getattr(f, "cve", ""))
+            
+            if is_sca:
+                md += f"- **CVE ID:** `{getattr(f, 'cve', 'Unknown')}`\n"
+                md += f"- **Component:** `{getattr(f, 'component', 'Unknown')}`\n"
+                md += f"- **Version:** `{getattr(f, 'version', 'Unknown')}`\n"
+            else:
+                md += f"- **Vulnerable Parameter:** `{f.param or 'N/A'}`\n"
+            
             md += f"- **Verification State:** `{f.verification_state}`\n"
             md += f"- **Exploitability:** `{f.exploitability}`\n"
 
-            payload = f.payload or "N/A"
-            md += f"\n**Payload Used:**\n```text\n{payload}\n```\n"
+            if not is_sca:
+                payload = f.payload or "N/A"
+                md += f"\n**Payload Used:**\n```text\n{payload}\n```\n"
 
             md += f"\n**🛡️ Remediation:**\n> {f.remediation}\n\n"
 
