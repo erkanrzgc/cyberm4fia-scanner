@@ -191,8 +191,8 @@ def build_cli_scan_options(args, threads: int):
     options["json_output"] = bool(getattr(args, "json", False) or use_all)
     options["threads"] = threads
     options["ai_model"] = getattr(args, "ai_model", DEFAULT_AI_MODEL)
-    options["ollama_url"] = (
-        getattr(args, "ollama_url", options["ollama_url"]) or options["ollama_url"]
+    options["nvidia_api_key"] = (
+        getattr(args, "nvidia_api_key", options.get("nvidia_api_key", "")) or options.get("nvidia_api_key", "")
     )
     options["agent"] = bool(getattr(args, "agent", False))
     return normalize_runtime_options(options)

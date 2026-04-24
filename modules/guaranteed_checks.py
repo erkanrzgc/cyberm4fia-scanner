@@ -16,13 +16,17 @@ Categories:
 
 import re
 import json
-import ssl
 import socket
+import ssl
+import time
+import os
 from urllib.parse import urlparse, urljoin
 from datetime import datetime
 
-from utils.colors import log_info, log_success, log_vuln
+from utils.colors import log_info, log_success, log_warning, log_vuln
 from utils.request import smart_request, increment_vulnerability_count, ScanExceptions
+from utils.brand_protection import check_phishing_domains
+from utils.qishing import analyze_image_for_qishing, QR_MODULES_AVAILABLE
 from modules.osv_scanner import check_tech_stack_vulns, analyze_exposed_manifest
 
 # ── Sensitive Files & Paths ──────────────────────────────────────────────
@@ -685,6 +689,66 @@ def _check_security_misconfig(url, delay):
     return findings
 
 
+def _check_brand_protection(url, delay):
+    """Deep check for typosquatting domains and Brand Protection issues."""
+    findings = []
+    try:
+        log_info("  → Checking Brand Protection (DNS Typosquatting)...")
+        bp_findings = check_phishing_domains(url)
+        if bp_findings:
+            increment_vulnerability_count(len(bp_findings))
+            findings.extend(bp_findings)
+    except Exception as e:
+        log_warning(f"Error during brand protection check: {e}")
+    return findings
+
+
+def _check_qishing(url, delay):
+    """Crawl images on the page and detect potential QR Phishing (Qishing)."""
+    findings = []
+    if not QR_MODULES_AVAILABLE:
+        log_warning("  → Skipping Qishing check: pyzbar/pillow not installed.")
+        return findings
+
+    try:
+        log_info("  → Checking for Qishing (QR Code Phishing)...")
+        resp = smart_request("get", url, delay=delay)
+        if resp.status_code != 200:
+            return findings
+
+        # Extract all image tags
+        import re
+        img_srcs = re.findall(r'<img[^>]+src=["\']([^"\']+)["\']', resp.text, re.IGNORECASE)
+        
+        parsed_target = urlparse(url)
+        target_domain = parsed_target.netloc.split(':')[0]
+        
+        checked_imgs = 0
+        for src in img_srcs:
+            if checked_imgs >= 10:  # Limit to 10 images to save time
+                break
+                
+            img_url = urljoin(url, src)
+            try:
+                # Fetch image bytes
+                img_resp = smart_request("get", img_url, delay=delay)
+                if img_resp.status_code == 200:
+                    q_findings = analyze_image_for_qishing(img_url, img_resp.content, target_domain)
+                    if q_findings:
+                        for f in q_findings:
+                            if f["severity"] == "HIGH":
+                                increment_vulnerability_count()
+                        findings.extend(q_findings)
+            except ScanExceptions:
+                pass
+            checked_imgs += 1
+            
+    except Exception as e:
+        log_warning(f"Error during qishing check: {e}")
+        
+    return findings
+
+
 def scan_guaranteed(url, delay, options=None):
     """
     Run all guaranteed finding checks.
@@ -713,6 +777,12 @@ def scan_guaranteed(url, delay, options=None):
 
     # 6. Security Misconfiguration
     all_findings.extend(_check_security_misconfig(url, delay))
+    
+    # 7. Brand Protection (Typosquatting)
+    all_findings.extend(_check_brand_protection(url, delay))
+    
+    # 8. Qishing (QR Code Phishing)
+    all_findings.extend(_check_qishing(url, delay))
 
     if all_findings:
         log_success(

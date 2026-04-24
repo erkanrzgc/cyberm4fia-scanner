@@ -143,7 +143,7 @@ class TestInteractiveMenu:
             API_SPEC_PROMPT.prompt: "openapi.yaml",
             "[?] Cookie (leave empty for none)": "sid=1",
             "[?] Session save file (leave empty to disable)": "session.json",
-            "[?] Enable AI Vulnerability Analysis (Ollama)? (y/N)": "y",
+            "[?] Enable AI Vulnerability Analysis (NVIDIA API)? (y/N)": "y",
             "[?] Generate HTML report? (y/N)": "y",
             "[?] Save JSON? (y/N)": "y",
         }

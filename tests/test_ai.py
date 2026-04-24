@@ -1,61 +1,55 @@
 """
-Tests for utils/ai.py — Ollama AI Integration
-Tests run without requiring Ollama to be installed.
+Tests for utils/ai.py — NVIDIA API Integration
 """
 
 from utils.ai import (
-    OllamaClient,
+    NvidiaApiClient,
     generate_scan_summary,
     generate_smart_payloads,
-    resolve_ollama_base,
+    resolve_nvidia_base,
 )
 
-class TestOllamaClientInit:
-    """Test OllamaClient initialization (without real Ollama)."""
+class TestNvidiaApiClientInit:
+    """Test NvidiaApiClient initialization (without real NVIDIA API)."""
 
     def test_default_model(self):
-        client = OllamaClient.__new__(OllamaClient)
-        client.model = "whiterabbitneo"
-        client.base_url = "http://localhost:11434"
+        client = NvidiaApiClient.__new__(NvidiaApiClient)
+        client.model = "meta/llama-3.1-70b-instruct"
+        client.base_url = "https://integrate.api.nvidia.com/v1"
+        client.api_key = "test_key"
         client.available = False
-        assert client.model == "whiterabbitneo"
+        assert client.model == "meta/llama-3.1-70b-instruct"
 
     def test_custom_model(self):
-        client = OllamaClient.__new__(OllamaClient)
+        client = NvidiaApiClient.__new__(NvidiaApiClient)
         client.model = "mistral"
         assert client.model == "mistral"
 
     def test_unavailable_client_returns_empty(self):
-        client = OllamaClient.__new__(OllamaClient)
-        client.model = "whiterabbitneo"
-        client.base_url = "http://localhost:11434"
+        client = NvidiaApiClient.__new__(NvidiaApiClient)
+        client.model = "meta/llama-3.1-70b-instruct"
+        client.base_url = "https://integrate.api.nvidia.com/v1"
+        client.api_key = "test"
         client.available = False
         result = client.generate("test prompt")
         assert result == ""
 
     def test_unavailable_generate_no_crash(self):
-        client = OllamaClient.__new__(OllamaClient)
+        client = NvidiaApiClient.__new__(NvidiaApiClient)
         client.available = False
         assert client.generate("test") == ""
 
-    def test_resolve_ollama_base_accepts_bare_host(self, monkeypatch):
-        monkeypatch.delenv("OLLAMA_URL", raising=False)
-        monkeypatch.setenv("OLLAMA_HOST", "192.168.1.50:11434")
-
-        assert resolve_ollama_base() == "http://192.168.1.50:11434"
-
-    def test_resolve_ollama_base_prefers_explicit_url(self, monkeypatch):
-        monkeypatch.setenv("OLLAMA_URL", "http://127.0.0.1:11434")
-
-        assert resolve_ollama_base("http://10.0.0.5:11434") == "http://10.0.0.5:11434"
+    def test_resolve_nvidia_base_accepts_bare_host(self, monkeypatch):
+        monkeypatch.delenv("NVIDIA_API_URL", raising=False)
+        assert resolve_nvidia_base() == "https://integrate.api.nvidia.com/v1"
 
 class TestAIFunctions:
     """Test AI analysis functions with mocked client."""
 
     def _make_mock_client(self, response: str = ""):
-        client = OllamaClient.__new__(OllamaClient)
+        client = NvidiaApiClient.__new__(NvidiaApiClient)
         client.available = True
-        client.model = "whiterabbitneo"
+        client.model = "meta/llama-3.1-70b-instruct"
         client._mock_response = response
 
         def mock_generate(prompt, system="", temperature=0.3, model_role=""):
@@ -65,7 +59,7 @@ class TestAIFunctions:
         return client
 
     def test_generate_smart_payloads_unavailable(self):
-        client = OllamaClient.__new__(OllamaClient)
+        client = NvidiaApiClient.__new__(NvidiaApiClient)
         client.available = False
         result = generate_smart_payloads(client, "XSS")
         assert result == []
@@ -84,7 +78,7 @@ class TestAIFunctions:
         assert result == []
 
     def test_generate_scan_summary_unavailable(self):
-        client = OllamaClient.__new__(OllamaClient)
+        client = NvidiaApiClient.__new__(NvidiaApiClient)
         client.available = False
         result = generate_scan_summary(client, [], "https://example.com", {})
         assert result == ""
@@ -105,7 +99,7 @@ class TestFalsePositiveFilter:
     """Test false positive detection logic."""
 
     def _make_mock_client(self, response: str):
-        client = OllamaClient.__new__(OllamaClient)
+        client = NvidiaApiClient.__new__(NvidiaApiClient)
         client.available = True
 
         def mock_generate(prompt, system="", temperature=0.3, model_role=""):
@@ -148,25 +142,20 @@ class TestAIModule:
     def test_default_model_constant(self):
         from utils.ai import DEFAULT_MODEL
 
-        assert DEFAULT_MODEL == "WhiteRabbitNeo/Llama-3.1-WhiteRabbitNeo-2-8B"
+        assert DEFAULT_MODEL == "meta/llama-3.1-70b-instruct"
 
-    def test_ollama_base_constant(self):
-        from utils.ai import OLLAMA_BASE
-
-        assert OLLAMA_BASE.startswith("http://")
-        assert "11434" in OLLAMA_BASE
-
-    def test_init_ai_returns_client(self):
-        # Should not crash even without Ollama running
+    def test_init_ai_returns_client(self, monkeypatch):
         from utils.ai import init_ai
+        monkeypatch.setenv("NVIDIA_API_KEY", "test_api_key")
 
         client = init_ai(model="mistral")
         assert client is not None
         assert client.model == "mistral"
         assert isinstance(client.available, bool)
 
-    def test_get_ai_returns_same_instance(self):
+    def test_get_ai_returns_same_instance(self, monkeypatch):
         from utils.ai import init_ai, get_ai
+        monkeypatch.setenv("NVIDIA_API_KEY", "test_api_key")
 
         init_ai(model="mistral")
         client1 = get_ai()

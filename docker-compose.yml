@@ -1,11 +1,9 @@
 # ─────────────────────────────────────────────────────
 #  cyberm4fia-scanner — Docker Compose
 #
-#  2 mod:
-#    1) Sadece scanner (Ollama Windows'ta GPU ile çalışıyorsa)
-#       → docker compose up scanner
-#    2) Scanner + Ollama (hepsi Linux'ta, GPU yoksa CPU)
-#       → docker compose --profile with-ollama up
+#  Usage:
+#    1) Create a .env file with NVIDIA_API_KEY=your_key_here
+#    2) docker compose up
 # ─────────────────────────────────────────────────────
 
 services:
@@ -14,56 +12,7 @@ services:
     build: .
     container_name: cyberm4fia-scanner
     environment:
-      # Windows'taki Ollama IP adresini yaz:
-      # Örnek: OLLAMA_URL=http://192.168.1.50:11434
-      - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
+      - NVIDIA_API_KEY=${NVIDIA_API_KEY}
     entrypoint: ["python3", "scanner.py"]
     stdin_open: true
     tty: true
-    # Windows'taki Ollama'ya erişim için:
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-
-  # ── Ollama (opsiyonel — sadece Linux'ta GPU yokken) ──
-  ollama:
-    image: ollama/ollama:latest
-    container_name: cyberm4fia-ollama
-    profiles: ["with-ollama"]
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    # GPU varsa:
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
-  # ── Model Loader (sadece with-ollama profile kullanılınca) ──
-  model-loader:
-    image: ollama/ollama:latest
-    container_name: cyberm4fia-model-loader
-    profiles: ["with-ollama"]
-    depends_on:
-      ollama:
-        condition: service_healthy
-    entrypoint: >
-      sh -c "
-        echo '🤖 Pulling AI models...' &&
-        ollama pull qwen3:1.7b &&
-        echo '✅ Models ready!'
-      "
-    environment:
-      - OLLAMA_HOST=http://ollama:11434
-
-volumes:
-  ollama_data:

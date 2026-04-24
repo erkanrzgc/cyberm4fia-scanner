@@ -26,9 +26,8 @@ RUN playwright install chromium
 # Copy scanner source
 COPY . .
 
-# Default Ollama URL — connects to host machine
-# Override with: docker run -e OLLAMA_URL=http://your-ollama:11434
-ENV OLLAMA_URL=http://host.docker.internal:11434
+# NVIDIA API Key — set this as an environment variable
+# docker run -e NVIDIA_API_KEY=your_key_here
 ENV PYTHONUNBUFFERED=1
 
 # Expose API port

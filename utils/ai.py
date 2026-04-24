@@ -1,8 +1,8 @@
 """
-cyberm4fia-scanner — AI/LLM Integration (Ollama)
+cyberm4fia-scanner — AI/LLM Integration (NVIDIA NIM)
 
-Ollama-based vulnerability analysis using local LLM models.
-Default model: whiterabbitneo (purpose-built for cybersecurity & pentesting)
+NVIDIA NIM-based vulnerability analysis using high-performance Llama 3.1 70B.
+Default model: meta/llama-3.1-70b-instruct
 
 Features:
     - Vulnerability analysis & exploit scenario generation
@@ -54,29 +54,21 @@ def _extract_json(text: str, expect_array: bool = False):
     return None
 
 
-# ─── Ollama Client ──────────────────────────────────────────────────────────
+# ─── NVIDIA AI Client ───────────────────────────────────────────────────────
 
+def resolve_nvidia_api_key(explicit_key: str | None = None) -> str | None:
+    """Resolve NVIDIA API key from explicit value or environment."""
+    key = explicit_key or os.environ.get("NVIDIA_API_KEY")
+    if key:
+        return key.strip()
+    return None
 
-def resolve_ollama_base(explicit_url: str | None = None) -> str:
-    """Resolve Ollama base URL from explicit value or environment."""
-    raw = (
-        explicit_url
-        or os.environ.get("OLLAMA_URL")
-        or os.environ.get("OLLAMA_HOST")
-        or "http://127.0.0.1:11434"
-    )
-    raw = str(raw).strip()
-    if not raw:
-        return "http://127.0.0.1:11434"
-    if raw.startswith(("http://", "https://")):
-        return raw.rstrip("/")
-    return f"http://{raw.rstrip('/')}"
+def resolve_nvidia_base() -> str:
+    """Return the NVIDIA NIM API base URL."""
+    return os.environ.get("NVIDIA_API_URL", "https://integrate.api.nvidia.com/v1")
 
-
-# Backward-compatible snapshot used by tests and older imports.
-OLLAMA_BASE = resolve_ollama_base()
-DEFAULT_MODEL = "WhiteRabbitNeo/Llama-3.1-WhiteRabbitNeo-2-8B"
-CODER_MODEL = "qwen3.5:35b"
+DEFAULT_MODEL = "meta/llama-3.1-70b-instruct"
+CODER_MODEL = "meta/llama-3.1-70b-instruct" # Using 70B for both as it is high performance
 
 # Model roles — which model to use for which task
 MODEL_ROLES = {
@@ -87,56 +79,49 @@ MODEL_ROLES = {
     "summary": DEFAULT_MODEL,  # executive summary, reporting
 }
 
+class NvidiaApiClient:
+    """Client for NVIDIA NIM (OpenAI-compatible) API."""
 
-class OllamaClient:
-    """Client for Ollama local LLM API."""
-
-    def __init__(self, model: Optional[str] = None, base_url: Optional[str] = None, quiet: bool = False):
+    def __init__(self, model: Optional[str] = None, api_key: Optional[str] = None, quiet: bool = False):
         self.model = model or DEFAULT_MODEL
-        self.base_url = resolve_ollama_base(base_url)
+        self.api_key = resolve_nvidia_api_key(api_key)
+        self.base_url = resolve_nvidia_base()
         self.quiet = quiet
         self.available = False
         self._check_connection()
 
     def _check_connection(self):
-        """Check if Ollama is running and model is available."""
-        try:
-            resp = httpx.get(f"{self.base_url}/api/tags", timeout=5)
-            if resp.status_code == 200:
-                models = [m["name"] for m in resp.json().get("models", [])]
-                if any(self.model in m for m in models):
-                    self.available = True
-                    if not getattr(self, "quiet", False):
-                        log_success(f"AI Engine: Ollama ({self.model}) ✓")
-                else:
-                    self.available = False
-                    available_str = ", ".join(models[:5]) if models else "none"
-                    log_warning(
-                        f"Model '{self.model}' not found. "
-                        f"Available: {available_str}. "
-                        f"Install: ollama pull {self.model}"
-                    )
-            else:
-                log_warning(f"Ollama API not responding at {self.base_url}")
-        except ScanExceptions:
+        """Check if API key is present and reachable."""
+        if not self.api_key:
+            if not getattr(self, "quiet", False):
+                log_warning("NVIDIA_API_KEY not set. AI features disabled.")
             self.available = False
-            log_warning(
-                f"Ollama not reachable at {self.base_url}. "
-                "If Ollama runs on another machine, set OLLAMA_URL=http://HOST:11434"
-            )
+            return
 
-    def _prompt_ollama(
-        self,
-        model: str,
-        prompt: str,
-        system: str = "",
-        base_url: Optional[str] = None,
-        expect_json: bool = False,
-        temperature: float = 0.3,
-    ) -> Optional[dict]:
-        """Generate a response from the LLM using chat API."""
-        if not self.available:
-            return None
+        try:
+            # Simple list models check to verify connectivity/auth
+            resp = httpx.get(
+                f"{self.base_url}/models",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                timeout=5
+            )
+            if resp.status_code == 200:
+                self.available = True
+                if not getattr(self, "quiet", False):
+                    log_success(f"AI Engine: NVIDIA NIM ({self.model}) ✓")
+            else:
+                log_warning(f"NVIDIA API auth failed (status {resp.status_code})")
+                self.available = False
+        except Exception:
+            self.available = False
+            if not getattr(self, "quiet", False):
+                log_warning("NVIDIA API not reachable. Check your connection.")
+
+    def generate(self, prompt: str, system: str = "", temperature: float = 0.3,
+                  model_role: str = "") -> str:
+        """Generate a response from NVIDIA NIM using Chat Completions API."""
+        if not self.available or not self.api_key:
+            return ""
 
         try:
             messages = []
@@ -145,150 +130,77 @@ class OllamaClient:
             messages.append({"role": "user", "content": prompt})
 
             payload = {
-                "model": model,
+                "model": self.model,
                 "messages": messages,
-                "stream": False,
-                "options": {
-                    "temperature": temperature,
-                    "num_predict": 4096,
-                },
+                "temperature": temperature,
+                "top_p": 1,
+                "max_tokens": 4096,
+                "stream": False
             }
 
             resp = httpx.post(
-                f"{base_url or self.base_url}/api/chat",
+                f"{self.base_url}/chat/completions",
+                headers={"Authorization": f"Bearer {self.api_key}"},
                 json=payload,
                 timeout=180,
             )
 
             if resp.status_code == 200:
-                content = resp.json().get("message", {}).get("content", "").strip()
-                if expect_json:
-                    return _extract_json(content)
+                content = resp.json()["choices"][0]["message"]["content"].strip()
                 return content
             else:
-                log_error(f"Ollama error: {resp.status_code}")
-                return None
+                log_error(f"NVIDIA API error: {resp.status_code} - {resp.text}")
+                return ""
         except httpx.TimeoutException:
             log_warning("AI response timed out (180s)")
-            return None
-        except ScanExceptions as e:
-            log_warning(f"AI error: {e}")
-            return None
-
-    def generate(self, prompt: str, system: str = "", temperature: float = 0.3,
-                  model_role: str = "") -> str:
-        """Generate a response from the LLM using chat API.
-
-        Args:
-            prompt: User prompt.
-            system: System prompt.
-            temperature: Sampling temperature.
-            model_role: Optional role hint (ignored by single-model client,
-                        used by DualModelAI to route to the right model).
-        """
-        if not getattr(self, "available", False):
             return ""
-
-        response = self._prompt_ollama(
-            getattr(self, "model", DEFAULT_MODEL),
-            prompt,
-            system,
-            getattr(self, "base_url", resolve_ollama_base()),
-            False,
-            temperature,
-        )
-        return str(response) if response is not None else ""
-
+        except Exception as e:
+            log_warning(f"AI error: {e}")
+            return ""
 
 # ─── Dual-Model AI System ──────────────────────────────────────────────────
 
-
 class DualModelAI:
-    """Dual-model AI system using WhiteRabbitNeo + Qwen3-Coder.
-
-    WhiteRabbitNeo: Exploit strategy, payload generation, WAF bypass
-    Qwen3-Coder:   Code generation, PoC scripting, remediation code
-
-    Falls back gracefully if one model is unavailable.
+    """Dual-model AI system using NVIDIA NIM.
+    
+    Even if using the same model, we can split them into separate clients 
+    for better logical routing and potential future model variations.
     """
 
-    def __init__(self, base_url: str = None):
-        self.base_url = resolve_ollama_base(base_url)
-        self.exploit_client: OllamaClient | None = None
-        self.coder_client: OllamaClient | None = None
-        self._available_models: list[str] = []
+    def __init__(self, api_key: str = None):
+        self.api_key = resolve_nvidia_api_key(api_key)
+        self.exploit_client: NvidiaApiClient | None = None
+        self.coder_client: NvidiaApiClient | None = None
         self._init_models()
 
     def _init_models(self):
         """Initialize both model clients."""
-        # Check which models are available
-        try:
-            resp = httpx.get(f"{self.base_url}/api/tags", timeout=5)
-            if resp.status_code == 200:
-                self._available_models = [
-                    m["name"] for m in resp.json().get("models", [])
-                ]
-        except ScanExceptions:
-            self._available_models = []
+        if not self.api_key:
+            return
 
-        # Init WhiteRabbitNeo (exploit/strategy)
-        has_wrn = any(DEFAULT_MODEL in m for m in self._available_models)
-        if has_wrn:
-            self.exploit_client = OllamaClient(
-                model=DEFAULT_MODEL, base_url=self.base_url, quiet=True
-            )
+        self.exploit_client = NvidiaApiClient(
+            model=DEFAULT_MODEL, api_key=self.api_key, quiet=True
+        )
+        self.coder_client = NvidiaApiClient(
+            model=CODER_MODEL, api_key=self.api_key, quiet=True
+        )
 
-        # Init Qwen3-Coder (code generation)
-        has_qwen = any(CODER_MODEL in m for m in self._available_models)
-        if has_qwen:
-            self.coder_client = OllamaClient(model=CODER_MODEL, base_url=self.base_url)
-
-        # Log status
-        models_active = []
-        if self.exploit_client and self.exploit_client.available:
-            models_active.append("🐇 WhiteRabbitNeo (exploit)")
-        if self.coder_client and self.coder_client.available:
-            models_active.append("🧠 Qwen 3.5 (code)")
-
-        if models_active:
-            log_success(f"Dual AI: {' + '.join(models_active)}")
-        elif self._available_models:
-            log_warning(
-                f"Neither {DEFAULT_MODEL} nor {CODER_MODEL} found. "
-                f"Available: {', '.join(self._available_models[:5])}"
-            )
+        if self.available:
+            log_success(f"Dual AI: NVIDIA Llama-3.1-70B (Exploit + Code)")
 
     @property
     def available(self) -> bool:
-        """True if at least one model is available."""
+        """True if at least one client is available."""
         return bool(
             (self.exploit_client and self.exploit_client.available)
             or (self.coder_client and self.coder_client.available)
         )
 
-    def get_client_for_role(self, role: str) -> OllamaClient | None:
-        """Get the best client for a given role.
-
-        Roles: 'exploit', 'analysis', 'code', 'remediation', 'summary'
-        Falls back to whichever model is available.
-        """
-        preferred_model = MODEL_ROLES.get(role, DEFAULT_MODEL)
-
-        # Try preferred model first
-        if preferred_model == CODER_MODEL:
-            if self.coder_client and self.coder_client.available:
-                return self.coder_client
-            # Fallback to exploit model
-            if self.exploit_client and self.exploit_client.available:
-                return self.exploit_client
-        else:
-            if self.exploit_client and self.exploit_client.available:
-                return self.exploit_client
-            # Fallback to coder model
-            if self.coder_client and self.coder_client.available:
-                return self.coder_client
-
-        return None
+    def get_client_for_role(self, role: str) -> NvidiaApiClient | None:
+        """Get the client for a given role."""
+        if role in ["code", "remediation"]:
+            return self.coder_client or self.exploit_client
+        return self.exploit_client or self.coder_client
 
     def generate(
         self,
@@ -297,16 +209,11 @@ class DualModelAI:
         temperature: float = 0.3,
         model_role: str = "exploit",
     ) -> str:
-        """Generate using the appropriate model for the role.
-
-        Routes to WhiteRabbitNeo for exploit/analysis/summary tasks,
-        and to Qwen3.5 for code/remediation tasks.
-        """
+        """Generate using the appropriate model for the role."""
         client = self.get_client_for_role(model_role)
         if not client:
             return ""
         return client.generate(prompt, system=system, temperature=temperature)
-
 
 # ─── Security Analysis Prompts ──────────────────────────────────────────────
 
@@ -315,8 +222,60 @@ You analyze vulnerability scan results with precision and provide actionable ins
 Be concise, technical, and direct. Use bullet points.
 Always respond in the language of the user's input."""
 
+def _load_skill_for_vuln(vuln_type: str) -> str:
+    """Load Claude-Red skill instructions based on vulnerability type."""
+    if not vuln_type:
+        return ""
+        
+    vuln_type_lower = vuln_type.lower()
+    
+    # Mapping vulnerability types to Claude-Red skill folder names
+    mapping = {
+        "sqli": "offensive-sqli",
+        "sql_injection": "offensive-sqli",
+        "sql": "offensive-sqli",
+        "xss": "offensive-xss",
+        "cross_site_scripting": "offensive-xss",
+        "ssrf": "offensive-ssrf",
+        "lfi": "offensive-rce",
+        "local_file_inclusion": "offensive-rce",
+        "cmdi": "offensive-rce",
+        "command_injection": "offensive-rce",
+        "rce": "offensive-rce",
+        "jwt": "offensive-jwt",
+        "xxe": "offensive-xxe",
+        "ssti": "offensive-ssti",
+        "idor": "offensive-idor",
+        "open_redirect": "offensive-open-redirect",
+        "smuggling": "offensive-request-smuggling",
+        "request_smuggling": "offensive-request-smuggling",
+        "waf": "offensive-waf-bypass",
+    }
+    
+    skill_folder = None
+    for key, folder in mapping.items():
+        if key in vuln_type_lower:
+            skill_folder = folder
+            break
+            
+    if not skill_folder:
+        return ""
+        
+    try:
+        skill_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "core", "ai_skills", skill_folder, "SKILL.md"
+        )
+        if os.path.exists(skill_path):
+            with open(skill_path, "r", encoding="utf-8") as f:
+                content = f.read()
+                return f"\n\n--- EXPERT SKILL KNOWLEDGE BASE ---\n{content}\n--- END SKILL KNOWLEDGE BASE ---\n"
+    except Exception:
+        pass
+        
+    return ""
 
-def analyze_vulnerability(client: OllamaClient, vuln: dict) -> dict:
+def analyze_vulnerability(client: NvidiaApiClient, vuln: dict) -> dict:
     """Analyze a single vulnerability finding with AI."""
     if not client.available:
         return {}
@@ -351,7 +310,10 @@ Provide:
 Respond in JSON format:
 {{"risk": "...", "scenario": "...", "confidence": 85, "remediation": "...", "cvss_note": "..."}}"""
 
-    response = client.generate(prompt, system=SECURITY_SYSTEM_PROMPT, model_role="analysis")
+    # Inject Red Team Skill context if available
+    system_prompt = SECURITY_SYSTEM_PROMPT + _load_skill_for_vuln(vuln_type)
+
+    response = client.generate(prompt, system=system_prompt, model_role="analysis")
 
     result = _extract_json(response, expect_array=False)
     if result and isinstance(result, dict):
@@ -359,8 +321,7 @@ Respond in JSON format:
 
     return {"raw_analysis": response}
 
-
-def detect_false_positives(client: OllamaClient, vulns: list) -> list:
+def detect_false_positives(client: NvidiaApiClient, vulns: list) -> list:
     """Filter likely false positives from vulnerability list."""
     if not client.available or not vulns:
         return vulns
@@ -423,8 +384,7 @@ Answer ONLY with a JSON: {{"real": true/false, "confidence": 0-100, "reason": ".
 
     return verified
 
-
-def generate_remediation(client: OllamaClient, vulns: list) -> list:
+def generate_remediation(client: NvidiaApiClient, vulns: list) -> list:
     """Generate remediation recommendations for each vulnerability."""
     if not client.available or not vulns:
         return []
@@ -495,9 +455,8 @@ Be specific and developer-friendly. Include code examples."""
 
     return remediations
 
-
 def generate_smart_payloads(
-    client: OllamaClient, vuln_type: str, context: str = ""
+    client: NvidiaApiClient, vuln_type: str, context: str = ""
 ) -> list:
     """Generate smart WAF bypass payloads using AI."""
     if not client.available:
@@ -515,7 +474,9 @@ Requirements:
 
 Example format: ["payload1", "payload2", "payload3"]"""
 
-    response = client.generate(prompt, system=SECURITY_SYSTEM_PROMPT, temperature=0.7,
+    system_prompt = SECURITY_SYSTEM_PROMPT + _load_skill_for_vuln("waf") + _load_skill_for_vuln(vuln_type)
+
+    response = client.generate(prompt, system=system_prompt, temperature=0.7,
                                 model_role="exploit")
 
     result = _extract_json(response, expect_array=True)
@@ -524,11 +485,10 @@ Example format: ["payload1", "payload2", "payload3"]"""
 
     return []
 
-
 class EvolvingWAFBypassEngine:
     """Stateful AI Mutation Engine for bypassing advanced HTTP WAFs."""
 
-    def __init__(self, client: OllamaClient, waf_name: str, vuln_type: str):
+    def __init__(self, client: NvidiaApiClient, waf_name: str, vuln_type: str):
         self.client = client
         self.waf_name = waf_name
         self.vuln_type = vuln_type
@@ -579,9 +539,12 @@ Return ONLY a valid JSON array of 5 payload strings. No explanation, no markdown
 Example: ["bypass1", "bypass2", "bypass3", "bypass4", "bypass5"]"""
 
         try:
+            system_prompt = "You are an expert WAF mutation engine. Generate only working payloads. Return raw JSON arrays only."
+            system_prompt += _load_skill_for_vuln("waf") + _load_skill_for_vuln(self.vuln_type)
+            
             response = self.client.generate(
                 prompt,
-                system="You are an expert WAF mutation engine. Generate only working payloads. Return raw JSON arrays only.",
+                system=system_prompt,
                 temperature=0.7 + (iteration * 0.1),  # Increase creativity if stuck
             )
             result = _extract_json(response, expect_array=True)
@@ -593,9 +556,8 @@ Example: ["bypass1", "bypass2", "bypass3", "bypass4", "bypass5"]"""
 
         return []
 
-
 def generate_waf_bypass(
-    client: OllamaClient,
+    client: NvidiaApiClient,
     waf_name: str,
     blocked_payload: str,
     vuln_type: str,
@@ -605,9 +567,8 @@ def generate_waf_bypass(
     engine = EvolvingWAFBypassEngine(client, waf_name, vuln_type)
     return engine.mutate(blocked_payload, iteration=1)
 
-
 def generate_scan_summary(
-    client: OllamaClient, vulns: list, target: str, stats: dict
+    client: NvidiaApiClient, vulns: list, target: str, stats: dict
 ) -> str:
     """Generate an executive summary of scan results."""
     if not client.available:
@@ -640,37 +601,32 @@ Keep it professional and suitable for a C-level audience."""
 
     return client.generate(prompt, system=SECURITY_SYSTEM_PROMPT, model_role="summary")
 
-
 # ─── Global Clients ─────────────────────────────────────────────────────────
 
 _ai_client = None
 _dual_ai = None
 
-
 def init_ai(
     model: Optional[str] = None,
-    base_url: Optional[str] = None,
-) -> OllamaClient:
+    api_key: Optional[str] = None,
+) -> NvidiaApiClient:
     """Initialize the primary AI client."""
     global _ai_client
-    _ai_client = OllamaClient(model=model, base_url=base_url)
+    _ai_client = NvidiaApiClient(model=model, api_key=api_key)
     return _ai_client
 
-
-def get_ai(base_url: Optional[str] = None) -> OllamaClient:
+def get_ai(api_key: Optional[str] = None) -> NvidiaApiClient:
     """Get the current primary AI client (or create one)."""
     global _ai_client
     if _ai_client is None:
-        _ai_client = OllamaClient(base_url=base_url)
+        _ai_client = NvidiaApiClient(api_key=api_key)
     return _ai_client
 
-
-def init_dual_ai(base_url: Optional[str] = None) -> DualModelAI:
+def init_dual_ai(api_key: Optional[str] = None) -> DualModelAI:
     """Initialize the dual-model AI system."""
     global _dual_ai
-    _dual_ai = DualModelAI(base_url=base_url)
+    _dual_ai = DualModelAI(api_key=api_key)
     return _dual_ai
-
 
 def get_dual_ai() -> DualModelAI | None:
     """Get the dual-model AI system (if initialized)."""

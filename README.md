@@ -160,45 +160,37 @@ Any traffic you generate through your browser will be automatically intercepted,
 
 ## Usage with AI
 
-The scanner integrates a **dual-model AI system** for autonomous exploit generation, intelligent analysis, and automated PoC creation.
+The scanner integrates an **NVIDIA-powered AI system** for autonomous exploit generation, intelligent analysis, and automated PoC creation.
 
 ### Prerequisites
 
-Install [Ollama](https://ollama.com/) and pull the required models:
+You need an **NVIDIA API Key**. Set it as an environment variable:
 
 ```bash
-# On your machine (Linux/Mac/Windows)
-ollama pull WhiteRabbitNeo/Llama-3.1-WhiteRabbitNeo-2-8B
-ollama pull qwen3-coder:30b
-```
-
-If Ollama runs on a different machine (e.g., Windows GPU host):
-
-```bash
-export OLLAMA_URL="http://127.0.0.1:11434"
+export NVIDIA_API_KEY="your_nvapi_key_here"
 ```
 
 ### AI-Powered Scanning
 
 ```bash
-# Full scan with AI enabled
+# Full scan with AI enabled (NVIDIA API)
 python3 scanner.py -u https://target.com --all --ai
 
 # AI + specific modules
 python3 scanner.py -u https://target.com --xss --sqli --ai
 
-# AI with stealth mode
-python3 scanner.py -u https://target.com --all --ai --mode stealth
+# Run Multi-Agent Autonomous Agent mode
+python3 scanner.py -u https://target.com --agent --ai
 ```
 
-### Dual-Model Architecture
+### Unified AI Architecture (70B)
 
-| Model | Role | What It Does |
+Both exploit and code generation roles now utilize the high-performance **meta/llama-3.1-70b-instruct** model via NVIDIA NIM for maximum fidelity:
+
+| Role | Implementation | What It Does |
 |---|---|---|
-| 🐇 **WhiteRabbitNeo 8B** | Exploit & Strategy | Payload crafting, WAF bypass, exploit planning, false-positive filtering |
-| 🧠 **Qwen3-Coder 30B** | Code Generation | PoC script writing, remediation code, code analysis |
-
-The system automatically routes tasks to the best model. If one model is unavailable, it falls back to the other.
+| 🐇 **Exploit Agent** | Llama 3.1 70B | Payload crafting, WAF bypass, exploit planning, false-positive filtering |
+| 🧠 **Code Agent** | Llama 3.1 70B | PoC script writing, remediation code, code analysis |
 
 ### AI Exploit Agent
 
@@ -335,7 +327,7 @@ cp .env.example .env
 
 | Variable | Description |
 |---|---|
-| `OLLAMA_URL` | Ollama API URL (default: `http://127.0.0.1:11434`) |
+| `NVIDIA_API_KEY` | NVIDIA NIM API key for AI-powered scanning |
 | `WATCHSTACK_API_KEY` | WatchStack.io API key for verified PoC intelligence (free tier: 30 req/min) |
 | `GITHUB_TOKEN` | GitHub API token for higher rate limits on PoC search |
 | `SHODAN_API_KEY` | Shodan API key for OSINT enrichment |

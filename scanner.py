@@ -609,15 +609,15 @@ def main():
 
     # Initialize AI logic globally if enabled (CLI or Interactive)
     if options.get("ai"):
-        ollama_url = options.get("ollama_url", "").strip()
-        if ollama_url:
-            os.environ["OLLAMA_URL"] = ollama_url
+        nvidia_api_key = options.get("nvidia_api_key", "").strip()
+        if nvidia_api_key:
+            os.environ["NVIDIA_API_KEY"] = nvidia_api_key
         init_ai(
             model=options.get("ai_model", DEFAULT_AI_MODEL),
-            base_url=ollama_url or None,
+            api_key=nvidia_api_key or None,
         )
         # Initialize dual-model system (WhiteRabbitNeo + Qwen3-Coder)
-        init_dual_ai(base_url=ollama_url or None)
+        init_dual_ai(api_key=nvidia_api_key or None)
 
     # If proxy_listen was enabled interactively, start it in the background
     if options.get("proxy_listen"):

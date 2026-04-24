@@ -14,63 +14,9 @@ from utils.request import (
 )
 
 
-DEFAULT_AI_MODEL = "WhiteRabbitNeo/Llama-3.1-WhiteRabbitNeo-2-8B"
+DEFAULT_AI_MODEL = "meta/llama-3.1-70b-instruct"
+DEFAULT_NVIDIA_API_KEY = "REDACTED-OLD-NVIDIA-KEY-REVOKED"
 
-
-def _auto_detect_ollama_url() -> str:
-    """Auto-detect Ollama URL.
-
-    Priority:
-    1. OLLAMA_URL environment variable (explicit override)
-    2. localhost (if Ollama runs on the same machine)
-    3. Default gateway IP (VMware/WSL host)
-    4. Common VMnet adapter IPs
-    """
-    env_url = os.environ.get("OLLAMA_URL", "")
-    if env_url:
-        return env_url
-
-    import socket
-
-    candidates = ["127.0.0.1"]
-
-    # Try to get default gateway (works in VMware/WSL — points to Windows host)
-    try:
-        with open("/proc/net/route") as f:
-            for line in f:
-                parts = line.strip().split()
-                if len(parts) >= 3 and parts[1] == "00000000":
-                    # Default route — gateway is in hex, little-endian
-                    gw_hex = parts[2]
-                    gw_ip = ".".join(
-                        str(int(gw_hex[i:i + 2], 16))
-                        for i in range(0, 8, 2)
-                    )
-                    if gw_ip not in candidates:
-                        candidates.append(gw_ip)
-                    break
-    except (OSError, ValueError):
-        pass
-
-    # Common VMnet8 adapter IPs
-    for ip in ("192.168.6.1", "192.168.186.1"):
-        if ip not in candidates:
-            candidates.append(ip)
-
-    # Quick probe each candidate
-    for ip in candidates:
-        try:
-            sock = socket.create_connection((ip, 11434), timeout=0.5)
-            sock.close()
-            return f"http://{ip}:11434"
-        except (OSError, socket.timeout):
-            continue
-
-    # Fallback
-    return "http://127.0.0.1:11434"
-
-
-DEFAULT_OLLAMA_URL = _auto_detect_ollama_url()
 
 
 @dataclass(frozen=True)
@@ -179,7 +125,7 @@ SCAN_OPTION_DEFAULTS = {
     "threads": 10,
     "ai": False,
     "ai_model": DEFAULT_AI_MODEL,
-    "ollama_url": DEFAULT_OLLAMA_URL,
+    "nvidia_api_key": DEFAULT_NVIDIA_API_KEY,
     "agent": False,
     "brute": False,
     "sploitus": False,
@@ -711,7 +657,7 @@ PARSER_ARGUMENT_SPECS = (
         ("--ai",),
         {
             "action": "store_true",
-            "help": "Enable AI analysis (Ollama, local & free). Requires Ollama running.",
+            "help": "Enable AI analysis (NVIDIA API).",
         },
     ),
     ArgumentSpec(
@@ -725,14 +671,14 @@ PARSER_ARGUMENT_SPECS = (
         ("--ai-model",),
         {
             "default": DEFAULT_AI_MODEL,
-            "help": "Ollama model (default: WhiteRabbitNeo-Llama-3.1-8B)",
+            "help": "NVIDIA API model (default: meta/llama-3.1-70b-instruct)",
         },
     ),
     ArgumentSpec(
-        ("--ollama-url",),
+        ("--nvidia-api-key",),
         {
-            "default": DEFAULT_OLLAMA_URL,
-            "help": f"Ollama server URL (default: {DEFAULT_OLLAMA_URL})",
+            "default": "REDACTED-OLD-NVIDIA-KEY-REVOKED",
+            "help": f"NVIDIA API Key (default is hardcoded)",
         },
     ),
 )
@@ -974,13 +920,13 @@ INTERACTIVE_MODE_RUNTIME_PROMPTS = {
 INTERACTIVE_ALWAYS_RUNTIME_PROMPTS = (
     InteractivePromptSpec(
         "ai",
-        "[?] Enable AI Vulnerability Analysis (Ollama)? (y/N)",
+        "[?] Enable AI Vulnerability Analysis (NVIDIA API)? (y/N)",
         "N",
     ),
     InteractivePromptSpec(
-        "ollama_url",
-        f"[?] Ollama URL (default: {DEFAULT_OLLAMA_URL})",
-        DEFAULT_OLLAMA_URL,
+        "nvidia_api_key",
+        f"[?] NVIDIA API Key (default: hardcoded)",
+        "REDACTED-OLD-NVIDIA-KEY-REVOKED",
         value_type="text",
     ),
     InteractivePromptSpec(

@@ -108,7 +108,7 @@ class AIWafEvader:
         Initialize the WAF Evasion Agent.
 
         Args:
-            ai_client: OllamaClient instance (or DualModelAI).
+            ai_client: NvidiaApiClient instance (or DualModelAI).
             waf_name: Detected WAF name (e.g., 'Cloudflare', 'ModSecurity').
         """
         self.ai = ai_client

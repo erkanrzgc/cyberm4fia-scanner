@@ -36,7 +36,7 @@ class TestDocumentation:
         assert "### Scan Modules" in markdown
         assert "| `--api-scan` | API security scan" in markdown
         assert "| `--proxy-listen PORT` | Start local MITM proxy" in markdown
-        assert "| `--ai-model AI_MODEL` | Ollama model" in markdown
+        assert "| --ai-model AI_MODEL | NVIDIA API model" in markdown
 
     def test_scan_modes_and_attack_profiles_render_from_metadata(self):
         mode_markdown = render_scan_modes_markdown()

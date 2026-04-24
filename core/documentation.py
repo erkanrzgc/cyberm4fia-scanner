@@ -317,7 +317,7 @@ CLI_DOC_GROUPS = (
             "sarif",
             "ai",
             "ai_model",
-            "ollama_url",
+            "nvidia_api_key",
         },
     ),
     (

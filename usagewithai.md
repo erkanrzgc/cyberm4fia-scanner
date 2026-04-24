@@ -8,7 +8,7 @@
 
 cyberm4fia-scanner is a Python-based modular Red Team security scanning platform. It covers web application, network, API, cloud, and OSINT scanning capabilities. The main entry point is `scanner.py`.
 
-**Run via Wizard:** `python3 scanner.py` (Fully interactive setup for target, AI, proxy, and exploit follow-ups)
+**Run via Wizard:** `python3 scanner.py` (Fully interactive setup for target, NVIDIA AI, proxy, and exploit follow-ups)
 **Run via CLI:** `python3 scanner.py -u <target> [flags...]`
 
 ---
@@ -290,9 +290,9 @@ Each scan creates results under `scans/<target>/`:
 | `--tamper TAMPER` | Tamper scripts for WAF bypass (comma-separated, e.g. space2comment,randomcase) |
 | `-t THREADS, --threads THREADS` | Number of threads |
 | `--proxy PROXY_URL` | Proxy URL (http/socks5, e.g. socks5://127.0.0.1:9050) |
-| `--ai` | Enable AI analysis (Ollama, local & free). Requires Ollama running. |
-| `--ai-model AI_MODEL` | Ollama model (default: WhiteRabbitNeo-Llama-3.1-8B) |
-| `--ollama-url OLLAMA_URL` | Ollama server URL (default: http://192.168.6.1:11434) |
+| `--ai` | Enable AI analysis (NVIDIA API). |
+| `--ai-model AI_MODEL` | NVIDIA API model (default: meta/llama-3.1-70b-instruct) |
+| `--nvidia-api-key NVIDIA_API_KEY` | NVIDIA API Key (default is hardcoded) |
 
 ### Service Modes
 | Flag | Description |
@@ -306,6 +306,7 @@ Each scan creates results under `scans/<target>/`:
 | Flag | Description |
 |---|---|
 | `-h, --help` | show this help message and exit |
+| `--sca` | Enable Software Composition Analysis (OSV-Scanner) |
 | `--exploit` | Enable exploit follow-up actions/prompts after scan results |
 | `--forbidden-bypass` | 403/401 forbidden bypass scanner |
 | `--file-upload` | File upload vulnerability scanner |

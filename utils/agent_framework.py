@@ -410,7 +410,7 @@ class AgentOrchestrator:
         # DualModelAI
         if hasattr(self.ai_client, "get_client_for_role"):
             return self.ai_client.get_client_for_role(role)
-        # OllamaClient
+        # NvidiaApiClient
         if getattr(self.ai_client, "available", False):
             return self.ai_client
         return None
@@ -572,7 +572,7 @@ Give a tactical summary for planning the next scan step."""
         ai_available = bool(self._get_ai_client("exploit"))
         if not ai_available:
             log_warning("AI not available — running in deterministic fallback mode")
-            log_info("For AI-driven mode: ollama serve && ollama pull WhiteRabbitNeo")
+            log_info("For AI-driven mode: export NVIDIA_API_KEY=your_key")
 
         for iteration in range(1, self.MAX_ITERATIONS + 1):
             elapsed = time.time() - start_time
