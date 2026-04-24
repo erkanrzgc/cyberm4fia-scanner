@@ -33,6 +33,16 @@ memory/
 # Linter cache
 .ruff_cache/
 
+# Local configs / AI tools
+.mcp.json
+.agents/
+.claude/
+scratch_*.py
+
+# Runtime binary databases
+data/scan_intelligence.db
+data/*.db
+
 # External MCP tools (cloned, not tracked)
 tools/mcp-for-security/
 data/payload_memory.json
