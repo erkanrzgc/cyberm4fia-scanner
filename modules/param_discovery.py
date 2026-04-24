@@ -9,10 +9,9 @@ Strategy:
   4. Return enriched URLs with discovered params for exploit modules
 """
 
-import asyncio
 from urllib.parse import urlparse, urlencode, urlunparse, parse_qs
 
-from utils.colors import log_info, log_success, log_warning
+from utils.colors import log_info, log_success
 from utils.request import smart_request, ScanExceptions
 
 # ── Common parameter names (high-signal, ordered by likelihood) ──────────

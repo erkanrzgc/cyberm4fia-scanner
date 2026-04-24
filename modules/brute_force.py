@@ -7,7 +7,7 @@ import ftplib
 import socket
 from datetime import datetime
 
-from utils.colors import Colors, log_info, log_success, log_warning, log_error
+from utils.colors import Colors, log_info, log_success, log_warning
 from utils.request import ScanExceptions
 
 # Default credentials to test (common admin/default pairs)

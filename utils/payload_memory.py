@@ -7,9 +7,7 @@ Learns from past scans to improve future exploitation.
 import json
 import os
 from datetime import datetime
-from typing import Optional
 
-from utils.request import ScanExceptions
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 MEMORY_FILE = os.path.join(DATA_DIR, "payload_memory.json")

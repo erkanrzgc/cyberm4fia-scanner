@@ -7,7 +7,6 @@ The AI DRIVES the scan — it decides what to scan next based on results,
 rather than just analyzing results after the fact.
 """
 
-import json
 import time
 import signal
 import importlib
@@ -24,7 +23,6 @@ from utils.colors import (
     log_warning,
 )
 from utils.scan_intelligence import get_scan_intelligence
-from utils.request import ScanExceptions
 
 
 # ─── Data Classes ───────────────────────────────────────────────────────
@@ -389,7 +387,7 @@ class AgentOrchestrator:
     def __init__(self, ai_client=None):
         if ai_client is None:
             try:
-                from utils.ai import get_dual_ai, get_ai, init_ai, init_dual_ai
+                from utils.ai import get_dual_ai, get_ai, init_ai
                 dual = get_dual_ai()
                 if dual and dual.available:
                     ai_client = dual
@@ -682,7 +680,7 @@ Give a tactical summary for planning the next scan step."""
         client = self._get_ai_client("summary")
         if client and getattr(client, "available", False) and memory.all_findings:
             try:
-                from utils.ai import generate_scan_summary, get_runtime_stats
+                from utils.ai import generate_scan_summary
                 stats = {"requests": 0, "waf": 0}
                 final_summary = generate_scan_summary(
                     client, memory.all_findings, target, stats

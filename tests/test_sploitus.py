@@ -1,7 +1,6 @@
 import pytest
 from unittest.mock import patch, MagicMock
 from utils.sploitus_search import SploitusSearch
-from utils.request import ScanExceptions
 import httpx
 
 @pytest.fixture

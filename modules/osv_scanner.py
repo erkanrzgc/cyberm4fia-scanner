@@ -6,9 +6,8 @@ and exposed manifest files.
 
 import json
 import re
-from urllib.parse import urlparse
 
-from utils.request import smart_request, increment_vulnerability_count
+from utils.request import increment_vulnerability_count
 from utils.colors import log_info, log_vuln, log_warning
 
 OSV_API_URL = "https://api.osv.dev/v1/query"

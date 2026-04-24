@@ -21,7 +21,7 @@ import socket
 from urllib.parse import urlparse, urljoin
 from datetime import datetime
 
-from utils.colors import log_info, log_success, log_vuln, log_warning
+from utils.colors import log_info, log_success, log_vuln
 from utils.request import smart_request, increment_vulnerability_count, ScanExceptions
 from modules.osv_scanner import check_tech_stack_vulns, analyze_exposed_manifest
 

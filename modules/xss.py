@@ -3,7 +3,7 @@ cyberm4fia-scanner - XSS Module
 Cross-Site Scripting detection
 """
 
-from utils.colors import log_info, log_success, log_vuln, log_warning
+from utils.colors import log_info, log_vuln, log_warning
 from utils.request import (
     get_oob_client,
     increment_vulnerability_count,
@@ -12,11 +12,9 @@ from utils.request import (
 from modules.payloads import XSS_FLAT_PAYLOADS
 from utils.payload_filter import PayloadFilter
 from modules.smart_payload import probe_xss_context
-from bs4 import BeautifulSoup
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse, urljoin
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import re
-from typing import Any, Optional
+from typing import Optional
 from utils.request import ScanExceptions
 
 def analyze_context(soup, payload):

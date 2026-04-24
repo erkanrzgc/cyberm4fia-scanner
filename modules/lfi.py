@@ -14,7 +14,6 @@ from modules.payloads import LFI_PAYLOADS, LFI_SIGNATURES
 from utils.payload_filter import PayloadFilter
 from modules.smart_payload import probe_lfi_context
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse, urljoin
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import base64
 import re
 from utils.request import ScanExceptions

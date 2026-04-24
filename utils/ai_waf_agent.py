@@ -3,10 +3,9 @@ cyberm4fia-scanner - AI WAF Evasion Agent
 Real-time AI-powered WAF bypass mutation loop using WhiteRabbitNeo.
 """
 
-import json
 import re
 from dataclasses import dataclass, field
-from typing import Optional, List
+from typing import List
 
 from utils.colors import Colors, log_info, log_success, log_warning
 from utils.request import smart_request

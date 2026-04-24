@@ -2,7 +2,6 @@
 """Tests for new vulnerability checklist modules."""
 
 from unittest.mock import patch, MagicMock
-import pytest
 
 
 class TestForbiddenBypass:

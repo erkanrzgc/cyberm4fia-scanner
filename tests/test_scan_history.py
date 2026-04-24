@@ -1,7 +1,6 @@
 import pytest
 import os
 import tempfile
-import sqlite3
 from utils.scan_history import ScanHistory
 
 @pytest.fixture

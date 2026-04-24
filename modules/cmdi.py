@@ -16,7 +16,6 @@ from modules.payloads import CMDI_PAYLOADS, CMDI_SIGNATURES
 from utils.payload_filter import PayloadFilter
 from modules.smart_payload import probe_cmdi_context
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse, urljoin
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from utils.request import ScanExceptions
 
 def _match_standalone_output_line(text, candidates):

@@ -538,7 +538,7 @@ def _run_autopwn_postprocess(state):
 def _run_lfi_postprocess(state):
     """Auto-exploit confirmed LFI vulns: deep file harvesting via DeepLFIExploit."""
     from modules.lfi_exploit import DeepLFIExploit
-    from utils.colors import Colors, log_info, log_success, log_warning
+    from utils.colors import Colors, log_success
     from utils.loot_manager import LootManager
 
     options = state.get("options", {})
@@ -578,7 +578,7 @@ def _run_lfi_postprocess(state):
 def _run_ssrf_postprocess(state):
     """Auto-exploit confirmed SSRF vulns: internal port scan + cloud credential harvest."""
     from modules.ssrf_exploit import DeepSSRFExploit
-    from utils.colors import Colors, log_info, log_success, log_warning
+    from utils.colors import Colors, log_success
     from utils.loot_manager import LootManager
 
     options = state.get("options", {})

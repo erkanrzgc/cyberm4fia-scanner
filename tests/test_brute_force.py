@@ -1,7 +1,7 @@
 import pytest
 import ftplib
 import socket
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from modules.brute_force import BruteForcer
 
 @pytest.fixture

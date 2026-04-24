@@ -19,7 +19,6 @@ Endpoints:
   DELETE /api/scan/{id}     Cancel a scan
 """
 
-import hashlib
 import hmac
 import secrets
 import sys

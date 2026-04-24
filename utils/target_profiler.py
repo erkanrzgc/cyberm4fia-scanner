@@ -2,11 +2,9 @@
 cyberm4fia-scanner — Target Profiler & Priority Scoring
 Builds intelligence profiles for targets and scores them for scan prioritization.
 """
-import json
 from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
-from utils.colors import log_info
 
 
 # Tech stack → module recommendations

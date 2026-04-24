@@ -12,9 +12,8 @@ bodies but have no visible HTML forms. This module fills that gap by:
 
 from urllib.parse import urlparse, urljoin
 import json
-import re
 
-from utils.colors import log_info, log_success, log_vuln, log_warning
+from utils.colors import log_info, log_success, log_vuln
 from utils.request import smart_request, increment_vulnerability_count, ScanExceptions
 
 # ── JSON Error Leak Patterns ────────────────────────────────────────────

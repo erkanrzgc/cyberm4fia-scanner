@@ -1,6 +1,6 @@
 """Tests for the Scan Intelligence Engine (RAG-Lite Knowledge Loop)."""
-import os, tempfile, pytest
-from utils.scan_intelligence import ScanIntelligence, get_scan_intelligence
+import pytest
+from utils.scan_intelligence import ScanIntelligence
 
 
 @pytest.fixture

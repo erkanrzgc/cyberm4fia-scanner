@@ -9,7 +9,7 @@ import sqlite3
 from datetime import datetime
 from dataclasses import dataclass, field
 
-from utils.colors import Colors, log_info, log_success, log_warning
+from utils.colors import Colors, log_info, log_success
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 DB_FILE = os.path.join(DATA_DIR, "scan_history.db")

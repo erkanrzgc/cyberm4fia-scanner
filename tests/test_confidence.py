@@ -1,4 +1,3 @@
-import pytest
 from utils.finding import compute_confidence_score, _infer_confidence
 
 def test_compute_confidence_score_high():

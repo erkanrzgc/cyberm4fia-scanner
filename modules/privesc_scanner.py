@@ -4,7 +4,6 @@ Automated enumeration of SUID, sudo, cron, and kernel escalation vectors.
 """
 
 from utils.colors import Colors, log_info, log_success, log_warning
-from utils.request import ScanExceptions
 
 
 # ── Known GTFOBins SUID Binaries ─────────────────────────────────────────

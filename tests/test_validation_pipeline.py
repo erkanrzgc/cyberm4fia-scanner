@@ -1,6 +1,6 @@
 """Tests for the Finding Validation Pipeline."""
 import pytest
-from utils.validation_pipeline import ValidationPipeline, STAGE_ORDER
+from utils.validation_pipeline import ValidationPipeline
 
 
 @pytest.fixture

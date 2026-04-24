@@ -7,7 +7,7 @@ Based on Az0x7/vulnerability-Checklist and real-world bug bounty research.
 
 from urllib.parse import urlparse, urlunparse
 
-from utils.colors import log_info, log_success, log_warning
+from utils.colors import log_info, log_success
 from utils.request import smart_request, ScanExceptions
 
 # ─────────────────────────────────────────────────────

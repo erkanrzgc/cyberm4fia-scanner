@@ -2,12 +2,9 @@
 cyberm4fia-scanner — Finding Validation Pipeline (Hallucination Gate System)
 4-gate validation inspired by the 0-Day Machine's "guilty until proven innocent" approach.
 """
-import hashlib, time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
 
-from utils.colors import log_info, log_success, log_warning
 
 
 GATE_DESCRIPTIONS = {

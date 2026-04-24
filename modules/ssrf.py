@@ -4,7 +4,6 @@ Server-Side Request Forgery detection (Threaded)
 """
 
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse, urljoin
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from utils.colors import log_info, log_success, log_vuln
 from utils.request import (
@@ -15,7 +14,7 @@ from utils.request import (
 )
 from modules.payloads import load_payloads_from_file
 from utils.payload_filter import PayloadFilter
-from typing import Any, Optional
+from typing import Optional
 from utils.request import ScanExceptions
 
 # SSRF Payloads: loaded from file + hardcoded fallback

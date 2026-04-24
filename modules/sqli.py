@@ -23,7 +23,6 @@ from modules.payloads import (
 )
 from utils.payload_filter import PayloadFilter
 from modules.smart_payload import probe_sqli_context
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from utils.request import ScanExceptions
 
 def detect_sqli(text):

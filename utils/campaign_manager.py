@@ -3,11 +3,11 @@ cyberm4fia-scanner — Campaign Manager
 Organized scan sessions with structured output, inspired by the 0-Day Machine's
 hunts/campaigns/ pattern.
 """
-import json, os, uuid, shutil
+import json, os, uuid
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 
-from utils.colors import log_info, log_success, log_warning
+from utils.colors import log_success, log_warning
 
 SCANS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scans")
 CAMPAIGNS_DIR = os.path.join(SCANS_DIR, "campaigns")
