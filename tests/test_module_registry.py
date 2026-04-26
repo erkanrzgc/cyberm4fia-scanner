@@ -129,11 +129,21 @@ class TestModuleRegistry:
         assert calls == [("subdomain", "example.com")]
 
     def test_pre_scan_phase_populates_recon_and_tech_state(self, monkeypatch):
+        import modules.guaranteed_checks as guaranteed_mod
         import modules.recon as recon_mod
         import modules.tech_detect as tech_mod
         import utils.cve_feed as cve_mod
         import utils.shodan_lookup as osint_mod
 
+        # Mute the always-on guaranteed-checks module so the assertion below
+        # only sees the CVE_Intel produced by the explicitly mocked recon/cve
+        # path. (guaranteed_checks otherwise hits the network and emits ~20
+        # findings unrelated to what this test is exercising.)
+        monkeypatch.setattr(
+            guaranteed_mod,
+            "scan_guaranteed",
+            lambda *args, **kwargs: [],
+        )
         monkeypatch.setattr(
             recon_mod,
             "run_recon",
@@ -592,4 +602,7 @@ class TestModuleRegistry:
             )
         )
 
-        assert [spec.id for spec in specs] == ["redirect", "jwt"]
+        # api_injection is always-on (option_key=None) so it appears regardless
+        # of the option dict. redirect+jwt are gated by their flags; cors phase
+        # is "scan" not "post_scan" so it's filtered out.
+        assert [spec.id for spec in specs] == ["api_injection", "redirect", "jwt"]

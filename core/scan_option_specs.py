@@ -5,6 +5,14 @@ cyberm4fia-scanner - Scan option defaults and presets.
 from dataclasses import dataclass
 import os
 
+# Defensive .env load. utils.request also calls load_dotenv() — multiple
+# calls are idempotent and this guards against future import-order changes.
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 from core.module_registry import ASYNC_MODULES, PHASE_MODULES
 from utils.request import (
     get_default_timeout,
@@ -15,7 +23,9 @@ from utils.request import (
 
 
 DEFAULT_AI_MODEL = "meta/llama-3.1-70b-instruct"
-DEFAULT_NVIDIA_API_KEY = "REDACTED-OLD-NVIDIA-KEY-REVOKED"
+# Read from env. Never hardcode an API key in source — keys committed to git
+# are leaked permanently in history. Set NVIDIA_API_KEY in .env or your shell.
+DEFAULT_NVIDIA_API_KEY = os.environ.get("NVIDIA_API_KEY", "")
 
 
 
@@ -677,8 +687,8 @@ PARSER_ARGUMENT_SPECS = (
     ArgumentSpec(
         ("--nvidia-api-key",),
         {
-            "default": "REDACTED-OLD-NVIDIA-KEY-REVOKED",
-            "help": f"NVIDIA API Key (default is hardcoded)",
+            "default": DEFAULT_NVIDIA_API_KEY,
+            "help": "NVIDIA API Key (reads NVIDIA_API_KEY env var by default)",
         },
     ),
 )
@@ -925,8 +935,8 @@ INTERACTIVE_ALWAYS_RUNTIME_PROMPTS = (
     ),
     InteractivePromptSpec(
         "nvidia_api_key",
-        f"[?] NVIDIA API Key (default: hardcoded)",
-        "REDACTED-OLD-NVIDIA-KEY-REVOKED",
+        "[?] NVIDIA API Key (leave blank to use NVIDIA_API_KEY env var)",
+        DEFAULT_NVIDIA_API_KEY,
         value_type="text",
     ),
     InteractivePromptSpec(

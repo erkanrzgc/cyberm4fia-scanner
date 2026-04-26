@@ -27,7 +27,7 @@ def mock_osv_response():
     }
 
 
-@patch("requests.post")
+@patch("httpx.post")
 def test_query_osv_api(mock_post, mock_osv_response):
     """Test OSV API query logic."""
     mock_resp = MagicMock()

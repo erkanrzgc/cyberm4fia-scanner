@@ -24,6 +24,7 @@ from utils.colors import (
     log_info,
     log_success,
     log_error,
+    log_warning,
     set_quiet,
 )
 from utils.request import (
@@ -610,14 +611,24 @@ def main():
     # Initialize AI logic globally if enabled (CLI or Interactive)
     if options.get("ai"):
         nvidia_api_key = options.get("nvidia_api_key", "").strip()
-        if nvidia_api_key:
+        # Fall back to env if --nvidia-api-key wasn't passed.
+        if not nvidia_api_key:
+            nvidia_api_key = os.environ.get("NVIDIA_API_KEY", "").strip()
+        if not nvidia_api_key:
+            log_warning(
+                "AI requested (--ai) but NVIDIA_API_KEY is not set. "
+                "Add it to .env (NVIDIA_API_KEY=...) or pass --nvidia-api-key. "
+                "AI-powered checks will be silently disabled. "
+                "Get a key at https://build.nvidia.com/"
+            )
+        else:
             os.environ["NVIDIA_API_KEY"] = nvidia_api_key
-        init_ai(
-            model=options.get("ai_model", DEFAULT_AI_MODEL),
-            api_key=nvidia_api_key or None,
-        )
-        # Initialize dual-model system (WhiteRabbitNeo + Qwen3-Coder)
-        init_dual_ai(api_key=nvidia_api_key or None)
+            init_ai(
+                model=options.get("ai_model", DEFAULT_AI_MODEL),
+                api_key=nvidia_api_key,
+            )
+            # Initialize dual-model system (WhiteRabbitNeo + Qwen3-Coder)
+            init_dual_ai(api_key=nvidia_api_key)
 
     # If proxy_listen was enabled interactively, start it in the background
     if options.get("proxy_listen"):

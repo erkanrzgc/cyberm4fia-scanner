@@ -46,11 +46,11 @@ def query_osv_api(package_name, version, ecosystem=None):
         payload["package"]["ecosystem"] = ecosystem
     
     try:
-        # We use a direct requests call here to avoid our smart_request's 
-        # anti-evasion/WAF tampering since we are talking to a legitimate API
-        import requests
-        resp = requests.post(OSV_API_URL, json=payload, timeout=10)
-        
+        # Direct httpx call (project standard) — bypasses smart_request's
+        # WAF tampering because we're talking to a legitimate API endpoint.
+        import httpx
+        resp = httpx.post(OSV_API_URL, json=payload, timeout=10)
+
         if resp.status_code == 200:
             data = resp.json()
             vulns = data.get("vulns", [])

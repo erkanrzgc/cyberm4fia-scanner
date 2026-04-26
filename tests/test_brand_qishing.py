@@ -54,6 +54,10 @@ def test_check_phishing_domains_unreachable_target(mock_gethostbyname):
 
 # --- Qishing Tests ---
 
+@pytest.mark.skipif(
+    not __import__("utils.qishing", fromlist=["QR_MODULES_AVAILABLE"]).QR_MODULES_AVAILABLE,
+    reason="pyzbar/pillow not installed — qishing test requires QR modules",
+)
 @patch("utils.qishing.QR_MODULES_AVAILABLE", True)
 @patch("utils.qishing.Image.open")
 @patch("utils.qishing.decode")
@@ -74,6 +78,10 @@ def test_analyze_image_qishing_vulnerable(mock_decode, mock_open):
     assert findings[0]["severity"] == "HIGH"
     assert "evil-phishing-site.com" in findings[0]["description"]
 
+@pytest.mark.skipif(
+    not __import__("utils.qishing", fromlist=["QR_MODULES_AVAILABLE"]).QR_MODULES_AVAILABLE,
+    reason="pyzbar/pillow not installed — qishing test requires QR modules",
+)
 @patch("utils.qishing.QR_MODULES_AVAILABLE", True)
 @patch("utils.qishing.Image.open")
 @patch("utils.qishing.decode")
