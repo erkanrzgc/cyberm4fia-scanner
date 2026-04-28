@@ -22,7 +22,7 @@ from utils.request import (
 )
 
 
-DEFAULT_AI_MODEL = "meta/llama-3.1-70b-instruct"
+DEFAULT_AI_MODEL = "meta/llama-3.3-70b-instruct"
 # Read from env. Never hardcode an API key in source — keys committed to git
 # are leaked permanently in history. Set NVIDIA_API_KEY in .env or your shell.
 DEFAULT_NVIDIA_API_KEY = os.environ.get("NVIDIA_API_KEY", "")
@@ -681,7 +681,7 @@ PARSER_ARGUMENT_SPECS = (
         ("--ai-model",),
         {
             "default": DEFAULT_AI_MODEL,
-            "help": "NVIDIA API model (default: meta/llama-3.1-70b-instruct)",
+            "help": "NVIDIA API model (default: meta/llama-3.3-70b-instruct)",
         },
     ),
     ArgumentSpec(

@@ -185,12 +185,12 @@ python3 scanner.py -u https://target.com --agent --ai
 
 ### Unified AI Architecture (70B)
 
-Both exploit and code generation roles now utilize the high-performance **meta/llama-3.1-70b-instruct** model via NVIDIA NIM for maximum fidelity:
+Both exploit and code generation roles now utilize the high-performance **meta/llama-3.3-70b-instruct** model via NVIDIA NIM for maximum fidelity:
 
 | Role | Implementation | What It Does |
 |---|---|---|
-| 🐇 **Exploit Agent** | Llama 3.1 70B | Payload crafting, WAF bypass, exploit planning, false-positive filtering |
-| 🧠 **Code Agent** | Llama 3.1 70B | PoC script writing, remediation code, code analysis |
+| 🐇 **Exploit Agent** | Llama 3.3 70B | Payload crafting, WAF bypass, exploit planning, false-positive filtering |
+| 🧠 **Code Agent** | Llama 3.3 70B | PoC script writing, remediation code, code analysis |
 
 ### AI Exploit Agent
 

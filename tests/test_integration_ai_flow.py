@@ -27,14 +27,14 @@ def test_ai_client_generate_success(mock_httpx_post):
     }
     mock_httpx_post.return_value = mock_chat
 
-    client = NvidiaApiClient(model="meta/llama-3.1-70b-instruct", api_key="test-key")
+    client = NvidiaApiClient(model="meta/llama-3.3-70b-instruct", api_key="test-key")
     response = client.generate("Analyze <script>alert(1)</script>", "You are a cyber security expert.")
     
     assert response == "Analysis: Found Reflected XSS."
     mock_httpx_post.assert_called_once()
     kwargs = mock_httpx_post.call_args.kwargs
     assert "json" in kwargs
-    assert kwargs["json"]["model"] == "meta/llama-3.1-70b-instruct"
+    assert kwargs["json"]["model"] == "meta/llama-3.3-70b-instruct"
     assert len(kwargs["json"]["messages"]) == 2
 
 def test_ai_client_timeout_returns_none(mock_httpx_post):

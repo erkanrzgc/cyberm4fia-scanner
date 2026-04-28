@@ -14,11 +14,11 @@ class TestNvidiaApiClientInit:
 
     def test_default_model(self):
         client = NvidiaApiClient.__new__(NvidiaApiClient)
-        client.model = "meta/llama-3.1-70b-instruct"
+        client.model = "meta/llama-3.3-70b-instruct"
         client.base_url = "https://integrate.api.nvidia.com/v1"
         client.api_key = "test_key"
         client.available = False
-        assert client.model == "meta/llama-3.1-70b-instruct"
+        assert client.model == "meta/llama-3.3-70b-instruct"
 
     def test_custom_model(self):
         client = NvidiaApiClient.__new__(NvidiaApiClient)
@@ -27,7 +27,7 @@ class TestNvidiaApiClientInit:
 
     def test_unavailable_client_returns_empty(self):
         client = NvidiaApiClient.__new__(NvidiaApiClient)
-        client.model = "meta/llama-3.1-70b-instruct"
+        client.model = "meta/llama-3.3-70b-instruct"
         client.base_url = "https://integrate.api.nvidia.com/v1"
         client.api_key = "test"
         client.available = False
@@ -49,7 +49,7 @@ class TestAIFunctions:
     def _make_mock_client(self, response: str = ""):
         client = NvidiaApiClient.__new__(NvidiaApiClient)
         client.available = True
-        client.model = "meta/llama-3.1-70b-instruct"
+        client.model = "meta/llama-3.3-70b-instruct"
         client._mock_response = response
 
         def mock_generate(prompt, system="", temperature=0.3, model_role=""):
@@ -142,7 +142,7 @@ class TestAIModule:
     def test_default_model_constant(self):
         from utils.ai import DEFAULT_MODEL
 
-        assert DEFAULT_MODEL == "meta/llama-3.1-70b-instruct"
+        assert DEFAULT_MODEL == "meta/llama-3.3-70b-instruct"
 
     def test_init_ai_returns_client(self, monkeypatch):
         from utils.ai import init_ai

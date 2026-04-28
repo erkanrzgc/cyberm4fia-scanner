@@ -1,8 +1,8 @@
 """
 cyberm4fia-scanner — AI/LLM Integration (NVIDIA NIM)
 
-NVIDIA NIM-based vulnerability analysis using high-performance Llama 3.1 70B.
-Default model: meta/llama-3.1-70b-instruct
+NVIDIA NIM-based vulnerability analysis using high-performance Llama 3.3 70B.
+Default model: meta/llama-3.3-70b-instruct
 
 Features:
     - Vulnerability analysis & exploit scenario generation
@@ -67,8 +67,8 @@ def resolve_nvidia_base() -> str:
     """Return the NVIDIA NIM API base URL."""
     return os.environ.get("NVIDIA_API_URL", "https://integrate.api.nvidia.com/v1")
 
-DEFAULT_MODEL = "meta/llama-3.1-70b-instruct"
-CODER_MODEL = "meta/llama-3.1-70b-instruct" # Using 70B for both as it is high performance
+DEFAULT_MODEL = "meta/llama-3.3-70b-instruct"
+CODER_MODEL = "meta/llama-3.3-70b-instruct" # Using 70B for both as it is high performance
 
 # Model roles — which model to use for which task
 MODEL_ROLES = {

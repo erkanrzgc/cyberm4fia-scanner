@@ -291,7 +291,7 @@ Each scan creates results under `scans/<target>/`:
 | `-t THREADS, --threads THREADS` | Number of threads |
 | `--proxy PROXY_URL` | Proxy URL (http/socks5, e.g. socks5://127.0.0.1:9050) |
 | `--ai` | Enable AI analysis (NVIDIA API). |
-| `--ai-model AI_MODEL` | NVIDIA API model (default: meta/llama-3.1-70b-instruct) |
+| `--ai-model AI_MODEL` | NVIDIA API model (default: meta/llama-3.3-70b-instruct) |
 | `--nvidia-api-key NVIDIA_API_KEY` | NVIDIA API Key (reads NVIDIA_API_KEY env var by default) |
 
 ### Service Modes

