@@ -8,8 +8,13 @@ set -e
 
 TOOLS_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$TOOLS_DIR/mcp-for-security"
-NPM_BIN="/home/erkanrzgc/.nvm/versions/node/v22.22.1/bin/npm"
-NODE_BIN="/home/erkanrzgc/.nvm/versions/node/v22.22.1/bin/node"
+NPM_BIN="$(command -v npm)"
+NODE_BIN="$(command -v node)"
+
+if [ -z "$NPM_BIN" ] || [ -z "$NODE_BIN" ]; then
+    echo "ERROR: npm and node must be on PATH. Install Node.js (>=18) and retry."
+    exit 1
+fi
 
 # MCP servers we want to install
 SERVERS=(
