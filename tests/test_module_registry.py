@@ -602,7 +602,10 @@ class TestModuleRegistry:
             )
         )
 
-        # api_injection is always-on (option_key=None) so it appears regardless
-        # of the option dict. redirect+jwt are gated by their flags; cors phase
-        # is "scan" not "post_scan" so it's filtered out.
-        assert [spec.id for spec in specs] == ["api_injection", "redirect", "jwt"]
+        # api_injection and graphql_audit are always-on (option_key=None) so
+        # they appear regardless of the option dict. redirect+jwt are gated
+        # by their flags; cors phase is "scan" not "post_scan" so it's
+        # filtered out.
+        assert [spec.id for spec in specs] == [
+            "api_injection", "graphql_audit", "redirect", "jwt",
+        ]

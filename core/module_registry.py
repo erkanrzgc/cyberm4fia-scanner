@@ -250,6 +250,7 @@ from core.module_runners import (  # noqa: E402, F401
     _run_ai_analysis,
     _run_api_injection,
     _run_api_scan,
+    _run_graphql_audit,
     _run_auth_bypass,
     _run_autopwn_postprocess,
     _run_business_logic,
@@ -567,6 +568,15 @@ PHASE_MODULES = (
         requires_forms=False,
         collect_results=True,
         runner=_run_api_injection,
+    ),
+    PhaseModuleSpec(
+        id="graphql_audit",
+        option_key=None,
+        name="GraphQL Deep Audit",
+        phase="post_scan",
+        requires_forms=False,
+        collect_results=True,
+        runner=_run_graphql_audit,
     ),
     PhaseModuleSpec(
         id="redirect",

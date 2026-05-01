@@ -1086,6 +1086,24 @@ def _run_api_injection(state):
     return scan_api_injection(url, api_endpoints, delay, options)
 
 
+# ── GraphQL Audit runner ─────────────────────────────────────────────────────
+
+def _run_graphql_audit(state):
+    """Run advanced GraphQL checks (depth DoS, batching, suggestions, GET CSRF).
+
+    Lives next to api_injection because it shares the same target shape:
+    a base URL that may or may not host a /graphql endpoint. The module
+    detects the endpoint itself and short-circuits if none is alive.
+    """
+    from modules.graphql_audit import scan_graphql_audit
+
+    url = state.get("url", "")
+    delay = state.get("delay", 0)
+    options = state.get("options", {})
+
+    return scan_graphql_audit(url, delay, options)
+
+
 # ── Guaranteed Security Checks runner ────────────────────────────────────────
 
 def _run_guaranteed_checks(state):
