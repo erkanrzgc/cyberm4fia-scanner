@@ -100,59 +100,48 @@ def _test_xss_param_payload(payload, url, param, original_params, delay, smart_p
     try:
         resp = smart_request("get", test_url, delay=delay)
         vuln_found = _check_xss_reflection(resp, payload, param, test_url, smart_payloads)
-        if vuln_found: return vuln_found
+        if vuln_found:
+            return vuln_found
 
         from utils.waf import waf_detector
-        if waf_detector.is_waf_block(resp.status_code, resp.text):
-            waf_name = waf_detector.detected_waf or "Generic WAF"
-            log_warning(f"WAF Block ({waf_name}) detected on param '{param}'")
-            from utils.tamper import TamperChain
-            tampers = waf_detector.get_recommended_tampers()
-            if tampers:
-                log_info(f"Applying auto-tamper for {waf_name}: {'+'.join(tampers)}")
-                chain = TamperChain(tampers)
-                tampered_payload = chain.apply(payload)
-                if tampered_payload != payload:
-                    test_params[param] = tampered_payload
-                    test_url = urlunparse(parsed._replace(query=urlencode(test_params)))
-                    resp_t = smart_request("get", test_url, delay=delay)
-                    vuln_found = _check_xss_reflection(resp_t, tampered_payload, param, test_url, smart_payloads, source="⚡ Auto-Tamper")
-                    if vuln_found: return vuln_found
+        if not waf_detector.is_waf_block(resp.status_code, resp.text):
+            return None
 
-                    from utils.ai import get_ai, EvolvingWAFBypassEngine
-                    ai_client = get_ai()
-                    if ai_client and ai_client.available and waf_detector.is_waf_block(resp_t.status_code, resp_t.text):
-                        log_info(f"🤖 Starting Evolutionary AI Mutation for {waf_name}...")
-                        engine = EvolvingWAFBypassEngine(ai_client, waf_name, "XSS")
-                        current_payload = payload
-                        for iteration in range(1, 4):
-                            ai_payloads = engine.mutate(current_payload, iteration)
-                            for ai_p in ai_payloads:
-                                test_params[param] = ai_p
-                                test_url = urlunparse(parsed._replace(query=urlencode(test_params)))
-                                resp_ai = smart_request("get", test_url, delay=delay)
-                                vuln_found = _check_xss_reflection(resp_ai, ai_p, param, test_url, smart_payloads, source=f"🤖 AI Gen-{iteration}")
-                                if vuln_found: return vuln_found
-                                if waf_detector.is_waf_block(resp_ai.status_code, resp_ai.text):
-                                    engine.analyze_failure(ai_p)
-                                    current_payload = ai_p
-                            if vuln_found: break
-                        if not vuln_found:
-                            log_info(f"🛡️ Falling back to Protocol-Level Evasion for {waf_name}...")
-                            test_params[param] = payload
-                            test_url = urlunparse(parsed._replace(query=urlencode(test_params)))
-                            resp_ev1 = smart_request("get", test_url, delay=delay, evasion_level=1)
-                            vuln_found = _check_xss_reflection(resp_ev1, payload, param, test_url, smart_payloads, source="🛡️ Unicode Evasion")
-                            if vuln_found: return vuln_found
-                            if waf_detector.is_waf_block(resp_ev1.status_code, resp_ev1.text):
-                                resp_ev2 = smart_request("get", test_url, delay=delay, evasion_level=2)
-                                vuln_found = _check_xss_reflection(resp_ev2, payload, param, test_url, smart_payloads, source="🧱 Chunked Evasion")
-                                if vuln_found: return vuln_found
-                                if waf_detector.is_waf_block(resp_ev2.status_code, resp_ev2.text):
-                                    log_warning(f"💥 Bruteforcing {waf_name} via Resource Exhaustion (Level 3)")
-                                    resp_ev3 = smart_request("get", test_url, delay=delay, evasion_level=3)
-                                    vuln_found = _check_xss_reflection(resp_ev3, payload, param, test_url, smart_payloads, source="💥 ReDoS Evasion")
-                                    if vuln_found: return vuln_found
+        waf_name = waf_detector.detected_waf or "Generic WAF"
+        log_warning(f"WAF Block ({waf_name}) detected on param '{param}'")
+
+        # Track the URL most recently sent so check_fn reports the right
+        # location. The closures mutate ``test_url`` via the outer scope.
+        nonlocal_state = {"test_url": test_url}
+
+        def request_fn(p, *, evasion_level=0):
+            test_params[param] = p
+            url_for_call = urlunparse(parsed._replace(query=urlencode(test_params)))
+            nonlocal_state["test_url"] = url_for_call
+            return smart_request(
+                "get", url_for_call, delay=delay, evasion_level=evasion_level
+            )
+
+        def check_fn(response, p, source):
+            return _check_xss_reflection(
+                response,
+                p,
+                param,
+                nonlocal_state["test_url"],
+                smart_payloads,
+                source=source,
+            )
+
+        from utils.waf_evasion import apply_waf_bypass_chain
+
+        return apply_waf_bypass_chain(
+            payload=payload,
+            blocked_response=resp,
+            request_fn=request_fn,
+            check_fn=check_fn,
+            waf_name=waf_name,
+            vuln_label="XSS",
+        )
     except ScanExceptions:
         pass
     return None
@@ -168,63 +157,40 @@ def _test_xss_form_payload(payload, target, inp_name, input_names, method, delay
             return vuln_found
 
         from utils.waf import waf_detector
-        if waf_detector.is_waf_block(resp.status_code, resp.text):
-            waf_name = waf_detector.detected_waf or "Generic WAF"
-            log_warning(f"WAF Block ({waf_name}) detected on form field '{inp_name}'")
-            from utils.tamper import TamperChain
-            tampers = waf_detector.get_recommended_tampers()
-            if tampers:
-                log_info(f"Applying auto-tamper for {waf_name}: {'+'.join(tampers)}")
-                chain = TamperChain(tampers)
-                tampered_payload = chain.apply(payload)
-                if tampered_payload != payload:
-                    data[inp_name] = tampered_payload
-                    resp_t = smart_request("post", target, data=data, delay=delay) if method == "post" else smart_request("get", target, params=data, delay=delay)
-                    vuln_found = _check_xss_reflection(resp_t, tampered_payload, inp_name, target, smart_payloads, source="⚡ Auto-Tamper")
-                    if vuln_found:
-                        vuln_found["method"] = method
-                        return vuln_found
+        if not waf_detector.is_waf_block(resp.status_code, resp.text):
+            return None
 
-                    from utils.ai import get_ai, EvolvingWAFBypassEngine
-                    ai_client = get_ai()
-                    if ai_client and ai_client.available and waf_detector.is_waf_block(resp_t.status_code, resp_t.text):
-                        log_info(f"🤖 Starting Evolutionary AI Mutation for {waf_name}...")
-                        engine = EvolvingWAFBypassEngine(ai_client, waf_name, "XSS")
-                        current_payload = payload
-                        for iteration in range(1, 4):
-                            ai_payloads = engine.mutate(current_payload, iteration)
-                            for ai_p in ai_payloads:
-                                data[inp_name] = ai_p
-                                resp_ai = smart_request("post", target, data=data, delay=delay) if method == "post" else smart_request("get", target, params=data, delay=delay)
-                                vuln_found = _check_xss_reflection(resp_ai, ai_p, inp_name, target, smart_payloads, source=f"🤖 AI Gen-{iteration}")
-                                if vuln_found:
-                                    vuln_found["method"] = method
-                                    return vuln_found
-                                if waf_detector.is_waf_block(resp_ai.status_code, resp_ai.text):
-                                    engine.analyze_failure(ai_p)
-                                    current_payload = ai_p
-                            if vuln_found: break
-                        if not vuln_found:
-                            log_info(f"🛡️ Falling back to Protocol-Level Evasion for {waf_name}...")
-                            data[inp_name] = payload
-                            resp_ev1 = smart_request("post", target, data=data, delay=delay, evasion_level=1) if method == "post" else smart_request("get", target, params=data, delay=delay, evasion_level=1)
-                            vuln_found = _check_xss_reflection(resp_ev1, payload, inp_name, target, smart_payloads, source="🛡️ Unicode Evasion")
-                            if vuln_found:
-                                vuln_found["method"] = method
-                                return vuln_found
-                            if waf_detector.is_waf_block(resp_ev1.status_code, resp_ev1.text):
-                                resp_ev2 = smart_request("post", target, data=data, delay=delay, evasion_level=2) if method == "post" else smart_request("get", target, params=data, delay=delay, evasion_level=2)
-                                vuln_found = _check_xss_reflection(resp_ev2, payload, inp_name, target, smart_payloads, source="🧱 Chunked Evasion")
-                                if vuln_found:
-                                    vuln_found["method"] = method
-                                    return vuln_found
-                                if waf_detector.is_waf_block(resp_ev2.status_code, resp_ev2.text):
-                                    log_warning(f"💥 Bruteforcing {waf_name} via Resource Exhaustion (Level 3)")
-                                    resp_ev3 = smart_request("post", target, data=data, delay=delay, evasion_level=3) if method == "post" else smart_request("get", target, params=data, delay=delay, evasion_level=3)
-                                    vuln_found = _check_xss_reflection(resp_ev3, payload, inp_name, target, smart_payloads, source="💥 ReDoS Evasion")
-                                    if vuln_found:
-                                        vuln_found["method"] = method
-                                        return vuln_found
+        waf_name = waf_detector.detected_waf or "Generic WAF"
+        log_warning(f"WAF Block ({waf_name}) detected on form field '{inp_name}'")
+
+        def request_fn(p, *, evasion_level=0):
+            data[inp_name] = p
+            if method == "post":
+                return smart_request(
+                    "post", target, data=data, delay=delay, evasion_level=evasion_level
+                )
+            return smart_request(
+                "get", target, params=data, delay=delay, evasion_level=evasion_level
+            )
+
+        def check_fn(response, p, source):
+            finding = _check_xss_reflection(
+                response, p, inp_name, target, smart_payloads, source=source
+            )
+            if finding:
+                finding["method"] = method
+            return finding
+
+        from utils.waf_evasion import apply_waf_bypass_chain
+
+        return apply_waf_bypass_chain(
+            payload=payload,
+            blocked_response=resp,
+            request_fn=request_fn,
+            check_fn=check_fn,
+            waf_name=waf_name,
+            vuln_label="XSS",
+        )
     except ScanExceptions:
         pass
     return None

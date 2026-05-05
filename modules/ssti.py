@@ -122,51 +122,80 @@ def scan_ssti(url, delay=0):
                     param_found = True
                     break  # One confirmed finding per param is enough
 
-        # ── AI WAF Bypass for this param ──
-        if not param_found and waf_blocked:
+        # ── 3-tier WAF bypass for this param (auto-tamper → AI → protocol) ──
+        # Mirror the original module's conservative gate: only run the
+        # bypass chain when a specific WAF actually fingerprinted.
+        from utils.waf import waf_detector as _waf_detector
+        _waf_name_seed = getattr(_waf_detector, "detected_waf", "") or ""
+        if not param_found and waf_blocked and _waf_name_seed:
             try:
-                from utils.ai import get_ai, EvolvingWAFBypassEngine
                 from utils.waf import waf_detector
+                from utils.waf_evasion import apply_waf_bypass_chain
 
-                ai_client = get_ai()
-                waf_name = getattr(waf_detector, "detected_waf", "") or ""
-                if ai_client and ai_client.available and waf_name:
-                    log_info(f"AI WAF Bypass: SSTI on {param} (WAF: {waf_name})")
-                    engine_ai = EvolvingWAFBypassEngine(ai_client, waf_name, "SSTI")
-                    base_payload = "{{7*7}}"
+                waf_name = _waf_name_seed
+                base_payload = "{{7*7}}"
+                parsed_for_bypass = urlparse(url)
+                base_params = parse_qs(parsed_for_bypass.query, keep_blank_values=True)
+                if param not in base_params:
+                    base_params[param] = [""]
 
-                    for iteration in range(1, 4):
-                        ai_payloads = engine_ai.mutate(base_payload, iteration)
-                        for ai_p in ai_payloads:
-                            body, status = inject_payload(url, param, ai_p, delay)
-                            if body and "49" in body:
-                                clean_body, _ = inject_payload(
-                                    url, param, "harmless_test_string", delay
-                                )
-                                if clean_body and "49" not in clean_body:
-                                    findings.append({
-                                        "type": "SSTI",
-                                        "url": url,
-                                        "field": param,
-                                        "payload": ai_p,
-                                        "engine": "AI WAF Bypass",
-                                        "evidence": "Response contains '49' (WAF bypassed)",
-                                        "severity": "CRITICAL",
-                                        "description": (
-                                            f"SSTI in '{param}' via AI WAF bypass "
-                                            f"(Gen-{iteration}). WAF: {waf_name}"
-                                        ),
-                                    })
-                                    log_success(
-                                        f"[CRITICAL] SSTI WAF bypass! Param: {param} | "
-                                        f"Gen-{iteration}"
-                                    )
-                                    param_found = True
-                                    break
-                            elif body and status not in (403, 406, 429, 503):
-                                engine_ai.analyze_failure(ai_p)
-                        if param_found:
-                            break
+                def request_fn(p, *, evasion_level=0):
+                    base_params[param] = [p]
+                    new_query = urlencode(base_params, doseq=True)
+                    test_url = urlunparse(parsed_for_bypass._replace(query=new_query))
+                    try:
+                        return smart_request(
+                            "get",
+                            test_url,
+                            delay=delay,
+                            timeout=8,
+                            evasion_level=evasion_level,
+                        )
+                    except ScanExceptions:
+                        return None
+
+                def check_fn(response, p, source):
+                    if response is None:
+                        return None
+                    body = getattr(response, "text", "") or ""
+                    if "49" not in body:
+                        return None
+                    clean_body, _ = inject_payload(
+                        url, param, "harmless_test_string", delay
+                    )
+                    if not clean_body or "49" in clean_body:
+                        return None
+                    finding = {
+                        "type": "SSTI",
+                        "url": url,
+                        "field": param,
+                        "payload": p,
+                        "engine": "WAF Bypass Chain",
+                        "evidence": f"Response contains '49' ({source})",
+                        "severity": "CRITICAL",
+                        "description": (
+                            f"SSTI in '{param}' via {source}. WAF: {waf_name}"
+                        ),
+                    }
+                    log_success(
+                        f"[CRITICAL] SSTI WAF bypass! Param: {param} | {source}"
+                    )
+                    return finding
+
+                # Probe once with the base payload to seed blocked_response
+                seed = request_fn(base_payload)
+                if seed is not None:
+                    bypass_finding = apply_waf_bypass_chain(
+                        payload=base_payload,
+                        blocked_response=seed,
+                        request_fn=request_fn,
+                        check_fn=check_fn,
+                        waf_name=waf_name,
+                        vuln_label="SSTI",
+                    )
+                    if bypass_finding:
+                        findings.append(bypass_finding)
+                        param_found = True
             except (ImportError, ScanExceptions):
                 pass
 

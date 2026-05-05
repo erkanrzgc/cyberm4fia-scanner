@@ -168,3 +168,160 @@ def apply_advanced_evasion(
             evaded_headers["Content-Type"] = "application/x-www-form-urlencoded"
 
     return evaded_url, evaded_params, evaded_data, evaded_headers
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# 3-tier WAF bypass orchestrator
+#
+# Replaces inline copy-paste chains previously scattered across
+# modules/xss.py, modules/sqli.py and provides the same capability
+# to modules that previously only had AI-tier bypass
+# (cmdi / lfi / ssrf / ssti / xxe).
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def _is_waf_block(response) -> bool:
+    """waf_detector.is_waf_block guard that tolerates non-response objects."""
+    from utils.waf import waf_detector
+
+    return waf_detector.is_waf_block(
+        getattr(response, "status_code", 0) or 0,
+        getattr(response, "text", "") or "",
+    )
+
+
+def apply_waf_bypass_chain(
+    *,
+    payload: str,
+    blocked_response,
+    request_fn,
+    check_fn,
+    waf_name: str,
+    vuln_label: str,
+    enable_tamper: bool = True,
+    enable_ai: bool = True,
+    enable_protocol: bool = True,
+    ai_iterations: int = 3,
+):
+    """Run TamperChain → AI Evolution → Protocol Evasion against a blocked
+    payload and return the first finding produced.
+
+    ``request_fn`` must accept ``(payload, *, evasion_level=0)`` and return
+    a response object. ``check_fn`` is called with
+    ``(response, payload, source_label)`` after each request and must
+    return a truthy finding or ``None``. Both callers are typically tiny
+    closures over the per-request state (URL, params, form data) of the
+    module performing the scan.
+
+    Returns the first truthy finding produced by ``check_fn``, or
+    ``None`` if all enabled tiers exhaust.
+    """
+    from utils.colors import log_info, log_warning
+    from utils.waf import waf_detector
+
+    last_response = blocked_response
+
+    # ── Tier 1: Auto-Tamper ────────────────────────────────────────────
+    if enable_tamper:
+        try:
+            from utils.tamper import TamperChain
+
+            tampers = waf_detector.get_recommended_tampers()
+        except Exception:
+            tampers = []
+        if tampers:
+            log_info(
+                f"Applying auto-tamper for {waf_name}: {'+'.join(tampers)}"
+            )
+            try:
+                tampered = TamperChain(tampers).apply(payload)
+            except Exception:
+                tampered = payload
+            if tampered and tampered != payload:
+                try:
+                    resp_t = request_fn(tampered)
+                except Exception:
+                    resp_t = None
+                if resp_t is not None:
+                    finding = check_fn(resp_t, tampered, "⚡ Auto-Tamper")
+                    if finding:
+                        return finding
+                    last_response = resp_t
+
+    # If WAF is no longer blocking, stop — there's nothing for the
+    # remaining tiers to bypass.
+    if not _is_waf_block(last_response):
+        return None
+
+    # ── Tier 2: AI Evolution ───────────────────────────────────────────
+    if enable_ai:
+        try:
+            from utils.ai import EvolvingWAFBypassEngine, get_ai
+
+            ai_client = get_ai()
+        except Exception:
+            ai_client = None
+        if ai_client and getattr(ai_client, "available", False):
+            log_info(
+                f"🤖 Starting Evolutionary AI Mutation for {waf_name}..."
+            )
+            try:
+                engine = EvolvingWAFBypassEngine(
+                    ai_client, waf_name, vuln_label
+                )
+            except Exception:
+                engine = None
+            if engine is not None:
+                current_payload = payload
+                for iteration in range(1, max(1, ai_iterations) + 1):
+                    try:
+                        ai_payloads = engine.mutate(current_payload, iteration)
+                    except Exception:
+                        ai_payloads = []
+                    for ai_p in ai_payloads or []:
+                        try:
+                            resp_ai = request_fn(ai_p)
+                        except Exception:
+                            continue
+                        finding = check_fn(
+                            resp_ai, ai_p, f"🤖 AI Gen-{iteration}"
+                        )
+                        if finding:
+                            return finding
+                        if _is_waf_block(resp_ai):
+                            try:
+                                engine.analyze_failure(ai_p)
+                            except Exception:
+                                pass
+                            current_payload = ai_p
+                            last_response = resp_ai
+
+    # ── Tier 3: Protocol-Level Evasion ─────────────────────────────────
+    if enable_protocol:
+        log_info(
+            f"🛡️ Falling back to Protocol-Level Evasion for {waf_name}..."
+        )
+        protocol_levels = (
+            (1, "🛡️ Unicode Evasion"),
+            (2, "🧱 Chunked Evasion"),
+            (3, "💥 ReDoS Evasion"),
+        )
+        for level, label in protocol_levels:
+            if level == 3:
+                log_warning(
+                    f"💥 Bruteforcing {waf_name} via Resource Exhaustion (Level 3)"
+                )
+            try:
+                resp_ev = request_fn(payload, evasion_level=level)
+            except TypeError:
+                # request_fn doesn't accept evasion_level — caller opted out.
+                break
+            except Exception:
+                continue
+            finding = check_fn(resp_ev, payload, label)
+            if finding:
+                return finding
+            if not _is_waf_block(resp_ev):
+                break
+
+    return None
