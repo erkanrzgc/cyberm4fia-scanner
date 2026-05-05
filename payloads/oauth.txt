@@ -1,0 +1,31 @@
+# OAuth Payloads — cyberm4fia-scanner
+# Categories: redirect_uri Bypass, Code Leakage, PKCE Check, Client Type
+
+# ─── redirect_uri Bypass ───
+redirect_uri=https://evil.com
+redirect_uri=https://target.com.evil.com
+redirect_uri=https://target.com@evil.com
+redirect_uri=https://target.com%23@evil.com
+redirect_uri=https://target.com/callback/../evil
+redirect_uri=https://target.com/callback%2f..%2fredirect%3fto%3devil.com
+redirect_uri=https://target.com/callback#@evil.com
+redirect_uri=https://evil.com/%2e%2e%2ftarget.com
+redirect_uri=https://evil.target.com
+redirect_uri=http://target.com
+redirect_uri=https://target.com/callback/../../evil
+
+# ─── PKCE Enforcement Check ───
+# No code_verifier: invalid_grant = PKCE NOT enforced
+# No code_verifier: invalid_request = PKCE enforced
+
+# ─── Public Client Check ───
+# No client_secret: invalid_grant = public client
+# No client_secret: invalid_client = confidential client
+
+# ─── State Parameter CSRF ───
+# Missing state parameter on authorize = CSRF on OAuth flow
+# Response type token (implicit) + no state = token theft risk
+
+# ─── Code Leakage to Analytics ───
+# Check callback page for: gtag, ga4, logrocket, segment, amplitude, mixpanel, heap
+# OAuth code in URL → analytics fires page_view → code transmitted to third party

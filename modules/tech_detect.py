@@ -196,6 +196,266 @@ TECHNOLOGIES = [
         "category": "Security",
         "headers": {"x-frame-options": r".*"},
     },
+    # ── Vendor / Edge Appliances ──
+    {
+        "name": "Citrix NetScaler/Gateway",
+        "category": "Vendor Appliance",
+        "body_patterns": [
+            r"NetScaler", r"Citrix Gateway", r"Citrix Access Gateway",
+        ],
+        "paths": [
+            "/vpn/index.html", "/logon/LogonPoint/tmindex.html",
+            "/citrix/", "/vpn/logon_point/",
+        ],
+    },
+    {
+        "name": "F5 BIG-IP",
+        "category": "Vendor Appliance",
+        "body_patterns": [r"BIG-IP", r"bigip", r"F5 Networks"],
+        "paths": ["/tmui/login.jsp", "/mgmt/tm/sys/"],
+    },
+    {
+        "name": "Cisco ASA / AnyConnect",
+        "category": "Vendor Appliance",
+        "body_patterns": [
+            r"Cisco ASA", r"AnyConnect", r"webvpn", r"\+CSCOE\+",
+        ],
+        "paths": ["/+CSCOE+/", "/CSCOE/index.html", "/webvpn.html"],
+    },
+    {
+        "name": "Pulse Secure / Ivanti Connect",
+        "category": "Vendor Appliance",
+        "body_patterns": [
+            r"Pulse Secure", r"Ivanti Connect Secure", r"dana-na",
+        ],
+        "paths": ["/dana-na/", "/dana-na/auth/url_default/welcome.cgi"],
+    },
+    {
+        "name": "FortiGate / FortiOS",
+        "category": "Vendor Appliance",
+        "body_patterns": [r"FortiGate", r"FortiOS", r"forti"],
+        "paths": ["/remote/login", "/remote/info", "/api/v2/"],
+    },
+    {
+        "name": "PaloAlto GlobalProtect",
+        "category": "Vendor Appliance",
+        "body_patterns": [r"GlobalProtect", r"Palo Alto Networks"],
+        "paths": [
+            "/global-protect/", "/global-protect/portal/css/login.css",
+            "/api/?type=keygen",
+        ],
+    },
+    {
+        "name": "VMware Horizon",
+        "category": "Vendor Appliance",
+        "body_patterns": [r"VMware Horizon", r"horizon"],
+        "paths": ["/portal/info.jsp", "/broker/xml", "/login.jsp"],
+    },
+    {
+        "name": "VMware vCenter",
+        "category": "Vendor Appliance",
+        "body_patterns": [r"VMware vCenter", r"vsphere-client"],
+        "paths": ["/sdk", "/ui/", "/vsphere-client/", "/websso/SAML2/"],
+    },
+    {
+        "name": "VMware ESXi",
+        "category": "Vendor Appliance",
+        "body_patterns": [r"VMware ESXi", r"esxi"],
+        "paths": ["/sdk", "/ui/", "/folder"],
+    },
+    {
+        "name": "Microsoft Exchange OWA",
+        "category": "Vendor Appliance",
+        "body_patterns": [
+            r"Exchange", r"Outlook Web App", r"owa",
+            r"expiredpassword", r"expired\s+password",
+        ],
+        "paths": ["/owa/", "/ews/exchange.asmx", "/ecp/"],
+    },
+    {
+        "name": "WatchGuard Firebox",
+        "category": "Vendor Appliance",
+        "body_patterns": [r"WatchGuard", r"Firebox"],
+        "paths": ["/auth/", "/wgcgi.cgi"],
+    },
+    {
+        "name": "SonicWall SMA",
+        "category": "Vendor Appliance",
+        "body_patterns": [r"SonicWall", r"SonicWALL"],
+        "paths": ["/cgi-bin/welcome", "/__api__/v1/", "/diagnostics/"],
+    },
+    {
+        "name": "Sophos UTM/XG/XGS",
+        "category": "Vendor Appliance",
+        "body_patterns": [r"Sophos", r"UTM"],
+        "paths": ["/userportal/", "/webconsole/", "/cgi-bin/"],
+    },
+    {
+        "name": "Check Point Firewall",
+        "category": "Vendor Appliance",
+        "body_patterns": [r"Check Point", r"check_point"],
+        "paths": ["/sslvpn/portal/", "/clients/"],
+    },
+    {
+        "name": "Zoho ManageEngine",
+        "category": "Vendor Appliance",
+        "body_patterns": [r"ManageEngine", r"Zoho"],
+        "paths": ["/RestAPI/Login", "/api/json/v2/"],
+    },
+    {
+        "name": "Atlassian Confluence",
+        "category": "Vendor Appliance",
+        "body_patterns": [r"Confluence", r"confluence-server"],
+        "paths": ["/confluence/", "/login.action", "/rest/api/space"],
+    },
+    {
+        "name": "Atlassian Jira",
+        "category": "Vendor Appliance",
+        "body_patterns": [r"Jira", r"jira-project"],
+        "paths": ["/secure/Dashboard.jspa", "/rest/api/2/serverInfo"],
+    },
+    {
+        "name": "GitLab Self-Hosted",
+        "category": "Vendor Appliance",
+        "body_patterns": [r"GitLab", r"gitlab-ee", r"gitlab-ce"],
+        "paths": ["/users/sign_in", "/help", "/explore", "/api/v4/version"],
+    },
+    {
+        "name": "SolarWinds Orion",
+        "category": "Vendor Appliance",
+        "body_patterns": [r"SolarWinds", r"Orion"],
+        "paths": ["/Orion/Login.aspx"],
+    },
+    {
+        "name": "ConnectWise ScreenConnect",
+        "category": "Vendor Appliance",
+        "body_patterns": [r"ScreenConnect", r"ConnectWise"],
+        "paths": ["/SetupWizard.aspx", "/Bin/SetupWizard.aspx"],
+    },
+    {
+        "name": "Telerik UI",
+        "category": "Vendor Appliance",
+        "body_patterns": [r"Telerik\.Web\.UI", r"WebResource\.axd"],
+    },
+    # ── Cloud-Native Service Fingerprints ──
+    {
+        "name": "AWS Lambda Function URL",
+        "category": "Cloud Native",
+        "headers": {"server": r".*"},
+        "body_patterns": [r"lambda-url\..+\.on\.aws"],
+    },
+    {
+        "name": "AWS API Gateway",
+        "category": "Cloud Native",
+        "body_patterns": [r"execute-api\..+\.amazonaws\.com"],
+    },
+    {
+        "name": "AWS App Runner",
+        "category": "Cloud Native",
+        "body_patterns": [r"awsapprunner\.com"],
+    },
+    {
+        "name": "AWS Amplify",
+        "category": "Cloud Native",
+        "body_patterns": [r"amplifyapp\.com"],
+    },
+    {
+        "name": "Google Cloud Run",
+        "category": "Cloud Native",
+        "body_patterns": [r"\.run\.app\b"],
+        "headers": {"server": r"Google Frontend"},
+    },
+    {
+        "name": "Google Cloud Functions",
+        "category": "Cloud Native",
+        "body_patterns": [r"cloudfunctions\.net"],
+    },
+    {
+        "name": "Google App Engine",
+        "category": "Cloud Native",
+        "body_patterns": [r"appspot\.com"],
+    },
+    {
+        "name": "Azure Functions / App Service",
+        "category": "Cloud Native",
+        "body_patterns": [r"azurewebsites\.net"],
+        "headers": {"server": r"Microsoft-IIS"},
+    },
+    {
+        "name": "Azure Container Apps",
+        "category": "Cloud Native",
+        "body_patterns": [r"azurecontainerapps\.io"],
+    },
+    {
+        "name": "Heroku",
+        "category": "Cloud Native",
+        "body_patterns": [r"herokuapp\.com"],
+        "headers": {"via": r".*vegur.*"},
+    },
+    {
+        "name": "Fly.io",
+        "category": "Cloud Native",
+        "body_patterns": [r"fly\.dev"],
+        "headers": {"server": r"Fly/.*"},
+    },
+    {
+        "name": "Render",
+        "category": "Cloud Native",
+        "body_patterns": [r"onrender\.com"],
+    },
+    {
+        "name": "Railway",
+        "category": "Cloud Native",
+        "body_patterns": [r"railway\.app"],
+    },
+    {
+        "name": "DigitalOcean App Platform",
+        "category": "Cloud Native",
+        "body_patterns": [r"ondigitalocean\.app"],
+    },
+    # ── CI/CD Platform Fingerprints ──
+    {
+        "name": "Jenkins",
+        "category": "CI/CD",
+        "body_patterns": [r"Jenkins", r"jenkins", r"Dashboard \[Jenkins\]"],
+        "paths": ["/script", "/asynchPeople/", "/computer/", "/login"],
+    },
+    {
+        "name": "TeamCity",
+        "category": "CI/CD",
+        "body_patterns": [r"TeamCity", r"teamcity"],
+        "paths": ["/login.html", "/agent.html", "/admin/admin.html"],
+    },
+    {
+        "name": "Argo CD",
+        "category": "CI/CD",
+        "body_patterns": [r"Argo CD", r"argocd"],
+        "paths": ["/api/version", "/applications"],
+    },
+    {
+        "name": "Drone CI",
+        "category": "CI/CD",
+        "body_patterns": [r"Drone", r"drone"],
+        "paths": ["/api/info", "/login"],
+    },
+    {
+        "name": "Spinnaker",
+        "category": "CI/CD",
+        "body_patterns": [r"Spinnaker", r"spinnaker"],
+        "paths": ["/gate/info", "/applications"],
+    },
+    {
+        "name": "Travis CI",
+        "category": "CI/CD",
+        "body_patterns": [r"travis-ci", r"travis"],
+        "paths": ["/repos/"],
+    },
+    {
+        "name": "Bamboo (Atlassian)",
+        "category": "CI/CD",
+        "body_patterns": [r"Bamboo", r"bamboo"],
+        "paths": ["/userlogin.action", "/rest/api/latest/info"],
+    },
 ]
 
 def fingerprint_headers(headers, tech):
