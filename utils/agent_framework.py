@@ -5,6 +5,16 @@ Inspired by HackSynth, PentestGPT, and PentAGI architectures.
 
 The AI DRIVES the scan — it decides what to scan next based on results,
 rather than just analyzing results after the fact.
+
+Supports OWASP APTS Graduated Autonomy Levels:
+    L1 Assisted        — AI suggests, human approves every action
+    L2 Semi-Autonomous  — AI auto-scans, human approves exploitation
+    L3 Supervised       — AI exploits within scope, human monitors
+    L4 Autonomous       — Full autonomy (strictest safety requirements)
+
+Anti-Shallow Enforcement: Prevents superficial "found nothing" verdicts
+and enforces depth-first exploration before marking endpoints exhausted.
+Inspired by pentest-agents' chain-table methodology and 7-level WAF bypass protocol.
 """
 
 import time
@@ -14,6 +24,7 @@ from datetime import datetime
 from dataclasses import dataclass, field
 from typing import Optional
 from urllib.parse import urlparse
+from enum import IntEnum
 
 from utils.colors import (
     Colors,
@@ -23,6 +34,115 @@ from utils.colors import (
     log_warning,
 )
 from utils.scan_intelligence import get_scan_intelligence
+
+
+# ─── Anti-Shallow / Depth Enforcement Constants ──────────────────────────
+
+# Minimum probes per vulnerability class before declaring "no findings"
+# Inspired by pentest-agents: 7-level WAF bypass + technique depth requirements
+MIN_PROBES_PER_CLASS = {
+    "xss": 8,
+    "sqli": 10,
+    "lfi": 8,
+    "cmdi": 8,
+    "ssrf": 10,
+    "ssti": 6,
+    "xxe": 6,
+    "jwt": 5,
+    "idor": 8,
+    "open_redirect": 6,
+    "cors": 6,
+    "csrf": 5,
+    "file_upload": 8,
+    "deserialization": 5,
+    "proto_pollution": 6,
+    "race_condition": 10,
+    "smuggling": 6,
+    "header_inject": 6,
+    "nosqli": 6,
+    "cache_poisoning": 6,
+    "log4shell": 8,
+    "el_injection": 6,
+    "ldap": 5,
+    "xpath": 5,
+    "crlf": 6,
+    "csv_injection": 5,
+    "graphql": 8,
+    "business_logic": 8,
+    "forbidden_bypass": 10,
+    "subdomain_takeover": 5,
+    "oauth": 8,
+}
+
+# Exhaustion requires all three conditions
+EXHAUSTION_REQUIREMENTS = [
+    "min_probes_met",
+    "all_bypass_levels_attempted",
+    "blocker_recorded",
+]
+
+# WAF bypass levels that must be attempted before declaring exhaustion
+WAF_BYPASS_LEVELS = {
+    1: "Encoding (URL, double-URL, Unicode, HTML entity)",
+    2: "Tag alternatives (svg, details, math, dialog instead of script/img)",
+    3: "Parser differentials (tag confusion, nesting, re-parenting)",
+    4: "Protocol variations (javascript:, data:, vbscript:)",
+    5: "Framework-specific sinks (React, Angular, Vue, jQuery, Bootstrap)",
+    6: "CSP-bypass techniques (nonce, base-tag, srcdoc, dynamic import)",
+    7: "Obfuscation (JSFuck, unicode identifiers, constructor chains)",
+}
+
+# Modules that must NEVER return "not vulnerable" without a browser probe
+BROWSER_REQUIRED_MODULES = {
+    "xss", "dom_xss", "csrf", "business_logic", "file_upload",
+    "race_condition", "open_redirect", "account_takeover", "auth_bypass",
+}
+
+# Modules susceptible to WAF false negatives (curl 403 ≠ not vulnerable)
+WAF_SENSITIVE_MODULES = {
+    "xss", "sqli", "cmdi", "ssrf", "lfi", "ssti", "xxe", "forbidden_bypass",
+    "header_inject", "smuggling", "cache_poisoning", "file_upload",
+}
+
+# Max failed candidates per depth (chain-table rule 5)
+MAX_FAILED_CANDIDATES_PER_DEPTH = 3
+
+# 20-minute time box per link (chain-table rule 4)
+CHAIN_LINK_TIMEOUT = 1200
+
+
+# ─── Autonomy Levels (OWASP APTS) ───────────────────────────────────────
+
+class AutonomyLevel(IntEnum):
+    """APTS Graduated Autonomy Levels (L1-L4)."""
+    L1_ASSISTED = 1       # AI suggests, human approves every action
+    L2_SEMI_AUTO = 2      # AI auto-scans, human approves exploitation
+    L3_SUPERVISED = 3     # AI exploits within scope, human monitors
+    L4_AUTONOMOUS = 4     # Full autonomy — strictest safety requirements
+
+    @classmethod
+    def from_string(cls, s):
+        mapping = {
+            "l1": cls.L1_ASSISTED, "assisted": cls.L1_ASSISTED,
+            "l2": cls.L2_SEMI_AUTO, "semi": cls.L2_SEMI_AUTO, "semi-autonomous": cls.L2_SEMI_AUTO,
+            "l3": cls.L3_SUPERVISED, "supervised": cls.L3_SUPERVISED,
+            "l4": cls.L4_AUTONOMOUS, "autonomous": cls.L4_AUTONOMOUS, "full": cls.L4_AUTONOMOUS,
+        }
+        return mapping.get(s.lower(), cls.L3_SUPERVISED)
+
+
+AUTONOMY_LEVEL = AutonomyLevel.L3_SUPERVISED  # Default
+
+
+def requires_approval(action_type: str) -> bool:
+    """Check if an action requires human approval at the current autonomy level."""
+    if AUTONOMY_LEVEL <= AutonomyLevel.L1_ASSISTED:
+        return True
+    if AUTONOMY_LEVEL <= AutonomyLevel.L2_SEMI_AUTO:
+        return action_type in ("exploit", "shell", "exfil", "destructive", "write")
+    if AUTONOMY_LEVEL <= AutonomyLevel.L3_SUPERVISED:
+        return action_type in ("destructive", "scope_exit")
+    return False  # L4 full autonomy
 
 
 # ─── Data Classes ───────────────────────────────────────────────────────
@@ -360,6 +480,18 @@ def execute_module(mod_id, target, memory, delay=0):
             findings = [r for r in result if isinstance(r, dict) and r.get("type")]
             memory.add_findings(findings)
 
+        # Anti-shallow: count probes
+        if isinstance(result, list):
+            probe_count = len(result)
+        elif isinstance(result, dict) and "error" not in result:
+            probe_count = 1
+        else:
+            probe_count = 0
+        if hasattr(memory, 'depth_tracker') and memory.depth_tracker:
+            memory.depth_tracker.record_probe(mod_id, max(probe_count, 1))
+        elif hasattr(memory, '_orchestrator_depth'):
+            memory._orchestrator_depth.record_probe(mod_id, max(probe_count, 1))
+
         log_success(f"  ✓ {mod_id} ({elapsed:.1f}s)")
         return result
 
@@ -402,6 +534,7 @@ class AgentOrchestrator:
 
         self.ai_client = ai_client
         self.interrupted = False
+        self.depth_tracker = DepthTracker()
 
     def _get_ai_client(self, role="exploit"):
         """Get the best AI client for a role."""
@@ -553,6 +686,7 @@ Give a tactical summary for planning the next scan step."""
         """
         start_time = time.time()
         memory = AgentMemory(target)
+        memory._orchestrator_depth = self.depth_tracker
         old_handler = signal.getsignal(signal.SIGINT)
         signal.signal(signal.SIGINT, self._handle_interrupt)
 
@@ -737,3 +871,149 @@ Give a tactical summary for planning the next scan step."""
                     print(f"  {line.strip()}")
 
         print()
+
+# ─── Anti-Shallow Depth Tracker ──────────────────────────────────────────
+
+@dataclass
+class ModuleDepth:
+    """Tracks exploration depth for a single vulnerability class module."""
+    module_id: str
+    probes_sent: int = 0
+    bypass_levels_attempted: set = field(default_factory=set)
+    last_result: str = ""
+    exhaustion_status: str = "active"   # active, exhausted, blocked
+    blocker_reason: str = ""
+    waf_detected: bool = False
+    browser_used: bool = False
+
+    def meets_min_probes(self) -> bool:
+        required = MIN_PROBES_PER_CLASS.get(self.module_id, 5)
+        return self.probes_sent >= required
+
+    def all_bypass_levels_attempted(self) -> bool:
+        return len(self.bypass_levels_attempted) >= len(WAF_BYPASS_LEVELS)
+
+    def is_exhausted(self) -> bool:
+        if self.exhaustion_status == "exhausted":
+            return True
+        if self.meets_min_probes() and self.all_bypass_levels_attempted() and self.blocker_reason:
+            self.exhaustion_status = "exhausted"
+            return True
+        return False
+
+    def record_blocker(self, reason: str):
+        self.blocker_reason = reason
+        self.exhaustion_status = "blocked"
+
+
+class DepthTracker:
+    """Enforces anti-shallow exploration: no module returns 'not vulnerable'
+    without meeting minimum probe counts and attempting all bypass levels."""
+
+    def __init__(self):
+        self.modules: dict[str, ModuleDepth] = {}
+
+    def get_or_create(self, module_id: str) -> ModuleDepth:
+        if module_id not in self.modules:
+            self.modules[module_id] = ModuleDepth(module_id=module_id)
+        return self.modules[module_id]
+
+    def record_probe(self, module_id: str, count: int = 1):
+        md = self.get_or_create(module_id)
+        md.probes_sent += count
+
+    def record_bypass_level(self, module_id: str, level: int):
+        md = self.get_or_create(module_id)
+        md.bypass_levels_attempted.add(level)
+
+    def record_browser_use(self, module_id: str):
+        md = self.get_or_create(module_id)
+        md.browser_used = True
+
+    def check_anti_shallow(self, module_id: str, result) -> tuple[bool, str]:
+        """Returns (can_declare_done: bool, reason: str).
+
+        If result has 0 findings and module requires depth, this returns
+        (False, reason) meaning the module should NOT be marked done.
+        """
+        md = self.get_or_create(module_id)
+
+        has_findings = False
+        if isinstance(result, list):
+            has_findings = len(result) > 0
+        elif isinstance(result, dict) and result.get("error") is None:
+            has_findings = True
+
+        if has_findings:
+            return True, ""
+
+        required_probes = MIN_PROBES_PER_CLASS.get(module_id, 5)
+        if md.probes_sent < required_probes:
+            return False, (
+                f"Anti-shallow: {module_id} has 0 findings but only "
+                f"{md.probes_sent}/{required_probes} minimum probes sent. "
+                f"Run {required_probes - md.probes_sent} more probes before declaring done."
+            )
+
+        if module_id in BROWSER_REQUIRED_MODULES and not md.browser_used:
+            return False, (
+                f"Anti-shallow: {module_id} requires a browser probe before "
+                f"declaring 'not vulnerable'. curl results from CDN-based targets "
+                f"are not valid 'not vulnerable' verdicts."
+            )
+
+        if module_id in WAF_SENSITIVE_MODULES and not md.all_bypass_levels_attempted():
+            remaining_levels = set(WAF_BYPASS_LEVELS.keys()) - md.bypass_levels_attempted
+            return False, (
+                f"Anti-shallow: {module_id} has not attempted "
+                f"WAF bypass levels: {sorted(remaining_levels)}. "
+                f"WAF block is not a valid dead-end verdict."
+            )
+
+        return True, ""
+
+    def exhaustion_summary(self) -> dict:
+        summary = {}
+        for mod_id, md in self.modules.items():
+            summary[mod_id] = {
+                "probes": md.probes_sent,
+                "bypass_levels": sorted(md.bypass_levels_attempted),
+                "browser_used": md.browser_used,
+                "status": md.exhaustion_status,
+                "blocker": md.blocker_reason,
+            }
+        return summary
+
+    def enforce_waf_bypass_decision(self, module_id: str, waf_detected: bool):
+        """If WAF is detected, mark module as needing full bypass ladder."""
+        md = self.get_or_create(module_id)
+        md.waf_detected = waf_detected
+
+    def is_chainable(self, vuln_type: str) -> bool:
+        """Check if a vulnerability type is chainable to higher impact."""
+        chainable_primitives = {
+            "ssrf", "xss", "sqli", "lfi", "xxe", "idor", "ssti",
+            "open_redirect", "file_upload", "jwt", "subdomain_takeover",
+            "command_injection", "deserialization", "proto_pollution",
+        }
+        return vuln_type.lower() in chainable_primitives
+
+    def get_chain_candidates(self, vuln_type: str) -> list[str]:
+        """Given a vulnerability type, return list of escalation targets."""
+        chain_map = {
+            "ssrf": ["cloud_metadata", "internal_access", "auth_bypass"],
+            "xss": ["session_hijack", "account_takeover", "data_theft"],
+            "sqli": ["data_exfil", "rce", "auth_bypass"],
+            "lfi": ["source_disclosure", "rce", "credential_theft"],
+            "xxe": ["ssrf", "credential_theft", "data_exfil"],
+            "idor": ["ato", "data_breach", "account_manipulation"],
+            "ssti": ["rce", "data_exfil", "internal_access"],
+            "open_redirect": ["oauth_theft", "phishing"],
+            "file_upload": ["rce", "xss", "app_takeover"],
+            "jwt": ["auth_bypass", "session_hijack", "ato"],
+            "subdomain_takeover": ["phishing", "cookie_theft", "ato"],
+            "command_injection": ["rce", "reverse_shell", "data_exfil"],
+            "deserialization": ["rce", "data_exfil"],
+            "proto_pollution": ["rce", "xss", "data_exfil"],
+        }
+        return chain_map.get(vuln_type.lower(), [])
