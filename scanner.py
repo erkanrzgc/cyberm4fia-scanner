@@ -244,6 +244,10 @@ def scan_target(
         log_info(f"Target: {url} | Mode: {mode.title()}")
 
         # ── Campaign & Intelligence Integration (0-Day Machine) ──
+        # These two blocks are best-effort: they enrich the scan with cross-run
+        # context (campaign tracking + past intel) but must never fail the
+        # actual scan. We log the failure so it is debuggable instead of
+        # silently swallowed.
         campaign = None
         scan_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         campaign_id = ""
@@ -252,8 +256,8 @@ def scan_target(
             cm = CampaignManager()
             campaign = cm.create_campaign(url)
             campaign_id = campaign.id
-        except Exception:
-            pass
+        except Exception as exc:
+            log_warning(f"campaign_manager init skipped: {exc}")
 
         # Pre-scan intelligence briefing
         try:
@@ -266,8 +270,8 @@ def scan_target(
                     f"{target_profile.total_findings} findings, "
                     f"WAF: {target_profile.waf_name or 'none'}"
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            log_warning(f"scan_intelligence briefing skipped: {exc}")
 
         phase_state = {
             "url": url,

@@ -1,0 +1,13 @@
+{
+  "_comment": "Copy to .mcp.json (which is gitignored) before launching Claude Code. Set MCP_PROJECT_ROOT to the absolute repo path, e.g. `export MCP_PROJECT_ROOT=$(pwd)`. Without that env var Claude Code may not resolve the smuggler-mcp paths.",
+  "mcpServers": {
+    "smuggler": {
+      "command": "node",
+      "args": [
+        "${MCP_PROJECT_ROOT}/tools/mcp-for-security/smuggler-mcp/build/index.js",
+        "${MCP_PROJECT_ROOT}/venv/bin/python3",
+        "${MCP_PROJECT_ROOT}/tools/mcp-for-security/smuggler-mcp/smuggler/smuggler.py"
+      ]
+    }
+  }
+}
