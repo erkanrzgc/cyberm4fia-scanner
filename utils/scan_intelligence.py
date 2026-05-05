@@ -280,3 +280,127 @@ def get_scan_intelligence(db_path=None):
         if _instance is None:
             _instance = ScanIntelligence(db_path=db_path)
     return _instance
+
+
+# ── AIRecon Dataset Integration ──────────────────────────────────────────────
+
+import os as _os
+
+_AIRECON_DATASET_DIR = _os.path.join(_os.path.expanduser("~"), ".airecon", "datasets")
+
+
+def set_dataset_path(path):
+    global _AIRECON_DATASET_DIR
+    _AIRECON_DATASET_DIR = path
+
+
+def get_dataset_path():
+    return _AIRECON_DATASET_DIR
+
+
+def dataset_search(query, category=None, limit=5, dataset_path=None):
+    """Search the AIRecon dataset SQLite FTS5 knowledge base.
+
+    Queries all installed `.db` files in the dataset directory using FTS5
+    over the query/answer/context fields. Falls back gracefully when no
+    datasets are installed.
+
+    Args:
+        query: FTS5 search query string.
+        category: Optional category filter (e.g. 'pentest', 'web', 'api').
+        limit: Maximum number of results (default 5).
+        dataset_path: Override the dataset directory path.
+
+    Returns:
+        List of dicts with keys: query, answer, context, category, source, rank.
+        Empty list if no datasets are found.
+    """
+    search_dir = dataset_path or _AIRECON_DATASET_DIR
+    if not _os.path.isdir(search_dir):
+        return []
+
+    db_files = sorted(
+        f for f in _os.listdir(search_dir)
+        if f.endswith(".db") and not f.startswith(".")
+    )
+    if not db_files:
+        return []
+
+    results = []
+    for db_file in db_files:
+        db_path = _os.path.join(search_dir, db_file)
+        try:
+            conn = sqlite3.connect(db_path)
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            fts_cols = _get_fts_columns(cur)
+            if not fts_cols:
+                conn.close()
+                continue
+
+            if category:
+                sql = (
+                    f"SELECT query, answer, context, category, source, rank "
+                    f"FROM records_fts WHERE records_fts MATCH ? "
+                    f"AND category = ? "
+                    f"ORDER BY rank LIMIT ?"
+                )
+                rows = cur.execute(sql, (query, category, limit)).fetchall()
+            else:
+                sql = (
+                    f"SELECT query, answer, context, category, source, rank "
+                    f"FROM records_fts WHERE records_fts MATCH ? "
+                    f"ORDER BY rank LIMIT ?"
+                )
+                rows = cur.execute(sql, (query, limit)).fetchall()
+            for row in rows:
+                results.append(dict(row))
+            conn.close()
+        except sqlite3.OperationalError:
+            continue
+
+    results.sort(key=lambda r: r.get("rank", 0))
+    return results[:limit]
+
+
+def _get_fts_columns(cursor):
+    """Check whether the database has a valid records_fts table."""
+    try:
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='records_fts'"
+        )
+        if not cursor.fetchone():
+            return None
+        cursor.execute("PRAGMA table_info(records_fts)")
+        return [r[1] for r in cursor.fetchall()]
+    except sqlite3.OperationalError:
+        return None
+
+
+def dataset_installed():
+    """Return True if at least one AIRecon dataset database is installed."""
+    if not _os.path.isdir(_AIRECON_DATASET_DIR):
+        return False
+    return any(
+        f.endswith(".db") and not f.startswith(".")
+        for f in _os.listdir(_AIRECON_DATASET_DIR)
+    )
+
+
+def dataset_catalog():
+    """Return a list of installed dataset names and record counts."""
+    if not _os.path.isdir(_AIRECON_DATASET_DIR):
+        return []
+    catalog = []
+    for db_file in sorted(_os.listdir(_AIRECON_DATASET_DIR)):
+        if not db_file.endswith(".db") or db_file.startswith("."):
+            continue
+        db_path = _os.path.join(_AIRECON_DATASET_DIR, db_file)
+        try:
+            conn = sqlite3.connect(db_path)
+            count = conn.execute("SELECT COUNT(*) FROM records").fetchone()[0]
+            conn.close()
+            catalog.append({"name": db_file[:-3], "records": count})
+        except sqlite3.OperationalError:
+            catalog.append({"name": db_file[:-3], "records": 0})
+    return catalog

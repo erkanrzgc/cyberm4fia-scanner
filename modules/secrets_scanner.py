@@ -22,6 +22,10 @@ SECRET_PATTERNS = {
     "AWS Access Key ID": r"(?i)AKIA[0-9A-Z]{16}",
     "Stripe Standard API Key": r"sk_live_[0-9a-zA-Z]{24}",
     "Stripe Restricted API Key": r"rk_live_[0-9a-zA-Z]{24}",
+    "Stripe Publishable Live Key": r"pk_live_[0-9a-zA-Z]{24,}",
+    "Stripe Test Secret Key": r"sk_test_[0-9a-zA-Z]{24,}",
+    "Stripe Test Publishable Key": r"pk_test_[0-9a-zA-Z]{24,}",
+    "Supabase Project URL": r"https?://[a-z0-9\-]{20}\.supabase\.co",
     "Google API Key": r"AIza[0-9A-Za-z\-_]{35}",
     "Google OAuth Access Token": r"ya29\.[0-9A-Za-z\-_]+",
     "RSA Private Key": r"-----BEGIN RSA PRIVATE KEY-----",
@@ -38,6 +42,27 @@ SECRET_PATTERNS = {
     "Amazon MWS Auth Token": r"amzn\.mws\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
     "Heroku API Key": r"(?i)heroku[^0-9a-zA-Z]{0,10}[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
     "Generic Client Secret": r"(?i)(?:client_secret|api_secret|app_secret|secret_key)[\"'\s:=]+([\w\-\/]{20,})",
+    # ── Modern AI API Keys (Claude-OSINT) ──
+    "Anthropic API Key": r"sk-ant-[a-zA-Z0-9\-_]{32,128}",
+    "OpenAI API Key": r"sk-[a-zA-Z0-9]{32,64}",
+    "OpenAI Project Key": r"sk-proj-[a-zA-Z0-9]{32,128}",
+    "HuggingFace API Token": r"hf_[a-zA-Z0-9]{32,64}",
+    "Cloudflare API Token": r"[a-zA-Z0-9_-]{40,45}",
+    # ── Package Registry Tokens ──
+    "npm Access Token": r"npm_[a-zA-Z0-9]{36}",
+    "PyPI API Token": r"pypi-[a-zA-Z0-9\-_]{32,128}",
+    "Docker Hub Access Token": r"dckr_[a-zA-Z0-9\-_]{36,48}",
+    # ── Platform / Service Tokens ──
+    "Datadog API Key": r"datadog[a-f0-9]{32}",
+    "Atlassian API Token": r"ATATT3[a-zA-Z0-9\-_]{32,128}",
+    "Postman API Key": r"PMAK-[a-f0-9]{24}-[a-f0-9]{24}",
+    "Linear API Key": r"lin_api_[a-zA-Z0-9]{40}",
+    "Firebase Web API Key": r"AIzaSy[a-zA-Z0-9\-_]{33}",
+    "Supabase Service Role Key": r"eyJ[a-zA-Z0-9\-_]+\.[a-zA-Z0-9\-_]+\.[a-zA-Z0-9\-_]+",
+    # ── Database Connection Strings ──
+    "MongoDB Connection String": r"mongodb(?:\+srv)?://[^@\s]+@[a-zA-Z0-9.\-]+(/[^\s]*)",
+    "PostgreSQL Connection String": r"postgres(?:ql)?://[^@\s]+@[a-zA-Z0-9.\-]+(:\d+)?/[^\s]+",
+    "Redis Connection String": r"redis://[^@\s]*@[a-zA-Z0-9.\-]+(:\d+)",
 }
 
 
@@ -50,6 +75,34 @@ def shannon_entropy(data):
         p_x = float(data.count(x)) / len(data)
         entropy += -p_x * math.log(p_x, 2)
     return entropy
+
+
+# Match-against-context heuristics to drop dummy/example/env-reference values
+# (idea adapted from VICE's high-confidence pattern handling).
+_PLACEHOLDER_REGEX = re.compile(
+    r"your[_\-]|example|placeholder|xxx{2,}|yyy{2,}|zzz{2,}"
+    r"|changeme|replace[_\-]|insert[_\-]|TODO|FIXME|<.*?>",
+    re.IGNORECASE,
+)
+_ENV_REF_REGEX = re.compile(
+    r"process\.env\.|import\.meta\.env\.|os\.environ|getenv\(|System\.getenv",
+    re.IGNORECASE,
+)
+
+
+def is_placeholder_value(value: str, context_window: str = "") -> bool:
+    """
+    Return True when the matched value (and optional ±40-char context) looks
+    like documentation, env-var reference, or template noise rather than a
+    real leaked secret.
+    """
+    if not value:
+        return True
+    if _PLACEHOLDER_REGEX.search(value):
+        return True
+    if context_window and _ENV_REF_REGEX.search(context_window):
+        return True
+    return False
 
 
 def scan_text_for_secrets(text, source_url):
@@ -71,12 +124,20 @@ def scan_text_for_secrets(text, source_url):
                 continue
 
             # Avoid AWS Pre-signed URL false positives
-            if secret_name == "AWS Access Key ID":
+            if "AWS Access Key" in secret_name:
                 idx = text.find(match_val)
                 if idx != -1:
                     context = text[max(0, idx - 40) : idx].lower()
                     if "amz-credential" in context:
                         continue
+
+            # Drop placeholders and env-variable references for everything
+            # except literal markers (private-key headers self-evidently real).
+            if "PRIVATE KEY" not in secret_name:
+                idx = text.find(match_val)
+                ctx = text[max(0, idx - 40) : idx + len(match_val) + 40] if idx != -1 else ""
+                if is_placeholder_value(match_val, ctx):
+                    continue
 
             # Entropy Check for Generic Secrets
             # Real tokens usually have an entropy between ~3.5 and ~5.0

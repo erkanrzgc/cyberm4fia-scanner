@@ -116,6 +116,7 @@ SCAN_OPTION_DEFAULTS = {
     "chain": False,
     "wordlist": False,
     "headless": False,
+    "har_output": False,
     "exploit": False,
     "cookie": "",
     "tamper": "",
@@ -141,6 +142,14 @@ SCAN_OPTION_DEFAULTS = {
     "sploitus": False,
     "history": False,
     "proxy_listen": False,
+    "dorking": False,
+    "wayback": False,
+    "urlscan": False,
+    "rotate_proxy": False,
+    "nuclei": False,
+    "asset_search": False,
+    "git_history": False,
+    "git_history_path": "",
 }
 
 BOOL_OPTION_KEYS = frozenset(
@@ -166,6 +175,12 @@ ALL_ENABLED_OPTION_KEYS = frozenset(
         "headless",
         "html",
         "passive",
+        "dorking",
+        "wayback",
+        "urlscan",
+        "nuclei",
+        "asset_search",
+        "git_history",
     }
 ) - {"wordlist", "sarif", "ai", "proxy_listen", "exploit"}
 
@@ -199,6 +214,15 @@ PROFILE_PRESETS = {
         }
     ),
     "4": ALL_ENABLED_OPTION_KEYS,
+    # Profile 6 — Web Recon + Audit (OctoScan `web` chain analogue)
+    # Tech intel + nuclei community templates + endpoint discovery + asset
+    # search across 7 OSINT providers + passive checks. Useful as a
+    # focused-but-noisy follow-up to Profile 1.
+    "6": frozenset({
+        "recon", "subdomain", "tech", "fuzz", "crawl",
+        "nuclei", "asset_search", "passive",
+        "csp_bypass", "cookie", "cors", "header_inject",
+    }),
 }
 
 SCAN_MODE_SPECS = (
@@ -341,6 +365,26 @@ ATTACK_PROFILE_SPECS = (
         description="Ask every module prompt one by one.",
         option_keys=frozenset(),
         interactive_label="[5] Custom Choice",
+    ),
+    AttackProfileSpec(
+        choice="6",
+        label="Web Recon + Audit",
+        description=(
+            "OctoScan-style web chain: tech intel + nuclei community templates "
+            "+ endpoint fuzz + crawl + 7-provider asset search + passive."
+        ),
+        option_keys=PROFILE_PRESETS["6"],
+        interactive_label="[6] Web Recon + Audit",
+        recommended_prompt_specs=(
+            InteractivePromptSpec(
+                "secrets", "[?] Recommended: scan JS/HTML for secrets too? (Y/n)", "Y",
+            ),
+            InteractivePromptSpec(
+                "git_history",
+                "[?] Recommended: probe for exposed .git/ directory? (y/N)",
+                "N",
+            ),
+        ),
     ),
 )
 
@@ -528,6 +572,18 @@ PARSER_ARGUMENT_SPECS = (
         {"action": "store_true", "help": "OSINT enrichment (Shodan/Whois)"},
     ),
     ArgumentSpec(
+        ("--dorking",),
+        {"action": "store_true", "help": "Automated Google Dorking for target"},
+    ),
+    ArgumentSpec(
+        ("--wayback",),
+        {"action": "store_true", "help": "Wayback Machine historical URL discovery"},
+    ),
+    ArgumentSpec(
+        ("--urlscan",),
+        {"action": "store_true", "help": "URLScan.io passive reconnaissance"},
+    ),
+    ArgumentSpec(
         ("--chain",),
         {"action": "store_true", "help": "Vulnerability chaining analysis"},
     ),
@@ -547,10 +603,25 @@ PARSER_ARGUMENT_SPECS = (
         },
     ),
     ArgumentSpec(
+        ("--rotate-proxy",),
+        {
+            "action": "store_true",
+            "dest": "rotate_proxy",
+            "help": "Rotate proxies from a live pool for each request (auto-enables with WAF evasion)",
+        },
+    ),
+    ArgumentSpec(
         ("--headless",),
         {
             "action": "store_true",
             "help": "Use headless browser for SPA rendering (requires playwright)",
+        },
+    ),
+    ArgumentSpec(
+        ("--har-output",),
+        {
+            "action": "store_true",
+            "help": "Record browser traffic as HAR file and analyze for API endpoints",
         },
     ),
     ArgumentSpec(
@@ -766,6 +837,21 @@ INTERACTIVE_CUSTOM_PROMPT_GROUPS = (
             InteractivePromptSpec(
                 "osint",
                 "[?] Run OSINT enrichment (Shodan/Whois)? (y/N)",
+                "N",
+            ),
+            InteractivePromptSpec(
+                "dorking",
+                "[?] Run Google Dorking? (y/N)",
+                "N",
+            ),
+            InteractivePromptSpec(
+                "wayback",
+                "[?] Harvest Wayback Machine URLs? (y/N)",
+                "N",
+            ),
+            InteractivePromptSpec(
+                "urlscan",
+                "[?] Run URLScan.io passive recon? (y/N)",
                 "N",
             ),
         ),

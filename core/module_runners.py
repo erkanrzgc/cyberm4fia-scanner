@@ -84,6 +84,150 @@ def _run_sploitus_search(state):
     return []
 
 
+def _run_google_dorker(state):
+    from modules.google_dorker import scan_google_dorks
+
+    tech_stack = state.get("tech_results")
+    result = scan_google_dorks(
+        state["url"],
+        delay=state["delay"],
+        tech_stack=tech_stack,
+    )
+    state["dorking_data"] = result
+
+    # Feed discovered URLs into the scan pipeline
+    discovered = result.get("discovered_urls", [])
+    if discovered:
+        from core.module_registry import canonicalize_scan_urls
+        from utils.colors import log_success
+
+        existing = state.get("urls_to_scan", [state["url"]])
+        state["urls_to_scan"] = canonicalize_scan_urls(existing + discovered)
+        log_success(f"Dorking added {len(discovered)} URL(s) to scan queue")
+
+    return []
+
+
+def _run_osint_identity(state):
+    from modules.osint_identity import scan_identity_fabric
+
+    subdomains = state.get("recon_data", {}).get("subdomains", [])
+    result = scan_identity_fabric(
+        state["url"],
+        subdomains=subdomains,
+        delay=state["delay"],
+    )
+    state["osint_identity_data"] = result
+    return result
+
+
+def _run_osint_breach(state):
+    import os
+    from modules.osint_breach import scan_breach_intel
+
+    emails = state.get("recon_data", {}).get("emails", [])
+    hibp_key = os.environ.get("HIBP_API_KEY", "")
+    result = scan_breach_intel(
+        state["url"],
+        emails=emails,
+        hibp_api_key=hibp_key or None,
+        delay=state["delay"],
+    )
+    state["osint_breach_data"] = result
+    return result
+
+
+def _run_osint_sector(state):
+    from modules.osint_sector import scan_sector_osint
+
+    result = scan_sector_osint(state["url"], delay=state["delay"])
+    state["osint_sector_data"] = result
+    return []
+
+
+def _run_container_registry(state):
+    from modules.cloud_enum import scan_container_registries
+
+    result = scan_container_registries(state["url"], delay=state["delay"])
+    state["container_registry_data"] = result
+    return result
+
+
+def _run_cicd_exposure(state):
+    from modules.cloud_enum import scan_cicd_exposure
+
+    result = scan_cicd_exposure(state["url"], delay=state["delay"])
+    state["cicd_exposure_data"] = result
+    return result
+
+
+def _run_wayback_harvester(state):
+    from modules.wayback_harvester import scan_wayback
+
+    result = scan_wayback(state["url"], delay=state["delay"])
+    state["wayback_data"] = result
+
+    # Feed interesting URLs into the scan pipeline
+    interesting = result.get("interesting", {})
+    # Prioritize API, admin, auth, and param endpoints
+    priority_urls = []
+    for cat in ["api", "admin", "auth", "param_endpoints", "upload", "debug"]:
+        priority_urls.extend(interesting.get(cat, []))
+
+    if priority_urls:
+        from core.module_registry import canonicalize_scan_urls
+        from utils.colors import log_success
+
+        existing = state.get("urls_to_scan", [state["url"]])
+        # Limit wayback additions to avoid scan explosion
+        state["urls_to_scan"] = canonicalize_scan_urls(
+            existing + priority_urls[:50]
+        )
+        log_success(f"Wayback added {min(len(priority_urls), 50)} URL(s) to scan queue")
+
+    # Feed discovered parameters into param_discovery context
+    params = result.get("parameters", set())
+    if params:
+        if "options" in state:
+            existing_params = state["options"].get("wayback_params", set())
+            state["options"]["wayback_params"] = existing_params | params
+
+    return []
+
+
+def _run_urlscan_passive(state):
+    from modules.urlscan_passive import scan_urlscan
+
+    result = scan_urlscan(state["url"], delay=state["delay"])
+    state["urlscan_data"] = result
+
+    # Feed discovered URLs into the scan pipeline
+    discovered = result.get("discovered_urls", [])
+    if discovered:
+        from core.module_registry import canonicalize_scan_urls
+        from utils.colors import log_success
+
+        existing = state.get("urls_to_scan", [state["url"]])
+        state["urls_to_scan"] = canonicalize_scan_urls(existing + discovered)
+        log_success(f"URLScan added {len(discovered)} URL(s) to scan queue")
+
+    # Merge URLScan technology detections into tech_results
+    urlscan_techs = result.get("technologies", [])
+    if urlscan_techs and "tech_results" in state:
+        existing_names = {t.get("name") for t in (state["tech_results"] or [])}
+        for tech in urlscan_techs:
+            if tech.get("name") and tech["name"] not in existing_names:
+                state["tech_results"].append({
+                    "type": "technology",
+                    "name": tech["name"],
+                    "category": ", ".join(tech.get("categories", [])),
+                    "version": tech.get("version", ""),
+                    "evidence": "URLScan.io",
+                })
+
+    return []
+
+
 def _run_brute_force(state):
     from modules.brute_force import BruteForcer
     from urllib.parse import urlparse
@@ -164,8 +308,14 @@ def _run_headless_discovery(state):
     from utils.colors import log_info, log_success
     from core.module_registry import canonicalize_scan_urls
 
+    har_output = None
+    if state["options"].get("har_output"):
+        har_output = state["scan_dir"]
+
     log_info("Using dynamic Playwright crawler for SPA...")
-    crawl_result = run_dynamic_spider(state["url"], delay=state["delay"])
+    crawl_result = run_dynamic_spider(
+        state["url"], delay=state["delay"], har_output=har_output
+    )
 
     found_links = crawl_result.get("links", [])
     state["urls_to_scan"] = canonicalize_scan_urls(
@@ -179,6 +329,11 @@ def _run_headless_discovery(state):
         for method, endpoint_url in endpoints:
             if method.upper() == "GET":
                 state["urls_to_scan"].append(endpoint_url)
+
+    har_path = crawl_result.get("har_path")
+    if har_path:
+        state["har_path"] = har_path
+        log_success(f"HAR recording saved: {har_path}")
 
     state["urls_to_scan"] = canonicalize_scan_urls(state["urls_to_scan"])[:30]
     return []
@@ -1102,6 +1257,100 @@ def _run_graphql_audit(state):
     options = state.get("options", {})
 
     return scan_graphql_audit(url, delay, options)
+
+
+# ── HAR Analysis runner ─────────────────────────────────────────────────────
+
+def _run_har_analysis(state):
+    """Analyze HAR recording to extract API endpoints, auth tokens, and hidden endpoints."""
+    har_path = state.get("har_path")
+    if not har_path or not state["options"].get("har_output"):
+        return []
+
+    from utils.har_analyzer import analyze_har_file, extract_endpoints_from_har
+    from utils.colors import log_info, log_success, log_warning
+
+    result = analyze_har_file(har_path, base_url=state["url"])
+    if not result:
+        log_warning("HAR analysis produced no results")
+        return []
+
+    endpoints = result.get("endpoints", [])
+    findings = result.get("findings", [])
+
+    state["har_endpoints"] = endpoints
+    state["har_findings"] = findings
+
+    summary = result.get("summary", {})
+    log_success(
+        f"HAR analysis complete: {summary.get('api_requests', 0)} API requests, "
+        f"{len(endpoints)} unique endpoints"
+    )
+
+    discovered_eps = state.get("discovered_api_endpoints", [])
+    if isinstance(discovered_eps, list):
+        from modules.api_scanner import _dedupe_api_endpoints
+        discovered_eps.extend(endpoints)
+        state["discovered_api_endpoints"] = _dedupe_api_endpoints(discovered_eps)
+
+    return findings
+
+
+# ── Nuclei community-template runner ────────────────────────────────────────
+
+def _run_nuclei(state):
+    """Run projectdiscovery/nuclei templates against the target."""
+    from modules.nuclei_runner import scan_with_nuclei
+    from utils.colors import log_info
+
+    options = state.get("options", {}) or {}
+    if not options.get("nuclei"):
+        return []
+
+    log_info("Running nuclei community-template scan")
+    observations = scan_with_nuclei(state["url"], options=options)
+    # Nuclei output is rich; surface as findings via standard normalization path.
+    return [obs.to_dict() for obs in observations]
+
+
+# ── Git history secret scanner runner ───────────────────────────────────────
+
+def _run_git_history(state):
+    """White-box git history scan + best-effort exposed-.git probe."""
+    from modules.git_history_scan import scan_git_history
+    from utils.colors import log_info
+
+    options = state.get("options", {}) or {}
+    if not options.get("git_history") and not options.get("git_history_path"):
+        return []
+
+    log_info("Running git-history secret scan")
+    observations = scan_git_history(state["url"], options=options)
+    return [obs.to_dict() for obs in observations]
+
+
+# ── Multi-provider asset search runner ──────────────────────────────────────
+
+def _run_asset_search(state):
+    """Query Censys/ZoomEye/FOFA/Onyphe/Netlas/FullHunt/LeakIX in parallel."""
+    from utils.asset_search import lookup_all_providers, merge_results
+    from utils.colors import log_info, log_success
+
+    options = state.get("options", {}) or {}
+    if not options.get("asset_search"):
+        return []
+
+    log_info("Running multi-provider asset search")
+    results = lookup_all_providers(state["url"])
+    if not results:
+        return []
+    merged = merge_results(results)
+    state["asset_search_data"] = merged
+    log_success(
+        f"AssetSearch: {len(merged['providers'])} providers, "
+        f"{len(merged['ports'])} ports, {len(merged['vulns'])} vulns"
+    )
+    return []
 
 
 # ── Guaranteed Security Checks runner ────────────────────────────────────────

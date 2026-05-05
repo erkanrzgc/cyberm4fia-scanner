@@ -443,7 +443,14 @@ def smart_request(
             url, params, data, req_headers, evasion_level
         )
 
-    proxies = get_proxy() if get_proxy() else None
+    from utils.proxy_rotator import get_rotation_proxy
+
+    rotation_proxy = get_rotation_proxy()
+    proxies = (
+        rotation_proxy
+        or get_proxy()
+        or None
+    )
 
     # Defaults - HTTPX uses `follow_redirects` instead of `allow_redirects`
     allow_redirects = kwargs.pop("allow_redirects", True)
@@ -639,6 +646,8 @@ def _get_host_semaphore(url):
 
 def snapshot_runtime_state():
     """Capture mutable request/runtime globals for later restoration."""
+    from utils.proxy_rotator import is_proxy_rotation_enabled
+
     with lock:
         return {
             "proxy": Config.PROXY,
@@ -653,6 +662,7 @@ def snapshot_runtime_state():
             "max_host_concurrency": Config.MAX_HOST_CONCURRENCY,
             "path_blacklist": tuple(Config.PATH_BLACKLIST),
             "cancel_event": Config.CANCEL_EVENT,
+            "rotate_proxy": is_proxy_rotation_enabled(),
             "global_headers": dict(_global_headers),
             "host_delays": host_rate_limiter.snapshot(),
             "stats": {
@@ -694,6 +704,11 @@ def restore_runtime_state(state):
             Stats.errors = saved_stats["errors"]
             Stats.retries = saved_stats["retries"]
             Stats.start_time = saved_stats["start_time"]
+
+    from utils.proxy_rotator import enable_proxy_rotation
+
+    if state.get("rotate_proxy"):
+        enable_proxy_rotation(True)
 
     _global_headers.clear()
     _global_headers.update(state.get("global_headers", {}))

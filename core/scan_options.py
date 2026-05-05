@@ -195,6 +195,13 @@ def build_cli_scan_options(args, threads: int):
         getattr(args, "nvidia_api_key", options.get("nvidia_api_key", "")) or options.get("nvidia_api_key", "")
     )
     options["agent"] = bool(getattr(args, "agent", False))
+    options["rotate_proxy"] = bool(
+        getattr(args, "rotate_proxy", False)
+        or bool(getattr(args, "tamper", False))
+    )
+    if options["rotate_proxy"]:
+        from utils.proxy_rotator import enable_proxy_rotation
+        enable_proxy_rotation(True)
     return normalize_runtime_options(options)
 
 
@@ -314,5 +321,8 @@ def normalize_runtime_options(options: dict):
     for key in ("session", "resume"):
         if options.get(key, "").lower() in {"y", "yes", "n", "no"}:
             options[key] = ""
+
+    if options.get("har_output") and not options.get("headless"):
+        options["headless"] = True
 
     return options
