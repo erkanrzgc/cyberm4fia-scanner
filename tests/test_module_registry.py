@@ -199,7 +199,7 @@ class TestModuleRegistry:
         monkeypatch.setattr(
             dynamic_mod,
             "run_dynamic_spider",
-            lambda url, delay=0: {
+            lambda url, delay=0, har_output=None: {
                 "links": [
                     "http://example.com/app#hero",
                     "http://example.com/app?_rsc=1",

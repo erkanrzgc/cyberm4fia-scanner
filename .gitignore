@@ -30,8 +30,14 @@ Thumbs.db
 scans/
 memory/
 
-# Linter cache
+# Linter / test cache
 .ruff_cache/
+.pytest_cache/
+
+# Editor backups
+*.save
+*~
+*.swp
 
 # Local configs / AI tools
 .mcp.json
@@ -46,3 +52,4 @@ data/*.db
 # External MCP tools (cloned, not tracked)
 tools/mcp-for-security/
 data/payload_memory.json
+.aider*
