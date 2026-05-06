@@ -7,7 +7,7 @@ from the Wayback Machine (web.archive.org) archive.
 import re
 from urllib.parse import urlparse, parse_qs
 
-from utils.colors import Colors, log_info, log_success, log_warning, log_error
+from utils.colors import Colors, log_info, log_success, log_warning
 from utils.request import smart_request, ScanExceptions
 
 

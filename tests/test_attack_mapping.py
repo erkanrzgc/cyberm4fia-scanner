@@ -6,7 +6,6 @@ import pytest
 
 from utils.attack_mapping import (
     TECHNIQUE_CATALOG,
-    TechniqueRef,
     all_known_vuln_types,
     tactics_for_vuln,
     tag_finding_dict,

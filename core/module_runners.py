@@ -1267,8 +1267,8 @@ def _run_har_analysis(state):
     if not har_path or not state["options"].get("har_output"):
         return []
 
-    from utils.har_analyzer import analyze_har_file, extract_endpoints_from_har
-    from utils.colors import log_info, log_success, log_warning
+    from utils.har_analyzer import analyze_har_file
+    from utils.colors import log_success, log_warning
 
     result = analyze_har_file(har_path, base_url=state["url"])
     if not result:

@@ -18,8 +18,6 @@ import re
 import json
 import socket
 import ssl
-import time
-import os
 from urllib.parse import urlparse, urljoin
 from datetime import datetime
 

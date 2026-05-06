@@ -22,8 +22,23 @@ Base: `main` @ `98ef9d9`
 | `test_ssti.py::TestScanSSTI::test_waf_block_tracked` | 31.7s | real HTTP |
 | `test_vuln_checklist.py` | 12s | likely real HTTP |
 | `test_xxe.py::TestScanXXE::test_no_vuln_returns_empty` | 5.75s | real HTTP |
+| `test_scan_options.py::*::test_cli_builder_preserves_explicit_values_without_all` | HANG offline | sets `proxy_url`, which triggers `utils/proxy_rotator.py` real CDN fetch via `enable_proxy_rotation` |
 
 Action: tracked but DEFERRED. Cleanup project does not modify these tests' production logic; mocking them is a separate "test-quality" task.
+
+## Standard Deselect List (for cleanup-phase regression runs)
+
+Use these exact deselects to keep regression runs <240s:
+
+```
+--deselect tests/test_module_registry.py::TestModuleRegistry::test_pre_scan_phase_populates_recon_and_tech_state
+--deselect "tests/test_ssrf.py::TestScanSSRF::test_no_vuln_returns_empty"
+--deselect "tests/test_ssti.py::TestScanSSTI::test_no_vuln_returns_empty"
+--deselect "tests/test_ssti.py::TestScanSSTI::test_ignores_expected_value_in_baseline"
+--deselect "tests/test_ssti.py::TestScanSSTI::test_waf_block_tracked"
+--deselect "tests/test_xxe.py::TestScanXXE::test_no_vuln_returns_empty"
+--deselect "tests/test_scan_options.py::TestScanOptions::test_cli_builder_preserves_explicit_values_without_all"
+```
 
 ## Codebase Snapshot (pre-cleanup)
 

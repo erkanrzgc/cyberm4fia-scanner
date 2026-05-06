@@ -3,7 +3,6 @@ cyberm4fia-scanner - Brand Protection (Typosquatting & Phishing DNS) Module
 """
 import socket
 from urllib.parse import urlparse
-import itertools
 
 # Common homoglyphs for typosquatting
 HOMOGLYPHS = {

@@ -9,7 +9,7 @@ CAUTION: ICS/SCADA probes are passive-only (no active TCP connection).
 import re
 from urllib.parse import urlparse
 
-from utils.colors import log_info, log_success, log_warning, log_error, Colors
+from utils.colors import log_info, log_success, log_error, Colors
 from utils.request import smart_request, ScanExceptions
 
 

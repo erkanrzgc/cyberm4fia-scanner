@@ -5,10 +5,9 @@ and their tenant configurations for attack-surface mapping.
 """
 
 import re
-import time
 from urllib.parse import urlparse
 
-from utils.colors import log_info, log_success, log_warning, log_error, Colors
+from utils.colors import log_info, log_success, log_warning, Colors
 from utils.request import smart_request, ScanExceptions
 
 

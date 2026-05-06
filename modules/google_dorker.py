@@ -6,11 +6,10 @@ Generates context-aware dorks based on target domain and detected technology
 stack, then queries search APIs for results to seed the discovery pipeline.
 """
 
-import re
 import time
-from urllib.parse import urlparse, quote_plus
+from urllib.parse import urlparse
 
-from utils.colors import Colors, log_info, log_success, log_warning, log_error
+from utils.colors import Colors, log_info, log_success
 from utils.request import smart_request, ScanExceptions
 
 

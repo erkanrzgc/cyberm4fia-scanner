@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 from utils.brand_protection import generate_typosquatting_domains, check_phishing_domains
-from utils.qishing import extract_qr_from_image, analyze_image_for_qishing
+from utils.qishing import analyze_image_for_qishing
 
 # --- Brand Protection Tests ---
 

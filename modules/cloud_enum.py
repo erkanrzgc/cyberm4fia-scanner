@@ -8,7 +8,7 @@ and CI/CD platform exposures (Jenkins, GitLab, TeamCity, ArgoCD).
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlparse
 
-from utils.colors import log_info, log_success, log_warning, log_error, Colors
+from utils.colors import log_info, log_success, log_warning, Colors
 from utils.request import smart_request
 from utils.request import ScanExceptions
 

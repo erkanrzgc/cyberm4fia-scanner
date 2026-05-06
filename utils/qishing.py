@@ -1,10 +1,8 @@
 """
 cyberm4fia-scanner - Qishing (QR Phishing) Detection Module
 """
-import re
 import io
-from urllib.parse import urlparse, urljoin
-from utils.colors import log_info, log_warning
+from urllib.parse import urlparse
 
 # We encapsulate imports in a try-except block so the scanner doesn't crash 
 # if the user hasn't installed pyzbar/pillow yet.

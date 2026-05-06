@@ -6,7 +6,7 @@ Extracts API endpoints, auth patterns, and undocumented endpoints from HAR files
 import json
 import re
 from collections import defaultdict
-from urllib.parse import urlparse, parse_qs, urljoin
+from urllib.parse import urlparse
 
 from utils.colors import log_info, log_success, log_warning
 

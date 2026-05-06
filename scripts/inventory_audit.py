@@ -14,9 +14,7 @@ from __future__ import annotations
 
 import ast
 import collections
-import json
 import os
-import re
 import sys
 from pathlib import Path
 
