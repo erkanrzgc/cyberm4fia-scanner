@@ -84,11 +84,6 @@ def save_console_log():
             pass
 
 
-def _write_log(level, msg):
-    """Write message to log file (Deprecated, using save_console_log at end)"""
-    pass
-
-
 def log_info(msg):
     if not QUIET_MODE:
         console.print(f"[white bold][*][/] {msg}")

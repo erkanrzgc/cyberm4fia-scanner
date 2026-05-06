@@ -30,18 +30,26 @@ class OOBInteraction:
 
 
 class OOBProvider:
-    """Base provider for OOB interactions."""
+    """Abstract base for OOB interaction providers.
+
+    Concrete providers (see ``LocalOOBProvider``) override every method.
+    The default implementations are deliberate no-ops only so that an
+    abstract instance is still callable in a typed sense; callers should
+    instantiate a concrete subclass via ``OOBClient(mode=...)`` rather
+    than this class directly.
+    """
+
     def get_host(self) -> str:
         raise NotImplementedError
 
-    def start(self):
-        pass
+    def start(self) -> None:
+        raise NotImplementedError
 
-    def stop(self):
-        pass
+    def stop(self) -> None:
+        raise NotImplementedError
 
     def poll(self) -> List[OOBInteraction]:
-        return []
+        raise NotImplementedError
 
 
 class LocalOOBProvider(OOBProvider):
@@ -142,7 +150,9 @@ class OOBClient:
         if mode == "local":
             self.provider = LocalOOBProvider(port=listener_port)
         else:
-            self.provider = OOBProvider()
+            raise ValueError(
+                f"OOBClient: unsupported mode {mode!r}; only 'local' is implemented"
+            )
 
     @property
     def ready(self) -> bool:

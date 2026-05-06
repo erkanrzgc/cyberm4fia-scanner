@@ -130,6 +130,9 @@ class TestModuleRegistry:
 
     def test_pre_scan_phase_populates_recon_and_tech_state(self, monkeypatch):
         import modules.guaranteed_checks as guaranteed_mod
+        import modules.osint_breach as osint_breach_mod
+        import modules.osint_identity as osint_identity_mod
+        import modules.osint_sector as osint_sector_mod
         import modules.recon as recon_mod
         import modules.tech_detect as tech_mod
         import utils.cve_feed as cve_mod
@@ -153,6 +156,21 @@ class TestModuleRegistry:
             osint_mod,
             "scan_osint",
             lambda url, shodan_api_key=None, delay=0: {"domain": url, "delay": delay},
+        )
+        # The "osint" option_key fans out to multiple sibling modules in
+        # pre_scan. Mute them so this test stays focused on the CVE_Intel
+        # path produced by recon→tech_detect→cve_feed.
+        monkeypatch.setattr(
+            osint_identity_mod, "scan_identity_fabric",
+            lambda *args, **kwargs: [],
+        )
+        monkeypatch.setattr(
+            osint_breach_mod, "scan_breach_intel",
+            lambda *args, **kwargs: [],
+        )
+        monkeypatch.setattr(
+            osint_sector_mod, "scan_sector_osint",
+            lambda *args, **kwargs: [],
         )
         monkeypatch.setattr(
             tech_mod,

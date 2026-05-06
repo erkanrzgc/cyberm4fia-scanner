@@ -467,7 +467,12 @@ def _run_xss_postprocess(state):
 
 
 def _run_csrf_exploit(state):
-    from modules.browser_exploit import auto_exploit_csrf
+    """Mark CSRF findings for PoC generation by the dedicated PoC phase.
+
+    The actual HTML PoC is produced in `_run_poc_generation` →
+    `modules.poc_generator.generate_pocs`, which now recognises
+    `type == "CSRF"` findings and writes a self-submitting form.
+    """
     from utils.colors import Colors, log_info
 
     options = state.get("options", {})
@@ -482,15 +487,18 @@ def _run_csrf_exploit(state):
         f"{Colors.END}"
     )
     choice = state["prompt_input"]("Choice:", "N").lower()
-    
-    if choice == "y":
-        for vuln in csrf_vulns:
-            auto_exploit_csrf(vuln, state.get("forms", []))
-            # (Note: robust CSRF exploitation often requires logging into the target. 
-            # In a fully automated setting, we generate PoCs instead of running them headlessly
-            # unless we have session credentials.)
-            log_info(f"CSRF PoC would be generated here for: {vuln.get('url')}")
-    
+
+    if choice != "y":
+        return []
+
+    # Ensure CSRF vulns are present in all_vulns so generate_pocs picks them up.
+    all_vulns = state.setdefault("all_vulns", [])
+    existing_urls = {v.get("url") for v in all_vulns if v.get("type") == "CSRF"}
+    for vuln in csrf_vulns:
+        if vuln.get("url") in existing_urls:
+            continue
+        all_vulns.append({**vuln, "type": "CSRF"})
+    log_info("CSRF findings staged for PoC generation phase.")
     return []
 
 
