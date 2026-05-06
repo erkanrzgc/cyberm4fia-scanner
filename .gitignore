@@ -43,6 +43,8 @@ memory/
 .mcp.json
 .agents/
 .claude/
+.commandcode/
+command-code.txt
 scratch_*.py
 
 # Runtime binary databases
