@@ -146,10 +146,11 @@ class TestScanSSRF:
         mock_resp.text = "Normal safe response without any indicators"
         mock_req.return_value = mock_resp
 
-        result = scan_ssrf(
-            "http://example.com/page?q=hello",
-            forms=[],
-            delay=0,
-            threads=1,
-        )
+        with patch("utils.ai_exploit_agent.get_exploit_agent", return_value=None):
+            result = scan_ssrf(
+                "http://example.com/page?q=hello",
+                forms=[],
+                delay=0,
+                threads=1,
+            )
         assert result == []

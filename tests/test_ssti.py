@@ -127,7 +127,8 @@ class TestScanSSTI:
         mock_resp.status_code = 200
         mock_req.return_value = mock_resp
 
-        result = scan_ssti("http://example.com/page?name=test", delay=0)
+        with patch("utils.ai_exploit_agent.get_exploit_agent", return_value=None):
+            result = scan_ssti("http://example.com/page?name=test", delay=0)
         assert result == []
 
     @patch("modules.ssti.smart_request")
@@ -138,7 +139,8 @@ class TestScanSSTI:
         mock_resp.status_code = 200
         mock_req.return_value = mock_resp
 
-        result = scan_ssti("http://example.com/page?q=test", delay=0)
+        with patch("utils.ai_exploit_agent.get_exploit_agent", return_value=None):
+            result = scan_ssti("http://example.com/page?q=test", delay=0)
         assert result == []
 
     @patch("modules.ssti.smart_request")
@@ -148,5 +150,6 @@ class TestScanSSTI:
         mock_resp.status_code = 403
         mock_req.return_value = mock_resp
 
-        result = scan_ssti("http://example.com/page?q=test", delay=0)
+        with patch("utils.ai_exploit_agent.get_exploit_agent", return_value=None):
+            result = scan_ssti("http://example.com/page?q=test", delay=0)
         assert result == []

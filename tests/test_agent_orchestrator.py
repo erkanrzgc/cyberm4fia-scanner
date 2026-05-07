@@ -116,7 +116,8 @@ class TestExploitStage:
         ctx = MissionContext(target_url="http://t/")
         ctx.add_intent({"vuln_type": "XSS", "goal": "x", "target_url": "http://t/"})
         # Client present but `available=False`
-        cli = MagicMock(); cli.available = False
+        cli = MagicMock()
+        cli.available = False
         ExploitStage(ai_client=cli).run(ctx)
         assert ctx.findings == []
         assert any(r.get("skipped") == "AI client unavailable" for r in ctx.stage_results)

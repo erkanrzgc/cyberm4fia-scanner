@@ -1,5 +1,7 @@
 """Tests for the Campaign Manager."""
-import json, os, pytest
+import json
+import os
+import pytest
 from utils.campaign_manager import CampaignManager, Campaign
 
 

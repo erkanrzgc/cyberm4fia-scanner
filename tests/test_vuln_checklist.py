@@ -58,7 +58,14 @@ class TestFileUpload:
 
     def test_scan_returns_list(self):
         from modules.file_upload import scan_file_upload
-        result = scan_file_upload("http://test.com/", forms=[], delay=0)
+
+        with patch("modules.file_upload.smart_request") as mock_req:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 404
+            mock_resp.text = "Not Found"
+            mock_req.return_value = mock_resp
+
+            result = scan_file_upload("http://test.com/", forms=[], delay=0)
         assert isinstance(result, list)
 
 

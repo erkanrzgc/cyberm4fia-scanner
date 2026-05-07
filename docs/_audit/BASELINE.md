@@ -12,7 +12,7 @@ Base: `main` @ `98ef9d9`
     - Cause: test does not monkeypatch `modules.osint_identity.scan_identity_fabric`, which is now wired into `pre_scan` phase.
     - Action: fix in Faz 4 (silent-failure / stub cleanup) — extend monkeypatch list.
 
-## Slow Tests (real HTTP — must be mocked, ~190s wall total)
+## Slow Tests (real HTTP — fixed in Faz 9)
 
 | Test | Duration | Smell |
 |---|---|---|
@@ -24,11 +24,14 @@ Base: `main` @ `98ef9d9`
 | `test_xxe.py::TestScanXXE::test_no_vuln_returns_empty` | 5.75s | real HTTP |
 | `test_scan_options.py::*::test_cli_builder_preserves_explicit_values_without_all` | HANG offline | sets `proxy_url`, which triggers `utils/proxy_rotator.py` real CDN fetch via `enable_proxy_rotation` |
 
-Action: tracked but DEFERRED. Cleanup project does not modify these tests' production logic; mocking them is a separate "test-quality" task.
+Action: fixed in Faz 9 with test-only mocks and global WAF state reset.
+The full suite now runs without deselects.
 
-## Standard Deselect List (for cleanup-phase regression runs)
+## Legacy Standard Deselect List (obsolete after Faz 9)
 
-Use these exact deselects to keep regression runs <240s:
+These deselects were used before Faz 9 to keep regression runs <240s.
+Do not use them for current validation unless you are reproducing the
+pre-Faz9 baseline:
 
 ```
 --deselect tests/test_module_registry.py::TestModuleRegistry::test_pre_scan_phase_populates_recon_and_tech_state
@@ -38,6 +41,14 @@ Use these exact deselects to keep regression runs <240s:
 --deselect "tests/test_ssti.py::TestScanSSTI::test_waf_block_tracked"
 --deselect "tests/test_xxe.py::TestScanXXE::test_no_vuln_returns_empty"
 --deselect "tests/test_scan_options.py::TestScanOptions::test_cli_builder_preserves_explicit_values_without_all"
+```
+
+## Current Regression Command
+
+Use the full suite without deselects:
+
+```
+pytest
 ```
 
 ## Codebase Snapshot (pre-cleanup)
@@ -62,4 +73,3 @@ For each phase commit:
 1. Test count must remain ≥683 passing (the 1 pre-existing failure is OWNED in Faz 4).
 2. `python -c "import scanner; import api_server"` succeeds.
 3. `ruff check .` does not introduce NEW errors.
-

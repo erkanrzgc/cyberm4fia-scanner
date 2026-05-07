@@ -156,5 +156,6 @@ class TestScanXXE:
         mock_resp.headers = {"content-type": "text/html"}
         mock_req.return_value = mock_resp
 
-        result = scan_xxe("http://example.com/page")
+        with patch("utils.ai_exploit_agent.get_exploit_agent", return_value=None):
+            result = scan_xxe("http://example.com/page")
         assert result == []

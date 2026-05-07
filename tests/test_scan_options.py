@@ -3,6 +3,7 @@ Tests for core/scan_options.py
 """
 
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
@@ -143,7 +144,8 @@ class TestScanOptions:
             max_host_concurrency=2,
             path_blacklist="/logout,/checkout",
         )
-        options = build_cli_scan_options(args, threads=12)
+        with patch("utils.proxy_rotator.enable_proxy_rotation") as enable_rotation:
+            options = build_cli_scan_options(args, threads=12)
 
         assert options["xss"] is True
         assert options["api_scan"] is True
@@ -167,6 +169,7 @@ class TestScanOptions:
         assert options["path_blacklist"] == "/logout,/checkout"
         assert options["templates"] is False
         assert options["threads"] == 12
+        enable_rotation.assert_called_once_with(True)
 
     def test_cli_builder_normalizes_proxy_urls_without_scheme(self):
         args = _make_args(proxy_url="127.0.0.1:8080")
