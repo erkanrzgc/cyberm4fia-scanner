@@ -3,6 +3,7 @@ cyberm4fia-scanner - Command Injection Module
 OS Command Injection detection (Threaded)
 """
 
+import functools
 import time
 import re
 from utils.colors import log_info, log_success, log_vuln
@@ -16,6 +17,7 @@ from modules.payloads import CMDI_PAYLOADS, CMDI_SIGNATURES
 from utils.payload_filter import PayloadFilter
 from modules.smart_payload import probe_cmdi_context
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse, urljoin
+from utils.concurrency import run_concurrent_tasks
 from utils.request import ScanExceptions
 
 def _match_standalone_output_line(text, candidates):
@@ -56,9 +58,6 @@ def detect_cmdi(text):
         return "windows_whoami", windows_user
 
     return None, None
-
-import functools
-from utils.concurrency import run_concurrent_tasks
 
 def _test_cmdi_param_payload(payload, param, params, parsed, delay, smart):
     if "sleep" in payload.lower():
@@ -357,7 +356,8 @@ def scan_cmdi(url, forms, delay, options=None, threads=None):
 
         for inp in inputs:
             form_data = {n: "127.0.0.1" for n in inputs}
-            if hidden_data: form_data.update(hidden_data)
+            if hidden_data:
+                form_data.update(hidden_data)
             probe = probe_cmdi_context(target, inp, {}, method=method, form_data=form_data, delay=delay)
             smart = probe.get("smart_payloads", [])
             all_payloads = smart + [p for p in payloads if p not in smart] if smart else payloads

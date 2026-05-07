@@ -345,7 +345,6 @@ class ValidationPipeline:
 
     def _gate_2_exploitable(self, finding) -> GateResult:
         """Verify the finding has real security impact."""
-        vuln_type = str(finding.get("type", finding.get("finding_type", ""))).lower()
         severity = str(finding.get("severity", "")).lower()
         description = str(finding.get("description", "")).lower()
         evidence = str(finding.get("evidence", "")).lower()
@@ -396,8 +395,6 @@ class ValidationPipeline:
     def _gate_3_no_false_positive(self, finding) -> GateResult:
         """Heuristic + optional AI check for false positives."""
         vuln_type = str(finding.get("type", finding.get("finding_type", "")))
-        evidence = str(finding.get("evidence", "")).lower()
-        description = str(finding.get("description", "")).lower()
         url = str(finding.get("url", "")).lower()
 
         # Already AI-verified
@@ -518,7 +515,6 @@ class ValidationPipeline:
         WAF misinterpretation, placeholder values, and CVSS mismatches.
         """
         description = str(finding.get("description", "")).lower()
-        evidence = str(finding.get("evidence", "")).lower()
         vuln_type = str(finding.get("type", finding.get("finding_type", ""))).lower()
         severity = str(finding.get("severity", "")).lower()
 

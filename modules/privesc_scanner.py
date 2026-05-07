@@ -349,7 +349,7 @@ class PrivEscScanner:
     def scan_all(self):
         """Run all privilege escalation scans."""
         print(f"\n{Colors.BOLD}{Colors.RED}{'═' * 55}")
-        print(f"  💀 PRIVILEGE ESCALATION SCANNER")
+        print("  💀 PRIVILEGE ESCALATION SCANNER")
         print(f"{'═' * 55}{Colors.END}\n")
 
         self.scan_suid()
@@ -416,17 +416,8 @@ class PrivEscScanner:
 
     def _print_summary(self):
         """Print a formatted summary of findings."""
-        total = (
-            len(self.findings["suid"])
-            + len(self.findings["sudo"])
-            + len(self.findings["writable_cron"])
-            + len(self.findings["capabilities"])
-            + len(self.findings["writable_paths"])
-            + len(self.findings.get("kernel", {}).get("potential_exploits", []))
-        )
-
         print(f"\n{Colors.BOLD}{Colors.GREEN}{'─' * 55}")
-        print(f"  Privilege Escalation Scan Complete")
+        print("  Privilege Escalation Scan Complete")
         print(f"{'─' * 55}{Colors.END}")
         print(f"  SUID Binaries:     {len(self.findings['suid'])} exploitable")
         print(f"  Sudo Entries:      {len(self.findings['sudo'])} exploitable")

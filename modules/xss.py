@@ -3,7 +3,14 @@ cyberm4fia-scanner - XSS Module
 Cross-Site Scripting detection
 """
 
-from utils.colors import log_info, log_vuln, log_warning
+import functools
+import re
+from typing import Optional
+from urllib.parse import urljoin, urlencode, urlparse, parse_qs, urlunparse
+
+from bs4 import BeautifulSoup
+
+from utils.colors import log_info, log_success, log_vuln, log_warning
 from utils.request import (
     get_oob_client,
     increment_vulnerability_count,
@@ -12,9 +19,7 @@ from utils.request import (
 from modules.payloads import XSS_FLAT_PAYLOADS
 from utils.payload_filter import PayloadFilter
 from modules.smart_payload import probe_xss_context
-from urllib.parse import urlparse, parse_qs, urlencode, urlunparse, urljoin
-import re
-from typing import Optional
+from utils.concurrency import run_concurrent_tasks
 from utils.request import ScanExceptions
 
 def analyze_context(soup, payload):
@@ -89,8 +94,30 @@ def is_valid_xss_reflection(payload, contexts):
 
     return is_valid
 
-import functools
-from utils.concurrency import run_concurrent_tasks
+
+def _check_xss_reflection(resp, payload, target_name, url_or_action, smart_payloads, source=None):
+    """Inspect a response for a reflected XSS payload and emit a vuln dict if found."""
+    if not resp or payload not in resp.text:
+        return None
+    soup = BeautifulSoup(resp.text, "lxml")
+    contexts = analyze_context(soup, payload)
+    if not is_valid_xss_reflection(payload, contexts):
+        return None
+    increment_vulnerability_count()
+    if not source:
+        source = "🧠 Smart" if payload in smart_payloads else "📋 Static"
+    log_vuln(f"XSS in: {target_name} [{source}]")
+    log_success(f"Target: {target_name} | Payload: {payload[:50]}...")
+    is_param = "?" in url_or_action
+    return {
+        "type": "XSS_Param" if is_param else "XSS_Form",
+        ("param" if is_param else "field"): target_name,
+        "payload": payload,
+        "context": contexts,
+        ("url" if is_param else "form_action"): url_or_action,
+        "source": source,
+    }
+
 
 def _test_xss_param_payload(payload, url, param, original_params, delay, smart_payloads):
     test_params = original_params.copy()
@@ -246,7 +273,8 @@ def scan_xss(url: str, forms: list, delay: float, options: Optional[dict] = None
     unique_vulns = []
     seen = set()
     for v in all_vulns:
-        if not v: continue
+        if not v:
+            continue
         key = f"{v.get('type')}:{v.get('field', v.get('param'))}:{v.get('payload')}"
         if key not in seen:
             seen.add(key)

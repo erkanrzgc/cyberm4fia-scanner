@@ -3,6 +3,9 @@ cyberm4fia-scanner - LFI Module
 Local File Inclusion detection (Threaded)
 """
 
+import functools
+import base64
+import re
 
 from utils.colors import Colors, log_info, log_success, log_vuln
 from utils.request import (
@@ -14,8 +17,7 @@ from modules.payloads import LFI_PAYLOADS, LFI_SIGNATURES
 from utils.payload_filter import PayloadFilter
 from modules.smart_payload import probe_lfi_context
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse, urljoin
-import base64
-import re
+from utils.concurrency import run_concurrent_tasks
 from utils.request import ScanExceptions
 
 def _detect_php_wrapper_output(response_text, payload):
@@ -66,9 +68,6 @@ def detect_lfi(text, baseline_text=None):
                 return os_type, sig
     return None, None
 
-import functools
-from utils.concurrency import run_concurrent_tasks
-
 def _test_lfi_param_payload(payload, param, params, parsed, delay, baseline_text, smart):
     test_params = params.copy()
     test_params[param] = [payload]
@@ -86,7 +85,8 @@ def _test_lfi_param_payload(payload, param, params, parsed, delay, baseline_text
                 lines = [line for line in resp.text.split("\n") if sig in line or "root:" in line][:3]
                 if lines:
                     print(f"{Colors.BOLD}    --- File Content Preview ---{Colors.END}")
-                    for line in lines: print(f"    {line[:80]}")
+                    for line in lines:
+                        print(f"    {line[:80]}")
                     print(f"{Colors.BOLD}    -----------------------------{Colors.END}")
 
             wrapper_content = _detect_php_wrapper_output(resp.text, payload)
@@ -134,7 +134,8 @@ def _test_lfi_form_payload(payload, inp, inputs, method, target, delay, baseline
                 lines = [line for line in resp.text.split("\n") if sig in line or "root:" in line][:3]
                 if lines:
                     print(f"{Colors.BOLD}    --- File Content Preview ---{Colors.END}")
-                    for line in lines: print(f"    {line[:80]}")
+                    for line in lines:
+                        print(f"    {line[:80]}")
                     print(f"{Colors.BOLD}    -----------------------------{Colors.END}")
 
             wrapper_content = _detect_php_wrapper_output(resp.text, payload)

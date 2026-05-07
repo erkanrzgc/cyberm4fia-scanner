@@ -163,7 +163,7 @@ def _probe_entra(domain, delay):
                 "description": "Device code phishing surface enabled",
                 "confidence": "firm",
             })
-            log_warning(f"[Entra ID] Device code endpoint enabled — phishing target")
+            log_warning("[Entra ID] Device code endpoint enabled — phishing target")
     except Exception:
         pass
 
@@ -296,7 +296,7 @@ def _probe_google_workspace(domain, delay):
             "confidence": "firm",
             "details": oidc,
         })
-        log_success(f"[Google Workspace] Domain-hosted OIDC confirmed")
+        log_success("[Google Workspace] Domain-hosted OIDC confirmed")
     return findings
 
 
@@ -339,7 +339,6 @@ def _probe_generic_oidc(domain, delay):
 
 def _probe_sso_prefixes(domain, subdomains, delay):
     findings = []
-    base = domain.split(".")[-2] if domain.count(".") >= 1 else domain
     root = domain
 
     for prefix in SSO_PREFIXES:

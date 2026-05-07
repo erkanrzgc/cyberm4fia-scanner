@@ -146,7 +146,7 @@ class SploitusSearch:
             return
 
         print(f"\n{Colors.BOLD}{Colors.CYAN}{'═' * 55}")
-        print(f"  ⚡ Sploitus Exploit Search Results")
+        print("  ⚡ Sploitus Exploit Search Results")
         print(f"{'═' * 55}{Colors.END}")
 
         for enr in enrichments:

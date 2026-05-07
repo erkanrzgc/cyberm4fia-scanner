@@ -144,7 +144,7 @@ def _test_email_injection(reset_urls, delay=0):
                             "vuln": "Email Parameter Injection",
                             "payload": payload[:50],
                             "severity": "HIGH",
-                            "description": f"Reset accepted with injected email param",
+                            "description": "Reset accepted with injected email param",
                             "url": reset_url,
                         })
                         log_success(f"🔥 Email injection! {payload[:30]}")

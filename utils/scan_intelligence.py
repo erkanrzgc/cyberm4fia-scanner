@@ -2,7 +2,11 @@
 cyberm4fia-scanner — Scan Intelligence Engine (RAG-Lite Knowledge Loop)
 SQLite-FTS5 backed intelligence that learns from every scan.
 """
-import hashlib, json, os, sqlite3, threading
+import hashlib
+import json
+import os
+import sqlite3
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime
 from urllib.parse import urlparse
@@ -12,25 +16,41 @@ INTEL_DB = os.path.join(DATA_DIR, "scan_intelligence.db")
 
 @dataclass
 class PayloadRecord:
-    payload: str; vuln_type: str; success_count: int = 0; fail_count: int = 0
-    waf_bypassed: list = field(default_factory=list); last_success: str = ""
+    payload: str
+    vuln_type: str
+    success_count: int = 0
+    fail_count: int = 0
+    waf_bypassed: list = field(default_factory=list)
+    last_success: str = ""
     effectiveness: float = 0.0
 
 @dataclass
 class Defence:
-    defence_type: str; detail: str = ""; first_seen: str = ""; last_seen: str = ""
+    defence_type: str
+    detail: str = ""
+    first_seen: str = ""
+    last_seen: str = ""
     bypass_count: int = 0
 
 @dataclass
 class TargetIntel:
-    target: str; domain: str; total_scans: int = 0; total_findings: int = 0
-    defences: list = field(default_factory=list); effective_payloads: list = field(default_factory=list)
-    failed_modules: list = field(default_factory=list); tech_stack: list = field(default_factory=list)
-    waf_name: str = ""; last_scanned: str = ""; priority_score: float = 50.0
+    target: str
+    domain: str
+    total_scans: int = 0
+    total_findings: int = 0
+    defences: list = field(default_factory=list)
+    effective_payloads: list = field(default_factory=list)
+    failed_modules: list = field(default_factory=list)
+    tech_stack: list = field(default_factory=list)
+    waf_name: str = ""
+    last_scanned: str = ""
+    priority_score: float = 50.0
 
 @dataclass
 class IntelReport:
-    target: str; past_scans: int = 0; known_defences: list = field(default_factory=list)
+    target: str
+    past_scans: int = 0
+    known_defences: list = field(default_factory=list)
     recommended_payloads: list = field(default_factory=list)
     modules_to_skip: list = field(default_factory=list)
     modules_to_prioritize: list = field(default_factory=list)
@@ -153,7 +173,8 @@ class ScanIntelligence:
             sc = row["success_count"] + (1 if success else 0)
             fc = row["fail_count"] + (0 if success else 1)
             wl = json.loads(row["waf_bypassed"] or "[]")
-            if success and waf and waf not in wl: wl.append(waf)
+            if success and waf and waf not in wl:
+                wl.append(waf)
             conn.execute("UPDATE payload_effectiveness SET success_count=?,fail_count=?,waf_bypassed=?,last_success=? WHERE id=?",
                          (sc, fc, json.dumps(wl), now if success else "", row["id"]))
         else:
@@ -187,7 +208,8 @@ class ScanIntelligence:
 
     def record_batch(self, target, findings, scan_id="", campaign_id="", waf_name="", tech_stack="[]"):
         for f in findings:
-            if not isinstance(f, dict): continue
+            if not isinstance(f, dict):
+                continue
             self.record_scan_result(target=target, vuln_type=f.get("type", f.get("finding_type", "Unknown")),
                 payload=f.get("payload", ""), success=True, waf_name=waf_name, tech_stack=tech_stack,
                 module=f.get("module", ""), technique=f.get("technique", ""),
@@ -205,7 +227,9 @@ class ScanIntelligence:
                 report.known_defences.append(Defence(defence_type=r["defence_type"], detail=r["detail"], first_seen=r["first_seen"], last_seen=r["last_seen"], bypass_count=r["bypass_count"]))
             q = "SELECT * FROM payload_effectiveness WHERE success_count > 0"
             p = []
-            if vuln_type: q += " AND vuln_type = ?"; p.append(vuln_type)
+            if vuln_type:
+                q += " AND vuln_type = ?"
+                p.append(vuln_type)
             q += " ORDER BY success_count DESC LIMIT 10"
             for r in conn.execute(q, p).fetchall():
                 report.recommended_payloads.append(PayloadRecord(payload=r["payload"], vuln_type=r["vuln_type"],
@@ -217,8 +241,10 @@ class ScanIntelligence:
             for r in conn.execute("SELECT DISTINCT module FROM scan_intel WHERE domain=? AND success=1 AND module != '' ORDER BY timestamp DESC LIMIT 5", (domain,)).fetchall():
                 report.modules_to_prioritize.append(r["module"])
             waf_defs = [d for d in report.known_defences if d.defence_type == "waf"]
-            if waf_defs: report.notes.append(f"WAF detected: {waf_defs[0].detail}. Use evasion payloads.")
-            if report.modules_to_skip: report.notes.append(f"Modules {', '.join(report.modules_to_skip)} consistently return no findings.")
+            if waf_defs:
+                report.notes.append(f"WAF detected: {waf_defs[0].detail}. Use evasion payloads.")
+            if report.modules_to_skip:
+                report.notes.append(f"Modules {', '.join(report.modules_to_skip)} consistently return no findings.")
         return report
 
     def get_target_profile(self, target):
@@ -227,12 +253,16 @@ class ScanIntelligence:
         with self._conn() as conn:
             row = conn.execute("SELECT COUNT(DISTINCT scan_id) as scans, COUNT(CASE WHEN success=1 THEN 1 END) as findings, MAX(timestamp) as last_scan, MAX(waf_name) as waf FROM scan_intel WHERE domain=?", (domain,)).fetchone()
             if row:
-                profile.total_scans = row["scans"] or 0; profile.total_findings = row["findings"] or 0
-                profile.last_scanned = row["last_scan"] or ""; profile.waf_name = row["waf"] or ""
+                profile.total_scans = row["scans"] or 0
+                profile.total_findings = row["findings"] or 0
+                profile.last_scanned = row["last_scan"] or ""
+                profile.waf_name = row["waf"] or ""
             tech_row = conn.execute("SELECT tech_stack FROM scan_intel WHERE domain=? AND tech_stack != '[]' ORDER BY timestamp DESC LIMIT 1", (domain,)).fetchone()
             if tech_row:
-                try: profile.tech_stack = json.loads(tech_row["tech_stack"])
-                except (json.JSONDecodeError, TypeError): pass
+                try:
+                    profile.tech_stack = json.loads(tech_row["tech_stack"])
+                except (json.JSONDecodeError, TypeError):
+                    pass
             for r in conn.execute("SELECT defence_type,detail,first_seen,last_seen,bypass_count FROM known_defences WHERE domain=?", (domain,)).fetchall():
                 profile.defences.append(Defence(defence_type=r["defence_type"], detail=r["detail"], first_seen=r["first_seen"], last_seen=r["last_seen"], bypass_count=r["bypass_count"]))
             for r in conn.execute("SELECT module, COUNT(*) as cnt FROM negative_results WHERE domain=? GROUP BY module ORDER BY cnt DESC", (domain,)).fetchall():
@@ -284,9 +314,7 @@ def get_scan_intelligence(db_path=None):
 
 # ── AIRecon Dataset Integration ──────────────────────────────────────────────
 
-import os as _os
-
-_AIRECON_DATASET_DIR = _os.path.join(_os.path.expanduser("~"), ".airecon", "datasets")
+_AIRECON_DATASET_DIR = os.path.join(os.path.expanduser("~"), ".airecon", "datasets")
 
 
 def set_dataset_path(path):
@@ -316,11 +344,11 @@ def dataset_search(query, category=None, limit=5, dataset_path=None):
         Empty list if no datasets are found.
     """
     search_dir = dataset_path or _AIRECON_DATASET_DIR
-    if not _os.path.isdir(search_dir):
+    if not os.path.isdir(search_dir):
         return []
 
     db_files = sorted(
-        f for f in _os.listdir(search_dir)
+        f for f in os.listdir(search_dir)
         if f.endswith(".db") and not f.startswith(".")
     )
     if not db_files:
@@ -328,7 +356,7 @@ def dataset_search(query, category=None, limit=5, dataset_path=None):
 
     results = []
     for db_file in db_files:
-        db_path = _os.path.join(search_dir, db_file)
+        db_path = os.path.join(search_dir, db_file)
         try:
             conn = sqlite3.connect(db_path)
             conn.row_factory = sqlite3.Row
@@ -340,17 +368,17 @@ def dataset_search(query, category=None, limit=5, dataset_path=None):
 
             if category:
                 sql = (
-                    f"SELECT query, answer, context, category, source, rank "
-                    f"FROM records_fts WHERE records_fts MATCH ? "
-                    f"AND category = ? "
-                    f"ORDER BY rank LIMIT ?"
+                    "SELECT query, answer, context, category, source, rank "
+                    "FROM records_fts WHERE records_fts MATCH ? "
+                    "AND category = ? "
+                    "ORDER BY rank LIMIT ?"
                 )
                 rows = cur.execute(sql, (query, category, limit)).fetchall()
             else:
                 sql = (
-                    f"SELECT query, answer, context, category, source, rank "
-                    f"FROM records_fts WHERE records_fts MATCH ? "
-                    f"ORDER BY rank LIMIT ?"
+                    "SELECT query, answer, context, category, source, rank "
+                    "FROM records_fts WHERE records_fts MATCH ? "
+                    "ORDER BY rank LIMIT ?"
                 )
                 rows = cur.execute(sql, (query, limit)).fetchall()
             for row in rows:
@@ -379,23 +407,23 @@ def _get_fts_columns(cursor):
 
 def dataset_installed():
     """Return True if at least one AIRecon dataset database is installed."""
-    if not _os.path.isdir(_AIRECON_DATASET_DIR):
+    if not os.path.isdir(_AIRECON_DATASET_DIR):
         return False
     return any(
         f.endswith(".db") and not f.startswith(".")
-        for f in _os.listdir(_AIRECON_DATASET_DIR)
+        for f in os.listdir(_AIRECON_DATASET_DIR)
     )
 
 
 def dataset_catalog():
     """Return a list of installed dataset names and record counts."""
-    if not _os.path.isdir(_AIRECON_DATASET_DIR):
+    if not os.path.isdir(_AIRECON_DATASET_DIR):
         return []
     catalog = []
-    for db_file in sorted(_os.listdir(_AIRECON_DATASET_DIR)):
+    for db_file in sorted(os.listdir(_AIRECON_DATASET_DIR)):
         if not db_file.endswith(".db") or db_file.startswith("."):
             continue
-        db_path = _os.path.join(_AIRECON_DATASET_DIR, db_file)
+        db_path = os.path.join(_AIRECON_DATASET_DIR, db_file)
         try:
             conn = sqlite3.connect(db_path)
             count = conn.execute("SELECT COUNT(*) FROM records").fetchone()[0]

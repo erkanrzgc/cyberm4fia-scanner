@@ -277,7 +277,7 @@ class OpenCodeAutoEngineer(OpenCodeEngineer):
                     self.opencode_ui.health_check(health)
                 except httpx.HTTPStatusError as e:
                     if e.response.status_code == 401:
-                        debug_log(f"Health check failed: Authentication required")
+                        debug_log("Health check failed: Authentication required")
                         self.opencode_ui.error("Authentication failed. OpenCode server requires a password.")
                         self.opencode_ui.console.print("\n[dim]Please set OPENCODE_SERVER_PASSWORD environment variable[/dim]")
                         if self.opencode_username != "opencode":

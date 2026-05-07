@@ -265,7 +265,6 @@ class ScanHistory:
 
         for item in sorted(report.items, key=lambda x: {"NEW": 0, "WORSE": 1, "SAME": 2, "BETTER": 3, "FIXED": 4}.get(x.status, 5)):
             icon = status_icons.get(item.status, "?")
-            sev = item.new_severity or item.old_severity
             print(f"  {icon}{Colors.END} {item.vuln_type} on {item.url}")
             if item.status in ("WORSE", "BETTER"):
                 print(f"         {item.old_severity} → {item.new_severity}")

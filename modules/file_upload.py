@@ -196,7 +196,7 @@ def _test_magic_byte_bypass(upload_url, file_input_name, delay=0):
 
     for file_type, magic in MAGIC_BYTES.items():
         payload = magic + b'\n<?php echo "cybm4fia_magic_test"; ?>'
-        filename = f"cybm4fia_test.php"
+        filename = "cybm4fia_test.php"
         mime = f"image/{file_type}"
 
         try:

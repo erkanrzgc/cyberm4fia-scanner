@@ -303,7 +303,7 @@ def main() -> int:
     lines: list[str] = []
     lines.append("# Cleanup Inventory — auto-generated")
     lines.append("")
-    lines.append(f"_Run: `python3 scripts/inventory_audit.py`_")
+    lines.append("_Run: `python3 scripts/inventory_audit.py`_")
     lines.append("")
     lines.append("## 1. Orphan Modules (defined but never imported anywhere)")
     lines.append("")

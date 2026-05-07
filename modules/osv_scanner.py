@@ -77,7 +77,6 @@ def extract_cve_info(osv_vuln):
     severity_data = osv_vuln.get("severity", [])
     for sev in severity_data:
         if sev.get("type") == "CVSS_V3":
-            score_str = sev.get("score", "")
             # Basic parsing of CVSS string or just assume HIGH/CRITICAL if it has CVSS
             if "CRITICAL" in details.upper() or "HIGH" in details.upper():
                 pass # Not perfectly parsing CVSS string here, fallback to textual clues

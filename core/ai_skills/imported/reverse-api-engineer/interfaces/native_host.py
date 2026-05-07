@@ -533,7 +533,7 @@ class NativeHostHandler:
 
         # Run generation
         try:
-            result = await self.engineer.analyze_and_generate()
+            await self.engineer.analyze_and_generate()
 
             send_message(
                 {

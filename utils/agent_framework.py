@@ -698,7 +698,7 @@ Give a tactical summary for planning the next scan step."""
 
         # ── Banner ──
         print(f"\n{Colors.BOLD}{Colors.CYAN}{'═' * 58}")
-        print(f"  🤖 AGENT MODE — AI-Driven Penetration Test")
+        print("  🤖 AGENT MODE — AI-Driven Penetration Test")
         print(f"  Target: {target}")
         print(f"  Max iterations: {self.MAX_ITERATIONS} | Timeout: {self.MAX_TIME}s")
         print(f"{'═' * 58}{Colors.END}\n")
@@ -842,7 +842,7 @@ Give a tactical summary for planning the next scan step."""
             severity_counts[sev] = severity_counts.get(sev, 0) + 1
 
         print(f"\n{Colors.BOLD}{Colors.GREEN}{'═' * 58}")
-        print(f"  ✅ AGENT MISSION COMPLETE")
+        print("  ✅ AGENT MISSION COMPLETE")
         print(f"{'═' * 58}{Colors.END}")
         print(f"  Target:     {mission.target}")
         print(f"  Iterations: {len(memory.iterations)}")

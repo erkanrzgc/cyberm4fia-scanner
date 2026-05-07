@@ -3,7 +3,9 @@ cyberm4fia-scanner — Campaign Manager
 Organized scan sessions with structured output, inspired by the 0-Day Machine's
 hunts/campaigns/ pattern.
 """
-import json, os, uuid
+import json
+import os
+import uuid
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 

@@ -3,6 +3,7 @@ cyberm4fia-scanner - SQLi Module
 SQL Injection detection
 """
 
+import functools
 import sys
 import time
 import httpx
@@ -23,6 +24,7 @@ from modules.payloads import (
 )
 from utils.payload_filter import PayloadFilter
 from modules.smart_payload import probe_sqli_context
+from utils.concurrency import run_concurrent_tasks
 from utils.request import ScanExceptions
 
 def detect_sqli(text):
@@ -56,9 +58,6 @@ def _check_sqli_error(
             "source": source,
         }
     return None
-
-import functools
-from utils.concurrency import run_concurrent_tasks
 
 def _test_sqli_form_payload(payload, inp, inputs, method, target, delay, smart):
     data = inputs.copy()
@@ -169,7 +168,8 @@ def _test_sqli_param_payload(payload, param, params, parsed, delay, smart):
 
 def scan_sqli(url, forms, delay, options=None, threads=None):
     from utils.tamper import get_tamper_chain
-    if threads is None: threads = get_thread_count()
+    if threads is None:
+        threads = get_thread_count()
     options = options or {}
     target_context = options.get("target_context")
 
@@ -186,8 +186,10 @@ def scan_sqli(url, forms, delay, options=None, threads=None):
 
     flattened_forms = []
     for f in forms:
-        if isinstance(f, list): flattened_forms.extend(f)
-        else: flattened_forms.append(f)
+        if isinstance(f, list):
+            flattened_forms.extend(f)
+        else:
+            flattened_forms.append(f)
 
     for form in flattened_forms:
         if hasattr(form, "find_all"):
@@ -196,7 +198,8 @@ def scan_sqli(url, forms, delay, options=None, threads=None):
             target = urljoin(url, action)
             inputs = {}
             for i in form.find_all(["input", "textarea", "select"]):
-                if i.get("name"): inputs[i.get("name")] = i.get("value", "1")
+                if i.get("name"):
+                    inputs[i.get("name")] = i.get("value", "1")
         else:
             action = form.get("action") or url
             method = form.get("method", "get").lower()
@@ -207,12 +210,15 @@ def scan_sqli(url, forms, delay, options=None, threads=None):
                 if isinstance(i, dict) and i.get("name"):
                     inputs[i.get("name")] = i.get("value", "1")
             if not inputs and raw_inputs and isinstance(raw_inputs[0], str):
-                for i in raw_inputs: inputs[i] = "1"
+                for i in raw_inputs:
+                    inputs[i] = "1"
 
-        if not inputs: continue
+        if not inputs:
+            continue
 
         for inp in inputs:
-            if inp.lower() in ["submit", "btnsubmit", "login"]: continue
+            if inp.lower() in ["submit", "btnsubmit", "login"]:
+                continue
             # We don't do smart probing per form here, just run all payloads
             for payload in payloads:
                 tasks.append(functools.partial(_test_sqli_form_payload, payload, inp, inputs, method, target, delay, []))
@@ -233,7 +239,8 @@ def scan_sqli(url, forms, delay, options=None, threads=None):
     unique_vulns = []
     seen = set()
     for v in vulns:
-        if not v: continue
+        if not v:
+            continue
         key = f"{v.get('type')}:{v.get('field', v.get('param'))}:{v.get('payload')}"
         if key not in seen:
             seen.add(key)

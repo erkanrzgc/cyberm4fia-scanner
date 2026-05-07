@@ -618,8 +618,8 @@ def _run_cmdi_postprocess(state):
         listener = start_reverse_listener(port=port, timeout=120)
         if listener:
             log_info(
-                f"Listener ready. Inject the payload above into the target, "
-                f"or press Ctrl+C to cancel."
+                "Listener ready. Inject the payload above into the target, "
+                "or press Ctrl+C to cancel."
             )
 
             # Use the interactive CMDi shell to fire the payload automatically

@@ -186,7 +186,7 @@ class DualModelAI:
         )
 
         if self.available:
-            log_success(f"Dual AI: NVIDIA Llama-3.1-70B (Exploit + Code)")
+            log_success("Dual AI: NVIDIA Llama-3.1-70B (Exploit + Code)")
 
     @property
     def available(self) -> bool:

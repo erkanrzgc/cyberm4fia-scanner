@@ -3,6 +3,7 @@ cyberm4fia-scanner - SSRF Module
 Server-Side Request Forgery detection (Threaded)
 """
 
+import functools
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse, urljoin
 
 from utils.colors import log_info, log_success, log_vuln
@@ -15,6 +16,7 @@ from utils.request import (
 from modules.payloads import load_payloads_from_file
 from utils.payload_filter import PayloadFilter
 from typing import Optional
+from utils.concurrency import run_concurrent_tasks
 from utils.request import ScanExceptions
 
 # SSRF Payloads: loaded from file + hardcoded fallback
@@ -174,9 +176,6 @@ def detect_ssrf(text, payload, baseline_text="", baseline_len=0):
                     return "internal_page", ind
 
     return None, None
-
-import functools
-from utils.concurrency import run_concurrent_tasks
 
 def _test_ssrf_param_payload(payload, param, params, parsed, delay, baseline_text, baseline_len):
     test_params = params.copy()

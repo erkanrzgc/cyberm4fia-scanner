@@ -63,11 +63,11 @@ class EndpointFuzzer:
                 pass
                 
         if self.soft_404_signatures:
-            log_warning(f"Soft-404 detected! Target returns 200 OK for missing pages.")
+            log_warning("Soft-404 detected! Target returns 200 OK for missing pages.")
         if self.soft_403_signatures:
-            log_warning(f"Soft-403 detected! Target returns uniform 403 for random paths — these will be filtered.")
+            log_warning("Soft-403 detected! Target returns uniform 403 for random paths — these will be filtered.")
         if self.soft_redirect_signatures:
-            log_warning(f"Soft-redirect detected! Target returns uniform 3xx for random paths — these will be filtered.")
+            log_warning("Soft-redirect detected! Target returns uniform 3xx for random paths — these will be filtered.")
         if not self.soft_404_signatures and not self.soft_403_signatures and not self.soft_redirect_signatures:
             log_info("Target handles 404s correctly.")
             

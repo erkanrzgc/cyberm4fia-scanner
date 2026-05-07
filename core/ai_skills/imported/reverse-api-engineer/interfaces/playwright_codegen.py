@@ -84,11 +84,10 @@ class PlaywrightCodeGenerator:
         ]
 
         if self.start_url:
-            lines.append(f"        # Start URL")
+            lines.append("        # Start URL")
             lines.append(f"        page.goto({json.dumps(self.start_url)})")
             lines.append("")
 
-        current_url = self.start_url
         last_nav_base = self._get_base_url(self.start_url) if self.start_url else None
 
         for action in self.actions:

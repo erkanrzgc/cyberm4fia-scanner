@@ -241,7 +241,7 @@ class BruteForcer:
         all_results = []
 
         print(f"\n{Colors.BOLD}{Colors.CYAN}{'═' * 50}")
-        print(f"  🔓 Credential Brute-Force Scanner")
+        print("  🔓 Credential Brute-Force Scanner")
         print(f"{'═' * 50}{Colors.END}")
         print(f"  Target: {host}")
         print(f"  Ports:  {open_ports}")
