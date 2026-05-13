@@ -1,0 +1,70 @@
+"""Scan option defaults and presets.
+
+Replaces the former 1057-LOC ``core/scan_option_specs.py`` with cohesive
+submodules while preserving the public import surface.
+"""
+
+from .arguments import PARSER_ARGUMENT_SPECS
+from .defaults import (
+    ALL_ENABLED_OPTION_KEYS,
+    API_MODULE_OPTION_KEYS,
+    BOOL_OPTION_KEYS,
+    DEFAULT_AI_MODEL,
+    DEFAULT_NVIDIA_API_KEY,
+    PROFILE_PRESETS,
+    REGISTRY_OPTION_KEYS,
+    SCAN_OPTION_DEFAULTS,
+)
+from .modes import (
+    INTERACTIVE_SCAN_MODE_SPECS,
+    SCAN_MODE_ALIAS_MAP,
+    SCAN_MODE_MAP,
+    SCAN_MODE_SPECS,
+)
+from .profiles import ATTACK_PROFILE_MAP, ATTACK_PROFILE_SPECS
+from .prompts import (
+    API_SPEC_PROMPT,
+    INTERACTIVE_ALWAYS_RUNTIME_PROMPTS,
+    INTERACTIVE_CUSTOM_PROMPT_GROUPS,
+    INTERACTIVE_MODE_RUNTIME_PROMPTS,
+    INTERACTIVE_PROFILE_RUNTIME_PROMPTS,
+    INTERACTIVE_RESUME_PROMPT,
+    INTERACTIVE_RUNTIME_PROMPTS,
+    JSON_OUTPUT_PROMPT,
+)
+from .types import (
+    ArgumentSpec,
+    AttackProfileSpec,
+    InteractivePromptSpec,
+    ScanModeSpec,
+)
+
+__all__ = [
+    "ArgumentSpec",
+    "InteractivePromptSpec",
+    "ScanModeSpec",
+    "AttackProfileSpec",
+    "DEFAULT_AI_MODEL",
+    "DEFAULT_NVIDIA_API_KEY",
+    "SCAN_OPTION_DEFAULTS",
+    "BOOL_OPTION_KEYS",
+    "REGISTRY_OPTION_KEYS",
+    "ALL_ENABLED_OPTION_KEYS",
+    "API_MODULE_OPTION_KEYS",
+    "PROFILE_PRESETS",
+    "SCAN_MODE_SPECS",
+    "SCAN_MODE_MAP",
+    "SCAN_MODE_ALIAS_MAP",
+    "INTERACTIVE_SCAN_MODE_SPECS",
+    "ATTACK_PROFILE_SPECS",
+    "ATTACK_PROFILE_MAP",
+    "PARSER_ARGUMENT_SPECS",
+    "INTERACTIVE_CUSTOM_PROMPT_GROUPS",
+    "INTERACTIVE_RUNTIME_PROMPTS",
+    "INTERACTIVE_PROFILE_RUNTIME_PROMPTS",
+    "INTERACTIVE_MODE_RUNTIME_PROMPTS",
+    "INTERACTIVE_ALWAYS_RUNTIME_PROMPTS",
+    "INTERACTIVE_RESUME_PROMPT",
+    "API_SPEC_PROMPT",
+    "JSON_OUTPUT_PROMPT",
+]

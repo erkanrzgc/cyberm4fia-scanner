@@ -541,7 +541,7 @@ class TestModuleRegistry:
             "severity",
         ]
 
-    def test_result_processors_handle_prompts_and_side_effects(self, monkeypatch):
+    def test_result_processors_handle_prompts_and_side_effects(self, monkeypatch, tmp_path):
         import modules.cmdi_shell as cmdi_shell_mod
         import modules.sqli as sqli_mod
         import modules.sqli_exploit as sqli_exploit_mod
@@ -587,12 +587,15 @@ class TestModuleRegistry:
 
         monkeypatch.setattr(cmdi_shell_mod, "InteractiveShell", DummyShell)
 
+        # XSS postprocess gets "3" (Skip), SQLi exits early on extracted data,
+        # CMDi postprocess gets "1" (Interactive Pseudo-Shell → DummyShell.run()).
         answers = iter(["3", "1"])
         state = {
             "scan_url": "http://example.com",
             "forms": [{"id": "login"}],
             "delay": 0.4,
             "options": {"exploit": True},
+            "scan_dir": str(tmp_path),  # writable so LootManager doesn't hit a read-only /tmp
             "xss_vulns": [{"type": "XSS_Param", "url": "http://example.com"}],
             "sqli_vulns": [{"type": "SQLi_Union", "url": "http://example.com"}],
             "cmdi_vulns": [{"type": "CMDi_Form", "url": "http://example.com"}],
