@@ -24,7 +24,7 @@ from ._constants import (
 )
 from ._prompts import PLANNER_SYSTEM, SUMMARIZER_SYSTEM
 from .depth import DepthTracker, ModuleDepth
-from .dispatcher import MODULE_MAP, _get_forms, execute_module
+from .dispatcher import MODULE_MAP, execute_module
 from .memory import AgentMemory
 from .orchestrator import AgentOrchestrator
 from .types import (

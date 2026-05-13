@@ -11,10 +11,10 @@ from datetime import datetime
 from utils.colors import log_success, log_error
 from utils.finding import (
     VULN_REGISTRY,
-    _DEFAULT_VULN,
     build_scan_artifacts,
     normalize_all,
 )
+from utils.finding.registry import _DEFAULT_VULN
 from utils.request import get_runtime_stats
 from utils.request import ScanExceptions
 
