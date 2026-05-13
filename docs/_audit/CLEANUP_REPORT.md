@@ -2,7 +2,8 @@
 
 Branch: `cleanup/codebase-tidy-2026-05-06`
 Base: `main` @ `98ef9d9`
-Commits: 16 (Faz 0 → Faz 10 all committed)
+Commits: **21** (Faz 0 → Faz 14 all committed)
+Total diff: 141 files, +11258 / −9575 LOC.
 
 ## Result Summary
 
@@ -193,17 +194,79 @@ Local-only, never pushed. Use:
 git log --oneline main..cleanup/codebase-tidy-2026-05-06
 ```
 
-to inspect the 16 atomic commits before deciding to merge or push.
+to inspect the 21 atomic commits before deciding to merge or push.
 
-## What Comes Next (Faz 11–14)
+## Faz 11 — Explicit `__all__` per package
 
-See `ROADMAP.txt` at the repo root for the remaining phases:
+Every package `__init__.py` now declares `__all__`:
 
-- **Faz 11** — Explicit `__all__` for every package's `__init__.py`.
-- **Faz 12** — Decide the fate of the dormant agent subsystem
-  (`utils/mcp_server.py`, `utils/agent_orchestrator.py`,
-  `utils/meta_tools.py`, `utils/docker_executor.py`,
-  `utils/ai_intent_agent.py`): wire into production or remove.
-- **Faz 13** — `vulture --min-confidence 80` deep dead-code scan plus
-  `pytest --cov` coverage baseline.
-- **Faz 14** — Final verification + before/after diff + push decision.
+| Package | Public names |
+|---|---|
+| `modules/__init__.py` | 27 |
+| `utils/__init__.py` | 18 |
+| `utils/finding/__init__.py` | 14 (was 31; 17 private `_*` re-exports dropped) |
+| `utils/exploit_finder/__init__.py` | 12 (dropped 3 private helpers) |
+| `utils/agent_framework/__init__.py` | 16 (dropped `_get_forms` private helper) |
+| `core/module_runners/__init__.py` | 72 (all `_run_*` + 2 hook-dedup caches) |
+| `core/__init__.py` | 0 (intentionally empty; callers import sub-packages) |
+
+`modules/report.py` was updated to import `_DEFAULT_VULN` directly
+from `utils.finding.registry` instead of through the now-dropped
+public re-export from `utils.finding`.
+
+## Faz 12 — Dormant agent harness → external entry points
+
+Six files in `utils/` (the Cairn-inspired autonomy stack that landed
+on 2026-05-01) are intentionally not wired into `scanner.py` /
+`api_server.py`. Each got a `.. external-entry-point::` banner in its
+module docstring. New `docs/_audit/EXTERNAL_ENTRY_POINTS.md`
+documents:
+
+- file map (role + invoker + test for each)
+- ASCII data-flow diagram
+- "how to actually run it" quickstart
+
+No code change. Vulture / orphan scanners will not flag them as dead.
+
+## Faz 13 — Vulture clean + coverage baseline
+
+`pyproject.toml` now has a `[tool.vulture]` section.
+
+- Pre-fix `vulture --min-confidence 80` reported **5 findings**.
+- 2 real findings fixed:
+  - `modules/cloud_enum.py` — `platform_key` is now propagated into
+    the `cicd_exposure` finding dict.
+  - `modules/jwt_attack.py` — `original_response` dead parameter
+    removed from `_test_forged_token` + 3 callers.
+- 3 false positives (signum, frame, http) suppressed via
+  `ignore_names`.
+- Final vulture run: **0 findings**.
+
+Coverage baseline: **41 % total** (20970 stmts, 12318 missed).
+Captured at `docs/_audit/COVERAGE_REPORT.txt`. 26 modules at 100 %.
+Coverage % is not a cleanup target; this is a baseline future PRs can
+compare against.
+
+## Faz 14 — Final verification matrix
+
+| Check | Result |
+|---|---|
+| `ruff check . --select F401` | All checks passed |
+| `ruff check . --select E,F --ignore E501` | All checks passed |
+| `python -m compileall core modules utils tests scripts scanner.py api_server.py` | OK |
+| `python -c "import scanner; import api_server"` | OK |
+| `python -m vulture core/ modules/ utils/ scripts/ scanner.py api_server.py` | 0 findings |
+| `pytest tests/` (no deselects, offline) | **683 passed, 1 skipped, 0 failed** |
+| First-party files >800 LOC | 0 |
+| First-party app-code LOC | ~50 775 |
+
+## Push decision
+
+This branch is **ready to merge or push**. Inspect with:
+
+```bash
+git log --oneline main..cleanup/codebase-tidy-2026-05-06
+git diff --shortstat main..HEAD
+```
+
+The user decides next. NEVER push without explicit user instruction.
