@@ -65,3 +65,4 @@ data/payload_memory.json
 .ripgreprc
 .zprofile
 .zshrc
+.coverage

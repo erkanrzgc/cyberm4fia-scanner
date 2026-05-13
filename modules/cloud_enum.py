@@ -494,6 +494,7 @@ def _check_cicd_platform(platform_key, platform_info, target_url, delay):
                     findings.append({
                         "type": "cicd_exposure",
                         "platform": platform_info["name"],
+                        "platform_key": platform_key,
                         "url": check_url,
                         "status": resp.status_code,
                         "endpoint": path,

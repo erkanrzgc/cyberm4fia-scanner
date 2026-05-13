@@ -324,7 +324,7 @@ def attack_kid_injection(parsed_jwt):
 # ─────────────────────────────────────────────────────
 # Token Verification (test if forged tokens are accepted)
 # ─────────────────────────────────────────────────────
-def _test_forged_token(url, token, original_response, delay=0):
+def _test_forged_token(url, token, delay=0):
     """Test if a forged JWT token is accepted by the server."""
     try:
         # Try as Authorization header
@@ -421,7 +421,7 @@ def scan_jwt(url, delay=0, cookie=None):
         log_info("  → Testing Algorithm None bypass...")
         none_results = attack_alg_none(parsed)
         for r in none_results:
-            verified = _test_forged_token(url, r["forged_token"], None, delay)
+            verified = _test_forged_token(url, r["forged_token"], delay)
             if verified["accepted"]:
                 all_findings.append(
                     {
@@ -472,7 +472,7 @@ def scan_jwt(url, delay=0, cookie=None):
                 if r.get("forged_token"):
                     finding["forged_token"] = r["forged_token"][:50] + "..."
                     # Verify forged token
-                    verified = _test_forged_token(url, r["forged_token"], None, delay)
+                    verified = _test_forged_token(url, r["forged_token"], delay)
                     if verified["accepted"]:
                         finding["severity"] = "CRITICAL"
                         finding["description"] += " → SERVER ACCEPTED FORGED TOKEN!"
@@ -486,7 +486,7 @@ def scan_jwt(url, delay=0, cookie=None):
         log_info("  → Testing KID injection...")
         kid_results = attack_kid_injection(parsed)
         for r in kid_results:
-            verified = _test_forged_token(url, r["forged_token"], None, delay)
+            verified = _test_forged_token(url, r["forged_token"], delay)
             if verified["accepted"]:
                 all_findings.append(
                     {
