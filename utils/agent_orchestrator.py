@@ -1,6 +1,13 @@
 """
 cyberm4fia-scanner — Multi-Agent Orchestration
 
+.. external-entry-point::
+
+   This module is an **external entry point**: it is *not* imported from
+   ``scanner.py`` or ``api_server.py``. Wired in by an external Cairn /
+   MCP runner via ``utils.mcp_server``. See
+   ``docs/_audit/EXTERNAL_ENTRY_POINTS.md``.
+
 Inspired by Strix's specialized-agent layout: instead of one monolithic
 "do everything" exploit agent, the work is split into composable stages
 that share a single ``MissionContext`` and run in pipeline order.

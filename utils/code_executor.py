@@ -1,6 +1,13 @@
 """
 cyberm4fia-scanner — Sandboxed Python Executor
 
+.. external-entry-point::
+
+   This module is an **external entry point**: invoked by
+   ``utils.ai_intent_agent`` and ``utils.docker_executor`` only. Not
+   imported from ``scanner.py`` / ``api_server.py``. See
+   ``docs/_audit/EXTERNAL_ENTRY_POINTS.md``.
+
 Runs AI-generated exploit scripts in an isolated subprocess with:
 - CPU time limit
 - Memory limit (RLIMIT_AS)

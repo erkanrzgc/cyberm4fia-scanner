@@ -1,6 +1,12 @@
 """
 cyberm4fia-scanner — Docker-Based Sandbox Executor
 
+.. external-entry-point::
+
+   This module is an **external entry point**: invoked by the agent
+   harness (``utils.ai_intent_agent``), not from ``scanner.py`` /
+   ``api_server.py``. See ``docs/_audit/EXTERNAL_ENTRY_POINTS.md``.
+
 Stronger isolation than `utils.code_executor`: runs AI-generated Python
 inside a one-shot Docker container with network on a default bridge,
 read-only rootfs, no Linux capabilities, dropped privileges, a memory cap,

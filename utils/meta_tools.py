@@ -1,6 +1,13 @@
 """
 cyberm4fia-scanner — Meta-Tooling Integration
 
+.. external-entry-point::
+
+   This module is an **external entry point**: invoked by
+   ``utils.agent_orchestrator`` and ``utils.mcp_server`` only. Not
+   imported from ``scanner.py`` / ``api_server.py``. See
+   ``docs/_audit/EXTERNAL_ENTRY_POINTS.md``.
+
 Wraps external pentesting tools (nmap, sqlmap, nuclei) so the AI layer can
 consume their output as structured Python objects instead of raw text.
 

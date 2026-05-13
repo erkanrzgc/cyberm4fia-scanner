@@ -1,6 +1,13 @@
 """
 cyberm4fia-scanner — MCP (Model Context Protocol) Tool Surface
 
+.. external-entry-point::
+
+   This module is an **external entry point**: it is *not* imported from
+   ``scanner.py`` or ``api_server.py``. It is invoked by an external MCP
+   runner (Claude Desktop / Cursor / custom Claude Agent SDK clients).
+   See ``docs/_audit/EXTERNAL_ENTRY_POINTS.md``.
+
 Exposes a small, curated set of scanner capabilities as MCP tools so external
 agents (Claude Desktop, Cursor, custom Claude Agent SDK clients, …) can drive
 the scanner programmatically.

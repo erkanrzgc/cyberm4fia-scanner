@@ -1,6 +1,13 @@
 """
 cyberm4fia-scanner — Intent-Driven AI Agent (with Self-Healing Loop)
 
+.. external-entry-point::
+
+   This module is an **external entry point**: invoked by
+   ``utils.agent_orchestrator`` and ``utils.mcp_server`` only. Not
+   imported from ``scanner.py`` / ``api_server.py``. See
+   ``docs/_audit/EXTERNAL_ENTRY_POINTS.md``.
+
 Inspired by the autonomous-agent direction in oritera/Cairn:
 the LLM does not just pick payloads from a fixed set, it writes
 an actual Python exploit script which is then run inside a
