@@ -1,8 +1,8 @@
-# Cleanup Pass Report — 2026-05-06
+# Cleanup Pass Report — 2026-05-06 / 07
 
 Branch: `cleanup/codebase-tidy-2026-05-06`
 Base: `main` @ `98ef9d9`
-Commits: 8 (+ Faz 8/9 currently in working tree)
+Commits: 16 (Faz 0 → Faz 10 all committed)
 
 ## Result Summary
 
@@ -13,7 +13,7 @@ Commits: 8 (+ Faz 8/9 currently in working tree)
 | `modules/` files | 79 | 76 | −3 (no source change; 3 moved into `utils/finding/` package count change is +1 net) |
 | `utils/` flat files | 48 | 43 | −5 (orphans removed; finding.py → finding/ pkg) |
 | `utils/finding/` package files | — | 6 | +6 |
-| Files >800 LOC (our code) | 5 | 8 | (see note*) |
+| Files >800 LOC (first-party app code) | 5 | 0 | **−5** |
 | Known pre-existing test failures | 1 | 0 | **−1 (fixed)** |
 | Heuristic unused imports (F401) | 102 | 0 | **−102** |
 | Targeted E/F lint debt (excl. E501) | 95 | 0 | **−95** |
@@ -21,9 +21,8 @@ Commits: 8 (+ Faz 8/9 currently in working tree)
 | Stub / silent-failure functions | 11 | 5 | **−6** (5 remaining are abstract base methods or test fixtures) |
 | Tests passing | 677 selected / 7 deselected | 684 / 0 deselected | +7 selected |
 
-\* The "files >800 LOC" count went UP because the pre-cleanup snapshot
-miscounted — see `KNOWN_TECH_DEBT.md` for the accurate inventory and
-why the remaining 8 files are intentionally not split in this pass.
+All first-party app-code Python files are now ≤800 LOC. See
+`KNOWN_TECH_DEBT.md` for the per-package largest-file inventory.
 
 ## What Changed (by phase)
 
@@ -137,15 +136,54 @@ why the remaining 8 files are intentionally not split in this pass.
    fixes. Faz 8 is behaviour-preserving lint refactor work; Faz 9 is
    test-only isolation/mocking.
 
+### Faz 10 — Big-File Split Completion (16 atomic commits total)
+
+Façade packages now own every former >800-LOC first-party file:
+
+- `utils/exploit_finder/` (was 820 LOC — faz10a)
+- `modules/smart_payload/` (was 942 LOC — faz10b)
+- `utils/agent_framework/` (was 1019 LOC — faz10c)
+- `utils/ai_exploit_agent/` (was 1024 LOC — faz10d)
+- `modules/sqli_exploit/` (was 1056 LOC — faz10e)
+- `core/module_runners/`, `core/module_registry/`,
+  `core/scan_option_specs/` (was 1374 / 988 / 1057 LOC — faz10f)
+- `modules/subdomain.py` duplicate deleted; agent dispatch resolves
+  `"subdomain"` through `modules.recon.scan_subdomains`.
+
+Test-quality follow-ups bundled with faz10f:
+- `tests/test_integration_ai_flow.py` now patches `httpx.get` alongside
+  `httpx.post` so `NvidiaApiClient._check_connection` passes offline.
+- `tests/test_module_registry.py::test_result_processors_handle_prompts_and_side_effects`
+  passes a writable `scan_dir` via `tmp_path` so `LootManager` does not
+  crash under sandboxed `/tmp`.
+- `.gitignore`: ignore sandbox-mode mount artifacts (`.bashrc`,
+  `.gitconfig`, …) that surface as character devices under restricted
+  runtimes.
+
+Verification:
+- `ruff check . --select E,F --ignore E501` — 0 errors.
+- `python -m compileall core modules utils tests scripts scanner.py api_server.py` — OK.
+- `pytest tests/` (no deselects, proxy env stripped for offline run) —
+  683 passed, 1 skipped, 0 failed.
+
+## Cleanup-Pass Criteria — All Met
+
+1. ✅ Test count ≥ 683 passing after every phase; full pytest runs with
+   no deselects.
+2. ✅ `import scanner; import api_server` succeeds.
+3. ✅ `ruff check . --select F401` introduces no new errors (28 → 0).
+4. ✅ `ruff check . --select E,F --ignore E501` is clean.
+5. ✅ Production behaviour changes remain confined to documented Faz 4
+   fixes. Faz 6/10 are façade refactors; Faz 8 is behaviour-preserving
+   lint work; Faz 9 is test-only isolation.
+
 ## What Was NOT Done (out of scope)
 
-- Refactoring the 8 remaining >800-LOC files (`KNOWN_TECH_DEBT.md`).
-- Full E501 line-length cleanup. All non-E501 E/F issues are clean after
-  Faz 8; E501 remains noisy across generated/imported docs and long
+- Full E501 line-length cleanup. All non-E501 E/F issues are clean;
+  E501 remains noisy across generated/imported docs and long
   literal-heavy tables.
-- Touching the agent harness subsystem (frozen per project memory).
-- Touching vendored `tools/mcp-for-security/`.
 - AI provider abstraction (NIM-only is locked per project memory).
+- Touching vendored `tools/mcp-for-security/`.
 
 ## Branch Status
 
@@ -155,4 +193,17 @@ Local-only, never pushed. Use:
 git log --oneline main..cleanup/codebase-tidy-2026-05-06
 ```
 
-to inspect the 8 atomic commits before deciding to merge or push.
+to inspect the 16 atomic commits before deciding to merge or push.
+
+## What Comes Next (Faz 11–14)
+
+See `ROADMAP.txt` at the repo root for the remaining phases:
+
+- **Faz 11** — Explicit `__all__` for every package's `__init__.py`.
+- **Faz 12** — Decide the fate of the dormant agent subsystem
+  (`utils/mcp_server.py`, `utils/agent_orchestrator.py`,
+  `utils/meta_tools.py`, `utils/docker_executor.py`,
+  `utils/ai_intent_agent.py`): wire into production or remove.
+- **Faz 13** — `vulture --min-confidence 80` deep dead-code scan plus
+  `pytest --cov` coverage baseline.
+- **Faz 14** — Final verification + before/after diff + push decision.
