@@ -138,10 +138,158 @@ class LocalOOBProvider(OOBProvider):
         return new
 
 
+class InteractshProvider(OOBProvider):
+    """Public Interactsh server polling (default: oast.fun).
+
+    The Interactsh protocol uses an RSA-encrypted per-client correlation
+    ID. To keep this dependency-free we run in *poll-only* mode against
+    a public REST endpoint exposing the per-correlation log; full
+    encryption is left to the upstream ``interactsh-client`` binary. The
+    intent here is to give scans an off-host callback without standing
+    up a listener, not to replace the official client.
+    """
+
+    def __init__(
+        self,
+        *,
+        server: str = "oast.fun",
+        correlation_id: Optional[str] = None,
+        http_get: Optional[object] = None,
+    ) -> None:
+        # 33-char correlation ID is the Interactsh standard.
+        self.server = server
+        self.correlation_id = correlation_id or "".join(
+            random.choices(string.ascii_lowercase + string.digits, k=33)
+        )
+        self.interactions: List[OOBInteraction] = []
+        self._http_get = http_get  # injectable for tests
+
+    def get_host(self) -> str:
+        return f"{self.correlation_id}.{self.server}"
+
+    def start(self) -> None:
+        log_info(f"OOB: Interactsh provider registered for {self.get_host()}")
+
+    def stop(self) -> None:
+        return None  # nothing to tear down
+
+    def poll(self) -> List[OOBInteraction]:
+        """GET the public log for our correlation ID and parse interactions."""
+        client = self._http_get
+        if client is None:
+            try:
+                import httpx
+                client = httpx.get
+            except ImportError:
+                return []
+
+        url = f"https://{self.server}/poll?id={self.correlation_id}"
+        try:
+            response = client(url, timeout=8)
+        except Exception:  # noqa: BLE001
+            return []
+
+        try:
+            payload = response.json()
+        except Exception:  # noqa: BLE001
+            return []
+
+        new_interactions: List[OOBInteraction] = []
+        for entry in (payload or {}).get("data", []) or []:
+            interaction_type = entry.get("protocol") or "http"
+            full_id = entry.get("full-id") or entry.get("unique-id") or ""
+            token = full_id.split(".")[0] if full_id else ""
+            new_interactions.append(
+                OOBInteraction(
+                    token=token,
+                    interaction_type=interaction_type,
+                    raw=entry,
+                )
+            )
+        self.interactions.extend(new_interactions)
+        return new_interactions
+
+
+class CollaboratorProvider(OOBProvider):
+    """Burp Collaborator wrapper — env-driven for credential isolation.
+
+    Reads ``BURP_COLLAB_SERVER`` (e.g. ``yourserver.example``) and
+    ``BURP_COLLAB_KEY`` (the secret key) from the environment. Polls
+    the standard ``/results?biid=...`` endpoint. Same caveats as the
+    Interactsh provider — encryption / key management is shallow.
+    """
+
+    def __init__(
+        self,
+        *,
+        server: Optional[str] = None,
+        biid: Optional[str] = None,
+        http_get: Optional[object] = None,
+    ) -> None:
+        import os
+        self.server = server or os.environ.get("BURP_COLLAB_SERVER", "")
+        self.biid = biid or os.environ.get("BURP_COLLAB_KEY", "")
+        self._http_get = http_get
+        self.interactions: List[OOBInteraction] = []
+
+    def get_host(self) -> str:
+        if not self.server:
+            return ""
+        token = "".join(
+            random.choices(string.ascii_lowercase + string.digits, k=12)
+        )
+        return f"{token}.{self.server}"
+
+    def start(self) -> None:
+        if not self.server or not self.biid:
+            log_info(
+                "OOB: Collaborator provider missing BURP_COLLAB_SERVER / "
+                "BURP_COLLAB_KEY — provider stays inert."
+            )
+            return
+        log_info(f"OOB: Collaborator provider polling {self.server}")
+
+    def stop(self) -> None:
+        return None
+
+    def poll(self) -> List[OOBInteraction]:
+        if not self.server or not self.biid:
+            return []
+        client = self._http_get
+        if client is None:
+            try:
+                import httpx
+                client = httpx.get
+            except ImportError:
+                return []
+        url = f"https://{self.server}/burpresults?biid={self.biid}"
+        try:
+            response = client(url, timeout=8)
+        except Exception:  # noqa: BLE001
+            return []
+        try:
+            payload = response.json()
+        except Exception:  # noqa: BLE001
+            return []
+
+        new_interactions: List[OOBInteraction] = []
+        for entry in (payload or {}).get("responses", []) or []:
+            token = entry.get("interactionString") or ""
+            new_interactions.append(
+                OOBInteraction(
+                    token=token,
+                    interaction_type=entry.get("protocol", "http"),
+                    raw=entry,
+                )
+            )
+        self.interactions.extend(new_interactions)
+        return new_interactions
+
+
 class OOBClient:
     """Main orchestrator for OOB interactions."""
-    
-    def __init__(self, mode: str = "local", listener_port: int = 8081):
+
+    def __init__(self, mode: str = "local", listener_port: int = 8081, **kwargs):
         self.mode = mode
         self.provider: OOBProvider
         self.token_map: Dict[str, dict] = {} # token -> finding info
@@ -149,9 +297,22 @@ class OOBClient:
 
         if mode == "local":
             self.provider = LocalOOBProvider(port=listener_port)
+        elif mode == "interactsh":
+            self.provider = InteractshProvider(
+                server=kwargs.get("server") or "oast.fun",
+                correlation_id=kwargs.get("correlation_id"),
+                http_get=kwargs.get("http_get"),
+            )
+        elif mode == "collab" or mode == "collaborator":
+            self.provider = CollaboratorProvider(
+                server=kwargs.get("server"),
+                biid=kwargs.get("biid"),
+                http_get=kwargs.get("http_get"),
+            )
         else:
             raise ValueError(
-                f"OOBClient: unsupported mode {mode!r}; only 'local' is implemented"
+                f"OOBClient: unsupported mode {mode!r}; expected one of "
+                f"'local', 'interactsh', 'collab'"
             )
 
     @property
