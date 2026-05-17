@@ -634,6 +634,17 @@ def main():
             # Initialize dual-model system (WhiteRabbitNeo + Qwen3-Coder)
             init_dual_ai(api_key=nvidia_api_key)
 
+    # Authenticated scanning: capture a session before any scan modules run.
+    if options.get("auth_flow"):
+        try:
+            from utils.auth_cli import configure_session_manager_from_options
+            configure_session_manager_from_options(options)
+        except Exception as exc:  # noqa: BLE001
+            log_warning(
+                f"auth_cli initialization failed: {type(exc).__name__}: {exc} "
+                "— continuing unauthenticated."
+            )
+
     # If proxy_listen was enabled interactively, start it in the background
     if options.get("proxy_listen"):
         from urllib.parse import urlparse
@@ -655,7 +666,12 @@ def main():
     # Run scan for each target
     mode_override = args.mode if "mode" in provided_dests else None
     
-    if options.get("agent"):
+    agent_mode = str(options.get("agent_mode") or "legacy").lower()
+
+    # Legacy multi-agent path: only when --agent is set AND mode permits it.
+    # Mode 'intent' runs the standard scan but appends the intent pipeline
+    # post-scan, so it must NOT bypass scan_target here.
+    if options.get("agent") and agent_mode in ("legacy", "both"):
         from utils.agent_framework import AgentOrchestrator
         for target_idx, current_url in enumerate(target_urls):
             if len(target_urls) > 1:
@@ -665,7 +681,10 @@ def main():
             orchestrator = AgentOrchestrator()
             console.print(f"[bold cyan][*] Starting multi-agent autonomous mission for {current_url}[/bold cyan]")
             orchestrator.run_mission(current_url)
-        return
+        if agent_mode == "legacy":
+            return
+        # 'both' falls through into the standard scan loop below; intent
+        # pipeline will fire post-scan in addition to the legacy mission.
 
     for target_idx, current_url in enumerate(target_urls):
         current_mode = mode
@@ -705,7 +724,7 @@ def main():
             console.print(
                 f"\n[bold magenta]━━━ Target {target_idx + 1}/{len(target_urls)}: {current_url} ━━━[/bold magenta]"
             )
-        scan_target(
+        scan_result = scan_target(
             current_url,
             current_mode,
             current_delay,
@@ -717,6 +736,24 @@ def main():
                 getattr(args, "wordlist_file", "wordlists/api_endpoints.txt"),
             ),
         )
+
+        # Intent-driven LLM exploit pipeline (Strix-style Recon→Exploit→
+        # Validate→Report). Runs ONLY when the user opted in via
+        # --agent-mode {intent,both}; otherwise the scan ends here.
+        if agent_mode in ("intent", "both"):
+            try:
+                from utils.ai import init_ai
+                from utils.intent_bridge import run_intent_pipeline
+
+                ai_client = None
+                if current_options.get("ai"):
+                    ai_client = init_ai()
+                run_intent_pipeline(scan_result, ai_client=ai_client)
+            except Exception as exc:  # noqa: BLE001
+                log_warning(
+                    f"Intent pipeline failed for {current_url}: "
+                    f"{type(exc).__name__}: {exc}"
+                )
 
 if __name__ == "__main__":
     try:

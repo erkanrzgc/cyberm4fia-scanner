@@ -366,6 +366,80 @@ PARSER_ARGUMENT_SPECS = (
         },
     ),
     ArgumentSpec(
+        ("--auth-flow",),
+        {
+            "choices": ("form", "csrf"),
+            "default": None,
+            "help": (
+                "Authenticate via the named flow before scanning. 'form' "
+                "POSTs credentials to --auth-url; 'csrf' fetches --auth-form-url "
+                "first to extract a hidden CSRF token. Captured cookies are "
+                "applied to every subsequent request."
+            ),
+        },
+    ),
+    ArgumentSpec(
+        ("--auth-url",),
+        {
+            "default": "",
+            "help": "Login endpoint for --auth-flow form (POST target).",
+        },
+    ),
+    ArgumentSpec(
+        ("--auth-form-url",),
+        {
+            "default": "",
+            "help": "Form page URL for --auth-flow csrf (GET to extract token).",
+        },
+    ),
+    ArgumentSpec(
+        ("--auth-fields",),
+        {
+            "default": "",
+            "help": (
+                "Comma-separated key=value pairs for the login payload "
+                "(e.g. 'username=alice,password=hunter2'). The 'username' and "
+                "'password' keys are required; additional fields are passed "
+                "verbatim as extra_fields."
+            ),
+        },
+    ),
+    ArgumentSpec(
+        ("--auth-success",),
+        {
+            "default": "",
+            "help": (
+                "Regex that must match the login response body for the flow "
+                "to be considered successful (e.g. 'Welcome|Dashboard')."
+            ),
+        },
+    ),
+    ArgumentSpec(
+        ("--accounts",),
+        {
+            "default": "",
+            "help": (
+                "Additional accounts for multi-identity tests (IDOR, "
+                "privilege escalation). Format: 'name:user:pass,name2:user2:pass2'. "
+                "All use the same --auth-flow + --auth-url."
+            ),
+        },
+    ),
+    ArgumentSpec(
+        ("--agent-mode",),
+        {
+            "choices": ("legacy", "intent", "both"),
+            "default": "legacy",
+            "help": (
+                "Agent execution mode. 'legacy' = utils.agent_framework multi-agent "
+                "(bypasses standard modules); 'intent' = run standard scan then trigger "
+                "the intent-driven LLM exploit pipeline (utils.agent_orchestrator) "
+                "on collected findings; 'both' = legacy when --agent is set, otherwise "
+                "intent post-scan. (default: legacy)"
+            ),
+        },
+    ),
+    ArgumentSpec(
         ("--ai-model",),
         {
             "default": DEFAULT_AI_MODEL,

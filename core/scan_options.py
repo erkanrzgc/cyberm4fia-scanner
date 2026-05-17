@@ -195,6 +195,13 @@ def build_cli_scan_options(args, threads: int):
         getattr(args, "nvidia_api_key", options.get("nvidia_api_key", "")) or options.get("nvidia_api_key", "")
     )
     options["agent"] = bool(getattr(args, "agent", False))
+    options["agent_mode"] = str(getattr(args, "agent_mode", "legacy") or "legacy")
+    options["auth_flow"] = getattr(args, "auth_flow", None) or None
+    options["auth_url"] = getattr(args, "auth_url", "") or ""
+    options["auth_form_url"] = getattr(args, "auth_form_url", "") or ""
+    options["auth_fields"] = getattr(args, "auth_fields", "") or ""
+    options["auth_success"] = getattr(args, "auth_success", "") or ""
+    options["accounts"] = getattr(args, "accounts", "") or ""
     options["rotate_proxy"] = bool(
         getattr(args, "rotate_proxy", False)
         or bool(getattr(args, "tamper", False))
