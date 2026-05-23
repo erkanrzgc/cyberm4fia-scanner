@@ -149,11 +149,20 @@ def _guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
 
 builtins.__import__ = _guarded_import
 
-# Read user code
+# Read user code (use the *real* open before we strip it from user builtins).
 with open(_user_code_path, "r", encoding="utf-8") as _fh:
     _user_code = _fh.read()
 
-_g = {"__name__": "__sandbox__", "__builtins__": builtins}
+# Build a restricted __builtins__ for user code. Drop primitives that bypass
+# the import allow-list (open/exec/eval/compile) or have no business inside
+# a non-interactive exploit script (input/breakpoint). See SECURITY_SANDBOX §2.1.
+_dangerous = {
+    "open", "eval", "exec", "compile", "input", "breakpoint", "memoryview",
+}
+_safe_builtins = {k: v for k, v in vars(builtins).items() if k not in _dangerous}
+_safe_builtins["__import__"] = _guarded_import
+
+_g = {"__name__": "__sandbox__", "__builtins__": _safe_builtins}
 
 _result_payload = {"ok": False, "value": None, "exc": None}
 try:

@@ -65,6 +65,22 @@ class TestImportWhitelist:
         assert out.exception_type == "ImportError"
         assert "not in the allowed list" in out.exception_message
 
+    def test_open_is_stripped_from_sandbox_builtins(self):
+        # See docs/SECURITY_SANDBOX.md §2.1: `open` bypasses the import allow-list
+        # and must not be reachable from user code.
+        out = execute_python(
+            "result = {'leaked': open('/etc/passwd').read()[:5]}",
+            timeout=5,
+        )
+        assert out.success is False
+        assert out.exception_type == "NameError"
+
+    def test_eval_and_exec_are_stripped(self):
+        for primitive in ("eval('1+1')", "exec('x=1')"):
+            out = execute_python(f"result = {primitive}", timeout=5)
+            assert out.success is False, primitive
+            assert out.exception_type == "NameError", primitive
+
     def test_extra_modules_can_be_added(self):
         out = execute_python(
             "import os\nresult = {'pid': bool(os.getpid())}",

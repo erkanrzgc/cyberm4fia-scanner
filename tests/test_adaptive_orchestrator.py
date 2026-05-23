@@ -214,6 +214,38 @@ class TestAdaptiveLoop:
 
         assert exploit.seen_per_run == [1, 1, 1]
 
+    def test_default_scope_is_derived_from_target_host(self):
+        # No explicit scope: planner must reject intents pointing off-host.
+        from utils.agent_orchestrator import PlannerStage, _resolve_default_scope
+        scope = _resolve_default_scope("https://app.test/sub/")
+        assert scope.is_allowed("https://app.test/x") is True
+        assert scope.is_allowed("https://evil.example/x") is False
+
+    def test_budget_exceeded_halts_loop_gracefully(self):
+        # Planner raises BudgetExceeded mid-loop -> loop records halt + exits.
+        from utils.llm_budget import BudgetExceeded
+        ctx = MissionContext(target_url="https://app.test/")
+
+        class _BudgetPlanner:
+            name = "plan"
+
+            def __init__(self):
+                self.calls = 0
+
+            def run(self, ctx):
+                self.calls += 1
+                if self.calls == 1:
+                    ctx.add_intent({"vuln_type": "v1", "target_url": ctx.target_url, "goal": "g"})
+                else:
+                    raise BudgetExceeded("test cap reached")
+
+        planner = _BudgetPlanner()
+        exploit = _RecordingExploit()
+        run_adaptive_loop(ctx, planner, exploit, max_rounds=5)
+
+        assert exploit.runs == 1
+        assert ctx.stage_results[-1]["halted"]
+
     def test_real_planner_dedup_prevents_infinite_rerun(self):
         # A planner that keeps proposing the SAME intent must converge once
         # the signature is already known, even if max_rounds is generous.

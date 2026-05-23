@@ -382,6 +382,20 @@ def _get_scope():
         return None
 
 
+def _resolve_default_scope(target_url: str):
+    """Derive a target-bound scope when no explicit one is configured.
+
+    Used by adaptive missions so the LLM-driven planner cannot, by accident,
+    propose intents against unrelated third-party hosts discovered during recon
+    (CDN endpoints, OAuth providers, ...). The host of ``target_url`` becomes
+    the sole include pattern.
+    """
+    from urllib.parse import urlparse
+    from core.scope import ScopeFilter
+    host = urlparse(target_url).hostname or ""
+    return ScopeFilter(include=[host] if host else [])
+
+
 @dataclass
 class ValidateStage(_BaseStage):
     """Demote findings whose confidence is below a configurable threshold."""
@@ -524,15 +538,24 @@ def run_adaptive_loop(
     ``max_rounds`` is a hard budget cap — it bounds total planner LLM calls and
     guarantees termination even if the planner keeps proposing.
     """
+    from utils.llm_budget import BudgetExceeded
+
     rounds = 0
+    budget_hit = False
     for _ in range(max(0, max_rounds)):
-        planner.run(ctx)
-        if not ctx.intents:
+        try:
+            planner.run(ctx)
+            if not ctx.intents:
+                break
+            rounds += 1
+            exploit.run(ctx)
+        except BudgetExceeded as exc:
+            ctx.stage_results.append({"stage": "adaptive_loop", "halted": str(exc)})
+            budget_hit = True
             break
-        rounds += 1
-        exploit.run(ctx)
         ctx.intents = []          # drain: prior rounds are done, dedup lives in planned_signatures
-    ctx.stage_results.append({"stage": "adaptive_loop", "rounds": rounds})
+    if not budget_hit:
+        ctx.stage_results.append({"stage": "adaptive_loop", "rounds": rounds})
     return ctx
 
 
@@ -544,6 +567,7 @@ def run_adaptive_mission(
     max_rounds: int = 3,
     max_intents_per_round: int = 4,
     exploit_max_iterations: int = 3,
+    max_llm_calls: int = 0,           # 0 = no cap; e.g. 50 caps total LLM calls
     min_confidence: float = 50.0,
     external_tools: Optional[list] = None,
     tool_kwargs: Optional[dict] = None,
@@ -567,6 +591,21 @@ def run_adaptive_mission(
         ExternalToolStage(
             tools=external_tools, tool_kwargs=dict(tool_kwargs or {}),
         ).run(ctx)
+
+    # Wrap the AI client with a budget guard so a runaway adaptive loop
+    # can't burn through the NVIDIA NIM quota silently.
+    if ai_client is not None and max_llm_calls > 0:
+        from utils.llm_budget import LLMBudgetClient
+        ai_client = LLMBudgetClient(ai_client, max_calls=max_llm_calls)
+
+    # Scope-default-on: lock the planner to the target's host when the caller
+    # didn't supply or pre-configure a scope. Prevents the LLM from straying
+    # to third-party origins surfaced by recon.
+    if scope is None:
+        active_global = _get_scope()
+        if active_global is None or not getattr(active_global, "active", False):
+            scope = _resolve_default_scope(target_url)
+
     planner = PlannerStage(
         ai_client=ai_client, scope=scope,
         max_intents_per_round=max_intents_per_round,

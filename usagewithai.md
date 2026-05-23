@@ -323,6 +323,13 @@ Each scan creates results under `scans/<target>/`:
 | `--max-host-concurrency N` | Limit simultaneous in-flight requests per host (0 disables the limit) |
 | `--path-blacklist PATTERNS` | Comma-separated risky path patterns to skip (e.g. '/logout,/checkout') |
 | `--agent` | Run Multi-Agent autonomous pentesting mode (bypasses standard modules) |
+| `--auth-flow {form,csrf}` | Authenticate via the named flow before scanning. 'form' POSTs credentials to --auth-url; 'csrf' fetches --auth-form-url first to extract a hidden CSRF token. Captured cookies are applied to every subsequent request. |
+| `--auth-url AUTH_URL` | Login endpoint for --auth-flow form (POST target). |
+| `--auth-form-url AUTH_FORM_URL` | Form page URL for --auth-flow csrf (GET to extract token). |
+| `--auth-fields AUTH_FIELDS` | Comma-separated key=value pairs for the login payload (e.g. 'username=alice,password=hunter2'). The 'username' and 'password' keys are required; additional fields are passed verbatim as extra_fields. |
+| `--auth-success AUTH_SUCCESS` | Regex that must match the login response body for the flow to be considered successful (e.g. 'Welcome|Dashboard'). |
+| `--accounts ACCOUNTS` | Additional accounts for multi-identity tests (IDOR, privilege escalation). Format: 'name:user:pass,name2:user2:pass2'. All use the same --auth-flow + --auth-url. |
+| `--agent-mode {legacy,intent,both}` | Agent execution mode. 'legacy' = utils.agent_framework multi-agent (bypasses standard modules); 'intent' = run standard scan then trigger the intent-driven LLM exploit pipeline (utils.agent_orchestrator) on collected findings; 'both' = legacy when --agent is set, otherwise intent post-scan. (default: legacy) |
 <!-- END GENERATED: cli_flags -->
 
 ---
