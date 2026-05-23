@@ -30,6 +30,9 @@ Thumbs.db
 scans/
 memory/
 
+# Internal audit / cleanup process artifacts (not for public release)
+docs/_audit/
+
 # Linter / test cache
 .ruff_cache/
 .pytest_cache/
