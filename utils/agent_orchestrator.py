@@ -249,8 +249,16 @@ class ExternalToolStage(_BaseStage):
 
 def default_external_tools() -> list:
     """The bundled external-tool adapters, in recon-friendly order."""
-    from utils.external_tools import ArjunTool, MasscanTool, SslyzeTool, WpscanTool
-    return [MasscanTool(), ArjunTool(), SslyzeTool(), WpscanTool()]
+    from utils.external_tools import (
+        ArjunTool, KubeHunterTool, MasscanTool, SmbmapTool,
+        SslyzeTool, TestsslTool, WpscanTool,
+    )
+    return [
+        MasscanTool(), ArjunTool(),
+        SslyzeTool(), TestsslTool(),
+        WpscanTool(), SmbmapTool(),
+        KubeHunterTool(),
+    ]
 
 
 def _intent_signature(intent: dict, default_target: str) -> tuple:

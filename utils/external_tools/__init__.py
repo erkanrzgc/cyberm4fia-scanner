@@ -8,8 +8,11 @@ scattered across modules.
 
 from utils.external_tools.arjun import ArjunTool
 from utils.external_tools.base import ExternalTool, ToolResult
+from utils.external_tools.kube_hunter import KubeHunterTool
 from utils.external_tools.masscan import MasscanTool
+from utils.external_tools.smbmap import SmbmapTool
 from utils.external_tools.sslyze import SslyzeTool
+from utils.external_tools.testssl import TestsslTool
 from utils.external_tools.wpscan import WpscanTool
 
 __all__ = [
@@ -18,5 +21,8 @@ __all__ = [
     "MasscanTool",
     "ArjunTool",
     "SslyzeTool",
+    "TestsslTool",
     "WpscanTool",
+    "SmbmapTool",
+    "KubeHunterTool",
 ]

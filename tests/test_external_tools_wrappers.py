@@ -11,7 +11,10 @@ import json
 import pytest
 
 from utils.external_tools.arjun import ArjunTool
+from utils.external_tools.kube_hunter import KubeHunterTool
+from utils.external_tools.smbmap import SmbmapTool
 from utils.external_tools.sslyze import SslyzeTool
+from utils.external_tools.testssl import TestsslTool
 from utils.external_tools.wpscan import WpscanTool
 
 pytestmark = pytest.mark.unit
@@ -121,3 +124,111 @@ class TestWpscanTool:
         findings = WpscanTool().to_findings(parsed, target="https://wp.test")
         assert findings[0]["type"] == "WordPress_Vuln"
         assert "CF SQLi" in findings[0]["title"]
+
+
+# ─── testssl.sh: deep TLS auditor ─────────────────────────────────────────────
+
+
+class TestTestsslTool:
+    def test_command_emits_json_to_stdout(self):
+        cmd = TestsslTool().get_command("t.example:443")
+        assert "t.example:443" in cmd
+        # /dev/stdout is the Linux-portable way to direct file output to stdout
+        assert any("/dev/stdout" in part for part in cmd)
+
+    def test_parses_actionable_vulnerabilities(self):
+        out = json.dumps([
+            {"id": "heartbleed", "ip": "1.2.3.4", "port": "443",
+             "severity": "CRITICAL", "finding": "VULNERABLE - Heartbleed"},
+            {"id": "ROBOT", "severity": "HIGH", "finding": "VULNERABLE"},
+            {"id": "scanProblem", "severity": "INFO", "finding": "scan started"},
+            {"id": "cert_notBefore", "severity": "OK", "finding": "valid"},
+        ])
+        parsed = TestsslTool().parse_output(out, "", 0)
+        ids = {v["id"] for v in parsed["vulnerabilities"]}
+        # INFO / OK should be filtered out.
+        assert ids == {"heartbleed", "ROBOT"}
+
+    def test_to_findings_carries_severity(self):
+        parsed = {"vulnerabilities": [
+            {"id": "heartbleed", "severity": "CRITICAL",
+             "finding": "VULNERABLE - Heartbleed"},
+        ]}
+        findings = TestsslTool().to_findings(parsed, target="t.example:443")
+        assert findings[0]["type"] == "TLS_Vulnerability"
+        assert findings[0]["severity"] == "critical"
+        assert "heartbleed" in findings[0]["title"].lower()
+
+
+# ─── smbmap: SMB share enumeration ────────────────────────────────────────────
+
+
+_SMBMAP_OUT = """[+] IP: 192.0.2.10:445  Name: HOST01
+        Disk                                                  Permissions
+        ----                                                  -----------
+        ADMIN$                                                NO ACCESS
+        C$                                                    NO ACCESS
+        IPC$                                                  READ ONLY
+        Users                                                 READ, WRITE
+"""
+
+
+class TestSmbmapTool:
+    def test_command_targets_host(self):
+        cmd = SmbmapTool().get_command("192.0.2.10")
+        assert "192.0.2.10" in cmd
+        assert "-H" in cmd
+
+    def test_parses_share_permissions(self):
+        parsed = SmbmapTool().parse_output(_SMBMAP_OUT, "", 0)
+        shares = {s["share"]: s["permission"] for s in parsed["shares"]}
+        assert shares["IPC$"] == "READ ONLY"
+        assert shares["Users"] == "READ, WRITE"
+        assert shares["C$"] == "NO ACCESS"
+
+    def test_to_findings_only_for_accessible_shares(self):
+        parsed = {"shares": [
+            {"share": "Users", "permission": "READ, WRITE"},
+            {"share": "IPC$", "permission": "READ ONLY"},
+            {"share": "C$", "permission": "NO ACCESS"},
+        ]}
+        findings = SmbmapTool().to_findings(parsed, target="192.0.2.10")
+        # NO ACCESS shares must not be surfaced as findings. Match the share
+        # name as the title's quoted token to avoid IPC$ matching "C$".
+        titles = [f["title"] for f in findings]
+        assert any("'Users'" in t for t in titles)
+        assert not any("'C$'" in t for t in titles)
+        writable = next(f for f in findings if "'Users'" in f["title"])
+        assert writable["severity"] == "high"   # writable share is high-impact
+
+
+# ─── kube-hunter: Kubernetes cluster scanner ──────────────────────────────────
+
+
+class TestKubeHunterTool:
+    def test_command_passes_remote_and_json(self):
+        cmd = KubeHunterTool().get_command("https://kube.test:6443")
+        assert "https://kube.test:6443" in cmd
+        assert "--remote" in cmd
+        assert "--report" in cmd and "json" in cmd
+
+    def test_parses_vulnerabilities(self):
+        out = json.dumps({
+            "vulnerabilities": [
+                {"vulnerability": "Anonymous Authentication",
+                 "description": "API server allows anonymous",
+                 "severity": "high", "category": "Access Risk"},
+                {"vulnerability": "K8s Version Disclosure",
+                 "severity": "low", "category": "Information Disclosure"},
+            ]
+        })
+        parsed = KubeHunterTool().parse_output(out, "", 0)
+        assert parsed["count"] == 2
+
+    def test_to_findings_normalizes_severity(self):
+        parsed = {"vulnerabilities": [
+            {"vulnerability": "Anonymous Authentication", "severity": "high"},
+        ]}
+        findings = KubeHunterTool().to_findings(parsed, target="https://kube.test:6443")
+        assert findings[0]["type"] == "Kubernetes_Vuln"
+        assert findings[0]["severity"] == "high"
