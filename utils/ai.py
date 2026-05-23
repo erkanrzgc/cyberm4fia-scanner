@@ -222,58 +222,174 @@ You analyze vulnerability scan results with precision and provide actionable ins
 Be concise, technical, and direct. Use bullet points.
 Always respond in the language of the user's input."""
 
-def _load_skill_for_vuln(vuln_type: str) -> str:
-    """Load Claude-Red skill instructions based on vulnerability type."""
+# Root of the AI skill library and the directories searched for a given slug.
+_AI_SKILLS_ROOT = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), "core", "ai_skills"
+)
+_SKILL_SEARCH_DIRS = (
+    _AI_SKILLS_ROOT,                                                  # our offensive-*
+    os.path.join(_AI_SKILLS_ROOT, "imported", "hack-skills", "skills"),
+)
+
+# Vuln/module keyword -> skill folder slug. Keys are matched as substrings of
+# the lower-cased vuln_type; longer keys win (so "nosql" beats "sql"). Slugs
+# resolve against _SKILL_SEARCH_DIRS, so a slug may be one of our offensive-*
+# folders OR an imported hack-skills folder.
+_SKILL_MAP = {
+    # ── Injection ──
+    "nosql": "offensive-nosql-injection",
+    "sqli": "offensive-sqli",
+    "sql_injection": "offensive-sqli",
+    "sql": "offensive-sqli",
+    "ldap": "offensive-ldap-injection",
+    "xss": "offensive-xss",
+    "cross_site_scripting": "offensive-xss",
+    "dom_xss": "offensive-xss",
+    "browser_exploit": "offensive-xss",
+    "cmdi": "offensive-rce",
+    "command_injection": "offensive-rce",
+    "shellshock": "offensive-rce",
+    "rce": "offensive-rce",
+    "lfi": "offensive-rce",
+    "rfi": "offensive-rce",
+    "local_file_inclusion": "offensive-rce",
+    "file_access": "offensive-rce",
+    "ssti": "offensive-ssti",
+    "template_injection": "offensive-ssti",
+    "template_engine": "offensive-ssti",
+    "xxe": "offensive-xxe",
+    "crlf": "offensive-crlf",
+    "header_inject": "http-host-header-attacks",
+    "host_header": "http-host-header-attacks",
+    "log4shell": "jndi-injection",
+    "jndi": "jndi-injection",
+    "expression_language": "expression-language-injection",
+    "xslt": "xslt-injection",
+    "deserialization": "offensive-deserialization",
+    # ── Auth / access control ──
+    "jwt": "offensive-jwt",
+    "oauth": "offensive-oauth",
+    "saml": "saml-sso-assertion-attacks",
+    "account_takeover": "offensive-authentication-attacks",
+    "auth_bypass": "offensive-authentication-attacks",
+    "authentication": "offensive-authentication-attacks",
+    "brute_force": "offensive-authentication-attacks",
+    "brute": "offensive-authentication-attacks",
+    "spray": "offensive-authentication-attacks",
+    "idor": "offensive-idor",
+    "bola": "api-authorization-and-bola",
+    "forbidden_bypass": "401-403-bypass-techniques",
+    "403_bypass": "401-403-bypass-techniques",
+    "privesc": "offensive-privilege-escalation",
+    "privilege_escalation": "offensive-privilege-escalation",
+    # ── Web misc ──
+    "csrf": "offensive-csrf",
+    "cors": "offensive-cors",
+    "open_redirect": "offensive-open-redirect",
+    "csp": "csp-bypass-advanced",
+    "clickjacking": "offensive-csrf",
+    "smuggling": "offensive-request-smuggling",
+    "request_smuggling": "offensive-request-smuggling",
+    "http_methods": "offensive-http-method-tampering",
+    "http_method": "offensive-http-method-tampering",
+    "race_condition": "offensive-race-condition",
+    "race": "offensive-race-condition",
+    "proto_pollution": "prototype-pollution-advanced",
+    "prototype_pollution": "prototype-pollution-advanced",
+    "param": "offensive-parameter-pollution",
+    "hpp": "offensive-parameter-pollution",
+    "business_logic": "offensive-business-logic",
+    "file_upload": "offensive-file-upload",
+    "upload": "offensive-file-upload",
+    "cookie": "offensive-session-cookie-security",
+    "hsts": "offensive-session-cookie-security",
+    "session": "offensive-session-cookie-security",
+    "websocket": "websocket-security",
+    "graphql": "offensive-graphql",
+    "ssrf": "offensive-ssrf",
+    "dns_rebinding": "dns-rebinding-attacks",
+    "web_cache": "web-cache-deception",
+    "dangling_markup": "dangling-markup-injection",
+    "type_juggling": "type-juggling",
+    # ── Recon / OSINT ──
+    "subdomain_takeover": "offensive-subdomain-takeover",
+    "subdomain": "recon-and-methodology",
+    "vhost": "recon-and-methodology",
+    "recon_dns": "recon-and-methodology",
+    "dns": "recon-and-methodology",
+    "tech_detect": "recon-and-methodology",
+    "cms_enum": "recon-and-methodology",
+    "crawler": "recon-and-methodology",
+    "endpoint_fuzzer": "offensive-fuzzing",
+    "fuzz": "offensive-fuzzing",
+    "passive": "recon-and-methodology",
+    "wayback": "offensive-osint",
+    "urlscan": "offensive-osint",
+    "google_dork": "offensive-osint",
+    "email_harvest": "offensive-osint",
+    "osint": "offensive-osint",
+    "recon": "recon-and-methodology",
+    "waf": "offensive-waf-bypass",
+    # ── Secrets / supply chain ──
+    "github_secrets": "offensive-secrets-exposure",
+    "git_history": "offensive-secrets-exposure",
+    "secrets": "offensive-secrets-exposure",
+    "secret": "offensive-secrets-exposure",
+    "osv": "offensive-dependency-vulnerabilities",
+    "dependency": "offensive-dependency-vulnerabilities",
+    # ── Cloud / API ──
+    "cloud_enum": "offensive-cloud-attacks",
+    "cloud": "offensive-cloud-attacks",
+    "baas": "offensive-cloud-attacks",
+    "api_inject": "injection-checking",
+    "api_spec": "api-recon-and-docs",
+    "api_scanner": "api-sec",
+    "api": "api-sec",
+}
+
+# Cache keys sorted by length (desc) so the most specific keyword matches first.
+_SKILL_MAP_KEYS = sorted(_SKILL_MAP, key=len, reverse=True)
+
+
+def skill_slug_for_vuln(vuln_type: str) -> Optional[str]:
+    """Return the skill folder slug for a vuln/module name, or None."""
     if not vuln_type:
+        return None
+    needle = vuln_type.lower()
+    for key in _SKILL_MAP_KEYS:
+        if key in needle:
+            return _SKILL_MAP[key]
+    return None
+
+
+def _resolve_skill_file(slug: str) -> Optional[str]:
+    """Find an existing ``<slug>/SKILL.md`` across the skill search dirs."""
+    if not slug:
+        return None
+    for base in _SKILL_SEARCH_DIRS:
+        path = os.path.join(base, slug, "SKILL.md")
+        if os.path.exists(path):
+            return path
+    return None
+
+
+def _load_skill_for_vuln(vuln_type: str) -> str:
+    """Load expert skill instructions for a vulnerability/module type."""
+    slug = skill_slug_for_vuln(vuln_type)
+    if not slug:
         return ""
-        
-    vuln_type_lower = vuln_type.lower()
-    
-    # Mapping vulnerability types to Claude-Red skill folder names
-    mapping = {
-        "sqli": "offensive-sqli",
-        "sql_injection": "offensive-sqli",
-        "sql": "offensive-sqli",
-        "xss": "offensive-xss",
-        "cross_site_scripting": "offensive-xss",
-        "ssrf": "offensive-ssrf",
-        "lfi": "offensive-rce",
-        "local_file_inclusion": "offensive-rce",
-        "cmdi": "offensive-rce",
-        "command_injection": "offensive-rce",
-        "rce": "offensive-rce",
-        "jwt": "offensive-jwt",
-        "xxe": "offensive-xxe",
-        "ssti": "offensive-ssti",
-        "idor": "offensive-idor",
-        "open_redirect": "offensive-open-redirect",
-        "smuggling": "offensive-request-smuggling",
-        "request_smuggling": "offensive-request-smuggling",
-        "waf": "offensive-waf-bypass",
-    }
-    
-    skill_folder = None
-    for key, folder in mapping.items():
-        if key in vuln_type_lower:
-            skill_folder = folder
-            break
-            
-    if not skill_folder:
+    path = _resolve_skill_file(slug)
+    if not path:
         return ""
-        
     try:
-        skill_path = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)),
-            "core", "ai_skills", skill_folder, "SKILL.md"
-        )
-        if os.path.exists(skill_path):
-            with open(skill_path, "r", encoding="utf-8") as f:
-                content = f.read()
-                return f"\n\n--- EXPERT SKILL KNOWLEDGE BASE ---\n{content}\n--- END SKILL KNOWLEDGE BASE ---\n"
-    except Exception:
-        pass
-        
-    return ""
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except OSError:
+        return ""
+    return (
+        "\n\n--- EXPERT SKILL KNOWLEDGE BASE ---\n"
+        f"{content}\n--- END SKILL KNOWLEDGE BASE ---\n"
+    )
 
 def analyze_vulnerability(client: NvidiaApiClient, vuln: dict) -> dict:
     """Analyze a single vulnerability finding with AI."""

@@ -57,6 +57,7 @@ class MissionContext:
     intents: list[dict] = field(default_factory=list)         # planned intents to exploit
     stage_results: list[dict] = field(default_factory=list)
     errors: list[dict] = field(default_factory=list)
+    planned_signatures: set = field(default_factory=set)      # intents ever queued (loop-safe dedup)
 
     def add_finding(self, finding: dict) -> None:
         self.findings.append(dict(finding))
@@ -205,6 +206,170 @@ class ExploitStage(_BaseStage):
 
 
 @dataclass
+class ExternalToolStage(_BaseStage):
+    """Run external CLI scanners (masscan, sslyze, wpscan, arjun, ...) and fold
+    their results into the mission.
+
+    Each tool's structured output is summarized into ``ctx.tech_profile`` and
+    its ``to_findings`` output merged into ``ctx.findings``. Tools that are not
+    installed are skipped; a tool raising during result-mapping never blocks the
+    others.
+    """
+    name: str = "external_recon"
+    tools: list = field(default_factory=list)
+    tool_kwargs: dict = field(default_factory=dict)   # binary -> kwargs
+
+    def run(self, ctx: MissionContext) -> None:
+        ran: list[str] = []
+        skipped: list[str] = []
+        for tool in self.tools:
+            binary = getattr(tool, "binary", "?")
+            kwargs = self.tool_kwargs.get(binary, {})
+            try:
+                result = tool.run(ctx.target_url, **kwargs)
+            except Exception as exc:
+                ctx.record_error(self.name, exc)
+                skipped.append(binary)
+                continue
+            if not getattr(result, "available", False):
+                skipped.append(binary)
+                continue
+            ctx.tech_profile[binary] = {
+                "succeeded": getattr(result, "succeeded", False),
+                "summary": getattr(result, "parsed", None),
+            }
+            try:
+                for finding in tool.to_findings(result.parsed, target=ctx.target_url):
+                    ctx.add_finding(finding)
+            except Exception as exc:
+                ctx.record_error(self.name, exc)
+            ran.append(binary)
+        ctx.stage_results.append({"stage": self.name, "ran": ran, "skipped": skipped})
+
+
+def default_external_tools() -> list:
+    """The bundled external-tool adapters, in recon-friendly order."""
+    from utils.external_tools import ArjunTool, MasscanTool, SslyzeTool, WpscanTool
+    return [MasscanTool(), ArjunTool(), SslyzeTool(), WpscanTool()]
+
+
+def _intent_signature(intent: dict, default_target: str) -> tuple:
+    """Stable identity for an intent so the same work is never queued twice."""
+    return (
+        str(intent.get("vuln_type") or "").lower().strip(),
+        str(intent.get("param") or "").lower().strip(),
+        str(intent.get("target_url") or default_target).lower().strip(),
+        str(intent.get("goal") or "").lower().strip(),
+    )
+
+
+_PLANNER_SYSTEM = (
+    "You are the planning brain of an authorized web-app penetration test. "
+    "Given the recon tech profile and findings collected so far, propose the "
+    "next concrete exploitation intents to attempt. Chain off existing findings "
+    "where possible (e.g. an LFI may enable RCE via log poisoning). "
+    "Reply with ONLY a JSON array; each item has keys: "
+    "vuln_type, param, target_url, goal, http_method, notes. "
+    "Return [] when nothing further is worth attempting."
+)
+
+
+@dataclass
+class PlannerStage(_BaseStage):
+    """Adaptive LLM step: turn the current mission state into the next batch of
+    in-scope exploitation intents.
+
+    Unlike the static pipeline (where intents are seeded up front), this stage
+    lets the model react to what recon and earlier exploits revealed. Every
+    proposal is scope-checked and de-duplicated against work already queued, so
+    the surrounding loop converges instead of re-attacking the same target.
+    """
+    name: str = "plan"
+    ai_client: Any = None
+    scope: Any = None
+    max_intents_per_round: int = 4
+
+    def run(self, ctx: MissionContext) -> None:
+        if not self.ai_client or not getattr(self.ai_client, "available", False):
+            ctx.stage_results.append(
+                {"stage": self.name, "skipped": "AI client unavailable"}
+            )
+            return
+
+        # Seeded / prior-round intents count as already-known work.
+        for existing in ctx.intents:
+            ctx.planned_signatures.add(_intent_signature(existing, ctx.target_url))
+
+        proposed = self._ask_llm(ctx)
+        scope = self.scope if self.scope is not None else _get_scope()
+
+        added = skipped_scope = skipped_dup = 0
+        for item in proposed:
+            if not isinstance(item, dict):
+                continue
+            if added >= self.max_intents_per_round:
+                break
+            target = str(item.get("target_url") or ctx.target_url)
+            if scope is not None and not scope.is_allowed(target):
+                skipped_scope += 1
+                continue
+            sig = _intent_signature(item, ctx.target_url)
+            if sig in ctx.planned_signatures:
+                skipped_dup += 1
+                continue
+            ctx.add_intent({**item, "target_url": target})
+            ctx.planned_signatures.add(sig)
+            added += 1
+
+        ctx.stage_results.append({
+            "stage": self.name,
+            "proposed": len(proposed),
+            "added": added,
+            "skipped_scope": skipped_scope,
+            "skipped_dup": skipped_dup,
+        })
+
+    def _ask_llm(self, ctx: MissionContext) -> list:
+        from utils.ai import _extract_json
+
+        prompt = self._build_prompt(ctx)
+        try:
+            response = self.ai_client.generate(
+                prompt, system=_PLANNER_SYSTEM, temperature=0.4
+            )
+        except Exception:
+            return []
+        parsed = _extract_json(response or "", expect_array=True)
+        return parsed if isinstance(parsed, list) else []
+
+    @staticmethod
+    def _build_prompt(ctx: MissionContext) -> str:
+        import json as _json
+
+        tech = _json.dumps(ctx.tech_profile, default=str)[:4000]
+        findings = _json.dumps(
+            [{k: f.get(k) for k in ("type", "url", "param", "severity", "evidence")}
+             for f in ctx.findings],
+            default=str,
+        )[:4000]
+        return (
+            f"Target: {ctx.target_url}\n\n"
+            f"Recon tech profile (JSON):\n{tech}\n\n"
+            f"Findings so far (JSON):\n{findings}\n\n"
+            "Propose the next exploitation intents as a JSON array."
+        )
+
+
+def _get_scope():
+    """Lazily resolve the global scope filter; tolerate its absence."""
+    try:
+        from core.scope import get_scope
+        return get_scope()
+    except Exception:
+        return None
+
+
+@dataclass
 class ValidateStage(_BaseStage):
     """Demote findings whose confidence is below a configurable threshold."""
     name: str = "validate"
@@ -279,14 +444,25 @@ def build_default_pipeline(
     ai_client: Any = None,
     max_iterations: int = 3,
     min_confidence: float = 50.0,
+    external_tools: Optional[list] = None,
+    tool_kwargs: Optional[dict] = None,
 ) -> Pipeline:
-    """Recon → Exploit → Validate → Report — the canonical Strix-style chain."""
-    return Pipeline(stages=[
-        ReconStage(),
+    """Recon → [ExternalRecon] → Exploit → Validate → Report.
+
+    Pass ``external_tools`` (a list of ExternalTool adapters) to insert an
+    ``ExternalToolStage`` right after recon — otherwise the chain is unchanged.
+    """
+    stages: list[Stage] = [ReconStage()]
+    if external_tools:
+        stages.append(ExternalToolStage(
+            tools=external_tools, tool_kwargs=dict(tool_kwargs or {}),
+        ))
+    stages.extend([
         ExploitStage(ai_client=ai_client, max_iterations=max_iterations),
         ValidateStage(min_confidence=min_confidence),
         ReportStage(),
     ])
+    return Pipeline(stages=stages)
 
 
 def run_mission(
@@ -313,3 +489,77 @@ def run_mission(
     if pipeline is None:
         pipeline = build_default_pipeline(ai_client=ai_client)
     return pipeline.run(ctx)
+
+
+# ─── Adaptive (LLM-driven) orchestration ──────────────────────────────────────
+
+
+def run_adaptive_loop(
+    ctx: MissionContext,
+    planner: Stage,
+    exploit: Stage,
+    *,
+    max_rounds: int = 3,
+) -> MissionContext:
+    """Drive Plan → Exploit rounds until convergence or the round budget runs out.
+
+    Each round the ``planner`` queues fresh intents onto ``ctx.intents``; the
+    ``exploit`` stage runs them; the queue is then drained so the next round
+    starts clean and never re-runs prior work. The loop exits early when a
+    planning round produces no new intents (nothing left worth attempting).
+
+    ``max_rounds`` is a hard budget cap — it bounds total planner LLM calls and
+    guarantees termination even if the planner keeps proposing.
+    """
+    rounds = 0
+    for _ in range(max(0, max_rounds)):
+        planner.run(ctx)
+        if not ctx.intents:
+            break
+        rounds += 1
+        exploit.run(ctx)
+        ctx.intents = []          # drain: prior rounds are done, dedup lives in planned_signatures
+    ctx.stage_results.append({"stage": "adaptive_loop", "rounds": rounds})
+    return ctx
+
+
+def run_adaptive_mission(
+    target_url: str,
+    *,
+    ai_client: Any = None,
+    scope: Any = None,
+    max_rounds: int = 3,
+    max_intents_per_round: int = 4,
+    exploit_max_iterations: int = 3,
+    min_confidence: float = 50.0,
+    external_tools: Optional[list] = None,
+    tool_kwargs: Optional[dict] = None,
+    intents: Optional[list[dict]] = None,
+    options: Optional[dict[str, Any]] = None,
+) -> MissionContext:
+    """Recon → [ExternalRecon] → (Plan → Exploit)×N → Validate → Report.
+
+    The LLM-driven counterpart to :func:`run_mission`: instead of a fixed,
+    pre-seeded intent list, the planner reacts to recon + accumulated findings
+    each round, enabling finding-chaining and skipping irrelevant attacks.
+    Any ``intents`` passed in are used as round-zero seeds. ``external_tools``
+    run once up front so their findings feed the planner.
+    """
+    ctx = MissionContext(target_url=target_url, options=dict(options or {}))
+    for intent in intents or []:
+        ctx.add_intent(intent)
+
+    ReconStage().run(ctx)
+    if external_tools:
+        ExternalToolStage(
+            tools=external_tools, tool_kwargs=dict(tool_kwargs or {}),
+        ).run(ctx)
+    planner = PlannerStage(
+        ai_client=ai_client, scope=scope,
+        max_intents_per_round=max_intents_per_round,
+    )
+    exploit = ExploitStage(ai_client=ai_client, max_iterations=exploit_max_iterations)
+    run_adaptive_loop(ctx, planner, exploit, max_rounds=max_rounds)
+    ValidateStage(min_confidence=min_confidence).run(ctx)
+    ReportStage().run(ctx)
+    return ctx

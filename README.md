@@ -31,6 +31,41 @@
 
 ---
 
+## Why cyberm4fia-scanner
+
+- **80+ attack modules** spanning web, API, network, cloud, and OSINT — not just an `nmap` / `nuclei` wrapper.
+- **Self-healing exploit agent** — the LLM writes exploit code, a sandbox runs it, and errors loop back as repair attempts until it works.
+- **Adaptive LLM orchestration** — the planner reacts to recon + findings each round and chains discoveries (e.g. `LFI` → log poisoning → `RCE`) instead of running a fixed checklist.
+- **External tool adapter layer** — battle-tested CLIs (`masscan`, `sslyze`, `wpscan`, `arjun`, `nuclei`) plug in alongside the hand-rolled modules under one `BaseTool` contract.
+- **MITRE ATT&CK tagged findings**, scope enforcement, and a sandboxed exploit runner — built for authorized testing, not pranks.
+- **NVIDIA NIM only** — no OpenAI / Anthropic lock-in; defaults to `meta/llama-3.3-70b-instruct`.
+
+## 60-Second Quick Start
+
+```bash
+git clone https://github.com/erkanrzgc/cyberm4fia-scanner.git
+cd cyberm4fia-scanner
+pip install -r requirements.txt
+
+# Full passive + active scan
+python3 scanner.py -u https://your-target.example/ --all
+
+# + AI analysis (set NVIDIA_API_KEY first)
+export NVIDIA_API_KEY=nvapi-...
+python3 scanner.py -u https://your-target.example/ --all --ai
+```
+
+## Demo
+
+<!--
+Drop a demo recording here once captured, e.g.:
+  ![demo](docs/demo.gif)
+  [![asciicast](https://asciinema.org/a/XXXXX.svg)](https://asciinema.org/a/XXXXX)
+-->
+_Demo recording coming soon — try `python3 scanner.py --help` or jump into Quick Start above._
+
+---
+
 ## Features
 
 <!-- BEGIN GENERATED: feature_tables -->
