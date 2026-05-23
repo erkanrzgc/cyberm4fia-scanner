@@ -248,16 +248,21 @@ class ExternalToolStage(_BaseStage):
 
 
 def default_external_tools() -> list:
-    """The bundled external-tool adapters, in recon-friendly order."""
+    """The bundled external-tool adapters, in recon-friendly order.
+
+    Excludes path-based tools (``GitleaksTool``) which need a filesystem target
+    rather than the mission's URL — those are invoked explicitly when needed.
+    """
     from utils.external_tools import (
-        ArjunTool, KubeHunterTool, MasscanTool, SmbmapTool,
-        SslyzeTool, TestsslTool, WpscanTool,
+        ArjunTool, CloudHunterTool, GowitnessTool, KubeHunterTool,
+        MasscanTool, SmbmapTool, SslyzeTool, TestsslTool, WpscanTool,
     )
     return [
         MasscanTool(), ArjunTool(),
         SslyzeTool(), TestsslTool(),
         WpscanTool(), SmbmapTool(),
         KubeHunterTool(),
+        GowitnessTool(), CloudHunterTool(),
     ]
 
 

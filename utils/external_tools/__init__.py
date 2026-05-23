@@ -8,6 +8,9 @@ scattered across modules.
 
 from utils.external_tools.arjun import ArjunTool
 from utils.external_tools.base import ExternalTool, ToolResult
+from utils.external_tools.cloudhunter import CloudHunterTool
+from utils.external_tools.gitleaks import GitleaksTool
+from utils.external_tools.gowitness import GowitnessTool
 from utils.external_tools.kube_hunter import KubeHunterTool
 from utils.external_tools.masscan import MasscanTool
 from utils.external_tools.smbmap import SmbmapTool
@@ -25,4 +28,7 @@ __all__ = [
     "WpscanTool",
     "SmbmapTool",
     "KubeHunterTool",
+    "GowitnessTool",
+    "GitleaksTool",
+    "CloudHunterTool",
 ]

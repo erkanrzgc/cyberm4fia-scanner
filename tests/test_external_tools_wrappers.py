@@ -11,6 +11,9 @@ import json
 import pytest
 
 from utils.external_tools.arjun import ArjunTool
+from utils.external_tools.cloudhunter import CloudHunterTool
+from utils.external_tools.gitleaks import GitleaksTool
+from utils.external_tools.gowitness import GowitnessTool
 from utils.external_tools.kube_hunter import KubeHunterTool
 from utils.external_tools.smbmap import SmbmapTool
 from utils.external_tools.sslyze import SslyzeTool
@@ -232,3 +235,111 @@ class TestKubeHunterTool:
         findings = KubeHunterTool().to_findings(parsed, target="https://kube.test:6443")
         assert findings[0]["type"] == "Kubernetes_Vuln"
         assert findings[0]["severity"] == "high"
+
+
+# ─── gowitness: visual recon (HTTP screenshots) ───────────────────────────────
+
+
+class TestGowitnessTool:
+    def test_command_uses_scan_single_with_url(self):
+        cmd = GowitnessTool().get_command("https://t.example/")
+        assert "scan" in cmd and "single" in cmd
+        assert "https://t.example/" in cmd
+        # v3 writes JSON to stdout via --write-stdout
+        assert "--write-stdout" in cmd
+
+    def test_parses_capture_metadata(self):
+        out = json.dumps({
+            "url": "https://t.example/",
+            "final_url": "https://t.example/login",
+            "title": "Welcome",
+            "status_code": 200,
+            "screenshot_path": "/tmp/shots/t.png",
+        })
+        parsed = GowitnessTool().parse_output(out, "", 0)
+        assert parsed["count"] == 1
+        cap = parsed["captures"][0]
+        assert cap["title"] == "Welcome"
+        assert cap["status"] == 200
+        assert cap["screenshot"] == "/tmp/shots/t.png"
+
+    def test_to_findings_info_level(self):
+        parsed = {"captures": [
+            {"url": "https://t.example/", "title": "Welcome",
+             "status": 200, "screenshot": "/tmp/shots/t.png"},
+        ]}
+        findings = GowitnessTool().to_findings(parsed, target="https://t.example/")
+        assert findings[0]["type"] == "Visual_Capture"
+        assert findings[0]["severity"] == "info"
+        assert "Welcome" in findings[0]["evidence"]
+
+
+# ─── gitleaks: secrets detection on a local source path ───────────────────────
+
+
+class TestGitleaksTool:
+    def test_command_targets_source_path_with_json_stdout(self):
+        cmd = GitleaksTool().get_command("/path/to/repo")
+        assert "/path/to/repo" in cmd
+        assert "detect" in cmd
+        assert "--report-format" in cmd and "json" in cmd
+        assert "--report-path" in cmd and "/dev/stdout" in cmd
+
+    def test_parses_leak_records(self):
+        out = json.dumps([
+            {"RuleID": "aws-access-key", "Description": "AWS Access Key",
+             "File": "config/aws.env", "StartLine": 4,
+             "Secret": "AKIA....", "Match": "AKIA...."},
+            {"RuleID": "github-pat", "Description": "GitHub PAT",
+             "File": "scripts/deploy.sh", "StartLine": 12,
+             "Secret": "ghp_xxx", "Match": "ghp_xxx"},
+        ])
+        parsed = GitleaksTool().parse_output(out, "", 1)   # gitleaks exits 1 when leaks found
+        assert parsed["count"] == 2
+        rules = {l["rule"] for l in parsed["leaks"]}
+        assert rules == {"aws-access-key", "github-pat"}
+
+    def test_to_findings_marks_high_severity(self):
+        parsed = {"leaks": [
+            {"rule": "aws-access-key", "description": "AWS Access Key",
+             "file": "config/aws.env", "line": 4},
+        ]}
+        findings = GitleaksTool().to_findings(parsed, target="/path/to/repo")
+        assert findings[0]["type"] == "Secret_Leak"
+        assert findings[0]["severity"] == "high"
+        assert "aws-access-key" in findings[0]["title"]
+
+
+# ─── CloudHunter: multi-cloud bucket enumeration ──────────────────────────────
+
+
+class TestCloudHunterTool:
+    def test_command_targets_domain(self):
+        cmd = CloudHunterTool().get_command("example.com")
+        assert "example.com" in cmd
+
+    def test_parses_found_buckets_with_cloud_and_acl(self):
+        out = (
+            "[*] Scanning example.com\n"
+            "[FOUND] aws example-prod (public-read)\n"
+            "[FOUND] gcp example-stg (private)\n"
+            "[FOUND] azure example-bak (PublicRead)\n"
+            "[*] Done\n"
+        )
+        parsed = CloudHunterTool().parse_output(out, "", 0)
+        assert parsed["count"] == 3
+        clouds = {b["cloud"] for b in parsed["buckets"]}
+        assert clouds == {"aws", "gcp", "azure"}
+
+    def test_to_findings_escalates_public_buckets(self):
+        parsed = {"buckets": [
+            {"cloud": "aws", "name": "example-prod", "acl": "public-read"},
+            {"cloud": "gcp", "name": "example-stg", "acl": "private"},
+        ]}
+        findings = CloudHunterTool().to_findings(parsed, target="example.com")
+        sev = {f["title"]: f["severity"] for f in findings}
+        # Public bucket = high; private discovery = info recon entry.
+        public_title = next(t for t in sev if "example-prod" in t)
+        private_title = next(t for t in sev if "example-stg" in t)
+        assert sev[public_title] == "high"
+        assert sev[private_title] == "info"
