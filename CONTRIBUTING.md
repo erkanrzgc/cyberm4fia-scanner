@@ -22,6 +22,23 @@ python3 -m pytest -q
 If your environment has `HTTP(S)_PROXY=socks5h://...` set, `tests/conftest.py`
 strips it before tests run — no action needed.
 
+### Integration tests (real binaries)
+
+The default `pytest` run **excludes** the integration suite (it lives under
+`tests/integration/` and is deselected via `-m 'not integration'`). To run
+the real-binary tests against installed tools and a Docker fixture stack:
+
+```bash
+make integration-up        # docker-compose with WordPress, Samba, weak-TLS, ...
+make integration           # runs `pytest -m integration tests/integration/`
+make integration-down
+```
+
+Each test self-skips when its binary or service isn't reachable, so partial
+local setups still produce a useful report. See
+[`tests/integration/README.md`](tests/integration/README.md) for the per-tool
+prerequisite matrix.
+
 For AI features, set `NVIDIA_API_KEY` (an NVIDIA NIM build key). Without it
 the AI agent stages skip cleanly and tests using a fake client still pass.
 
