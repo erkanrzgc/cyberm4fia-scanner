@@ -206,14 +206,16 @@ class TestModuleRegistry:
 
         calls = {"crawl": 0}
 
-        monkeypatch.setattr(
-            fuzzer_mod,
-            "scan_fuzzer_async",
-            lambda url, wordlist_file, threads=0, delay=0: [
+        def _fake_fuzzer(url, wordlist_file, threads=0, delay=0, *, return_fuzzer=False):
+            endpoints = [
                 {"url": "http://example.com/api", "status": 200},
                 {"url": "http://example.com/old", "status": 404},
-            ],
-        )
+            ]
+            if return_fuzzer:
+                return endpoints, None
+            return endpoints
+
+        monkeypatch.setattr(fuzzer_mod, "scan_fuzzer_async", _fake_fuzzer)
         monkeypatch.setattr(
             dynamic_mod,
             "run_dynamic_spider",

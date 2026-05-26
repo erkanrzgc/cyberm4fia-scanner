@@ -444,13 +444,56 @@ VULN_REGISTRY = {
         "title": "Weak HSTS Configuration",
         "remediation": "Set Strict-Transport-Security with max-age>=31536000, includeSubDomains, and preload.",
     },
+    # ── Header → Exploit chain promotions ─────────────────────────────────
+    "Clickjacking_Exploitable": {
+        "severity": "medium",
+        "cvss": 5.4,
+        "cwe": "CWE-1021",
+        "title": "Clickjacking Exploitable (Missing Frame Protection)",
+        "remediation": "Send X-Frame-Options: DENY and CSP frame-ancestors 'none' on every HTML response.",
+    },
+    "HSTS_Downgrade_Exploitable": {
+        "severity": "high",
+        "cvss": 7.4,
+        "cwe": "CWE-319",
+        "title": "HSTS Downgrade / SSL Strip Exploitable",
+        "remediation": "Set Strict-Transport-Security: max-age=31536000; includeSubDomains; preload and submit the domain to hstspreload.org.",
+    },
+    "MIME_Confusion_Exploitable": {
+        "severity": "high",
+        "cvss": 6.5,
+        "cwe": "CWE-79",
+        "title": "MIME Confusion Exploitable (No nosniff + User Content)",
+        "remediation": "Send X-Content-Type-Options: nosniff and validate Content-Type for uploaded/user-controlled files.",
+    },
+    "Referrer_Leak_Exploitable": {
+        "severity": "medium",
+        "cvss": 4.3,
+        "cwe": "CWE-200",
+        "title": "Referrer Policy Leak Exploitable",
+        "remediation": "Set Referrer-Policy: strict-origin-when-cross-origin (or no-referrer for sensitive flows).",
+    },
+    "Permissions_Policy_Abuse": {
+        "severity": "medium",
+        "cvss": 5.4,
+        "cwe": "CWE-732",
+        "title": "Permissions-Policy Abuse (Feature Access via 3rd-Party Frame)",
+        "remediation": "Send Permissions-Policy that disables sensitive features (camera, microphone, geolocation, payment) site-wide and per-iframe via allow=.",
+    },
 }
 
-# Default for unknown types
+# Default for unknown types.
+#
+# Findings that fall back here are kept at info/0.0 instead of being elevated
+# to "medium / CVSS 5.0" — that elevation used to produce 19 spurious
+# "Unknown Vulnerability" rows on the narinkaucuk.com.tr scan. They are also
+# marked ``validation_stage="needs_triage"`` so report generators can route
+# them into a separate triage queue instead of the main findings list.
 _DEFAULT_VULN = {
-    "severity": "medium",
-    "cvss": 5.0,
+    "severity": "info",
+    "cvss": 0.0,
     "cwe": "CWE-0",
-    "title": "Unknown Vulnerability",
-    "remediation": "Investigate and remediate based on the finding details.",
+    "title": "Unclassified Observation",
+    "remediation": "Triage manually — the scanner could not map this finding to a known vulnerability type.",
+    "validation_stage": "needs_triage",
 }

@@ -130,8 +130,13 @@ def _run_chain_analysis(state):
 
 def _run_deduplicate_results(state):
     from utils.finding import deduplicate_findings
+    from utils.finding.spa_filter import filter_template_mirror_findings
 
-    state["all_vulns"] = deduplicate_findings(state.get("all_vulns", []))
+    findings = state.get("all_vulns", [])
+    # Drop SPA-fallback / catch-all false positives before deduplication so
+    # downstream stages don't waste budget on AI analysis of phantom findings.
+    findings = filter_template_mirror_findings(findings, state.get("spa_baseline"))
+    state["all_vulns"] = deduplicate_findings(findings)
     return []
 
 

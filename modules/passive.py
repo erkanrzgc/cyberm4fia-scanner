@@ -185,20 +185,45 @@ def scan_passive(url: str, response=None, headers=None, body=None, delay=0):
 
 
 def _check_security_headers(url, headers):
-    """Check for missing security headers."""
+    """Check for missing security headers.
+
+    For each missing header, attach a real weaponised sample payload and
+    ``chain_with`` metadata pulled from ``modules.header_exploit_map`` so
+    downstream stages (chain detector, PoC generator, AI analysis) can
+    promote the finding to an exploit-grade type when the right primitives
+    are present.
+    """
+    from modules.header_exploit_map import lookup as _header_lookup
+
     findings = []
     for header, info in SECURITY_HEADERS.items():
-        if header.title() not in headers:
-            findings.append(
-                {
-                    "type": "Missing_Security_Header",
-                    "url": url,
-                    "param": header,
-                    "severity": info["severity"].upper(),
-                    "evidence": f"Missing header: {header}",
-                    "payload": info["description"],
-                }
-            )
+        if header.title() in headers:
+            continue
+        exploit = _header_lookup(header)
+        if exploit:
+            payload = exploit.sample_payload.replace("{url}", url)
+            severity = exploit.base_severity.upper()
+            extra = {
+                "exploit_primitive": exploit.primitive,
+                "chain_with": list(exploit.chain_with),
+                "promoted_type": exploit.promoted_type,
+                "skill_slug": exploit.skill_slug,
+                "poc_kind": exploit.poc_kind,
+            }
+        else:
+            payload = info["description"]
+            severity = info["severity"].upper()
+            extra = {}
+        finding = {
+            "type": "Missing_Security_Header",
+            "url": url,
+            "param": header,
+            "severity": severity,
+            "evidence": f"Missing header: {header}",
+            "payload": payload,
+        }
+        finding.update(extra)
+        findings.append(finding)
     return findings
 
 

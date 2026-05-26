@@ -23,6 +23,10 @@ _MODULES_DIR = os.path.join(
 _UTILITY_MODULES = {
     "__init__", "compare", "guaranteed_checks", "nuclei_runner", "payloads",
     "poc_generator", "proxy_interceptor", "report",
+    # header_exploit_map is a lookup table (header→PoC kind + skill slug),
+    # not an attack module — its skill resolution happens via the consumer
+    # finding's skill_slug field, not via module-name substring matching.
+    "header_exploit_map",
 }
 
 

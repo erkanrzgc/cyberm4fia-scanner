@@ -40,10 +40,13 @@ def temp_scan_dir(tmpdir):
 
 
 def test_get_severity():
-    # Test valid and invalid severity mappings
+    # Test valid and invalid severity mappings. Unknown types now route to
+    # the triage queue at info instead of being promoted to medium — that
+    # promotion produced phantom "Unknown Vulnerability" rows on SPA
+    # fallbacks.
     assert get_severity("SQLi_Param") == "critical"
     assert get_severity("XSS_Param") == "high"
-    assert get_severity("Unknown_Vuln") == "medium"
+    assert get_severity("Unknown_Vuln") == "info"
 
 
 def test_html_report_generation(mock_vulns, temp_scan_dir):

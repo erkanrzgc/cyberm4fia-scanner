@@ -280,12 +280,17 @@ def _run_fuzzer_discovery(state):
     from modules.endpoint_fuzzer import scan_fuzzer_async
     from core.module_registry import canonicalize_scan_urls
 
-    endpoints = scan_fuzzer_async(
+    endpoints, fuzzer = scan_fuzzer_async(
         state["url"],
         state["wordlist_file"],
         threads=state["options"].get("threads", 50),
         delay=state["delay"],
+        return_fuzzer=True,
     )
+    # Stash the fuzzer's calibration baseline on state so downstream filters
+    # (e.g. utils.finding.spa_filter) can drop SPA-fallback false positives.
+    if fuzzer is not None and getattr(fuzzer, "soft_404_baseline", None):
+        state["spa_baseline"] = fuzzer.soft_404_baseline
     if endpoints:
         state["urls_to_scan"].extend(
             [

@@ -346,6 +346,13 @@ def normalize_vuln(vuln_dict: dict) -> Finding:
         surface=observation.surface,
         verification_state=verification_state,
         exploitability=_infer_exploitability(raw, severity, verification_state),
+        # Registry can opt unknown types into a separate triage queue
+        # (e.g. _DEFAULT_VULN ships ``validation_stage="needs_triage"``).
+        validation_stage=str(
+            raw.get("validation_stage")
+            or registry.get("validation_stage")
+            or "suspected"
+        ),
         context=str(raw.get("context", "")) if raw.get("context") else None,
         source=raw.get("source"),
         exploit_data=raw.get("exploit_data"),

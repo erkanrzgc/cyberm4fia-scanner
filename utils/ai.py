@@ -287,7 +287,22 @@ _SKILL_MAP = {
     "cors": "offensive-cors",
     "open_redirect": "offensive-open-redirect",
     "csp": "csp-bypass-advanced",
-    "clickjacking": "offensive-csrf",
+    # Long-key takes precedence in substring match; route csp_bypass to the
+    # existing csp-bypass-advanced skill (offensive-csp-bypass folder is not
+    # shipped — the advanced one covers the same ground).
+    "csp_bypass": "csp-bypass-advanced",
+    "clickjacking": "offensive-clickjacking",
+    "frame_options": "offensive-clickjacking",
+    "hsts_downgrade": "offensive-hsts-downgrade",
+    "ssl_strip": "offensive-hsts-downgrade",
+    "mime_confusion": "offensive-mime-confusion",
+    "polyglot": "offensive-mime-confusion",
+    "nosniff": "offensive-mime-confusion",
+    "referrer_leak": "offensive-referrer-policy-leak",
+    "referrer_policy": "offensive-referrer-policy-leak",
+    "false_positive": "defensive-false-positive-filter",
+    "fp_filter": "defensive-false-positive-filter",
+    "spa_fallback": "defensive-false-positive-filter",
     "smuggling": "offensive-request-smuggling",
     "request_smuggling": "offensive-request-smuggling",
     "http_methods": "offensive-http-method-tampering",
@@ -373,9 +388,16 @@ def _resolve_skill_file(slug: str) -> Optional[str]:
     return None
 
 
-def _load_skill_for_vuln(vuln_type: str) -> str:
-    """Load expert skill instructions for a vulnerability/module type."""
-    slug = skill_slug_for_vuln(vuln_type)
+def _load_skill_for_vuln(vuln_type: str, skill_slug: Optional[str] = None) -> str:
+    """Load expert skill instructions for a vulnerability/module type.
+
+    If ``skill_slug`` is provided (e.g. attached to a Missing_Security_Header
+    finding by ``modules.header_exploit_map``), it overrides the substring
+    lookup against ``_SKILL_MAP``. This lets enriched findings pick the
+    right per-header skill (clickjacking, hsts-downgrade, etc.) instead of
+    falling back to a generic one.
+    """
+    slug = skill_slug or skill_slug_for_vuln(vuln_type)
     if not slug:
         return ""
     path = _resolve_skill_file(slug)
@@ -426,8 +448,11 @@ Provide:
 Respond in JSON format:
 {{"risk": "...", "scenario": "...", "confidence": 85, "remediation": "...", "cvss_note": "..."}}"""
 
-    # Inject Red Team Skill context if available
-    system_prompt = SECURITY_SYSTEM_PROMPT + _load_skill_for_vuln(vuln_type)
+    # Inject Red Team Skill context if available. Enriched header findings
+    # carry an explicit skill_slug — prefer it over substring matching.
+    system_prompt = SECURITY_SYSTEM_PROMPT + _load_skill_for_vuln(
+        vuln_type, skill_slug=vuln.get("skill_slug")
+    )
 
     response = client.generate(prompt, system=system_prompt, model_role="analysis")
 
@@ -452,6 +477,10 @@ def detect_false_positives(client: NvidiaApiClient, vulns: list) -> list:
     # We don't need AI to verify missing headers or debug info over and over
     skip_types = ["Missing_Security_Header", "Debug_Info", "Tech_Fingerprint", "Recon"]
 
+    # Load the defensive FP-filter skill once and reuse for the whole batch.
+    fp_skill = _load_skill_for_vuln("false_positive")
+    fp_system = SECURITY_SYSTEM_PROMPT + fp_skill
+
     for vuln in vulns:
         vuln_type = vuln.get("type", "")
         payload = vuln.get("payload", "")
@@ -462,16 +491,37 @@ def detect_false_positives(client: NvidiaApiClient, vulns: list) -> list:
             verified.append(vuln)
             continue
 
+        # Pull whatever response-shape signals the scanner captured so the AI
+        # can recognise SPA fallback / catch-all template mirrors.
+        response_title = vuln.get("response_title") or ""
+        response_length = (
+            len(vuln.get("response_body") or vuln.get("response_snippet") or "")
+            if vuln.get("response_body") or vuln.get("response_snippet")
+            else vuln.get("response_length", 0)
+        )
+        is_template_mirror = vuln.get("is_homepage_template", False)
+        similarity = vuln.get("homepage_similarity_score")
+
         prompt = f"""Is this a real vulnerability or likely a false positive?
 
 Type: {vuln_type}
 URL: {url}
 Payload: {payload}
+Response title: {response_title!r}
+Response length (bytes): {response_length}
+Matches homepage template? {is_template_mirror}
+Homepage simhash distance: {similarity if similarity is not None else 'n/a'}
 
-Answer ONLY with a JSON: {{"real": true/false, "confidence": 0-100, "reason": "..."}}"""
+If `Matches homepage template?` is True, or the response title equals the
+site's homepage title, the finding is almost certainly a SPA / catch-all
+fallback false positive. Set `evidence_type` to "spa_fallback" in that case.
+
+Answer ONLY with a JSON:
+{{"real": true/false, "confidence": 0-100, "reason": "...",
+  "evidence_type": "real_vuln|spa_fallback|dynamic_error_page|benign_path|unclear"}}"""
 
         response = client.generate(
-            prompt, system=SECURITY_SYSTEM_PROMPT, temperature=0.1,
+            prompt, system=fp_system, temperature=0.1,
             model_role="analysis",
         )
 

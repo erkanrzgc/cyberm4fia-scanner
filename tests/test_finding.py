@@ -121,10 +121,17 @@ class TestNormalizeVuln:
         assert f.param == "q"
 
     def test_unknown_type(self):
+        """Unknown vuln types are routed to the triage queue at info/0.0
+        instead of being promoted to medium/5.0 — that promotion used to
+        produce phantom 'Unknown Vulnerability' rows on SPA-fallback hits.
+        """
         vuln = {"type": "SomethingNew", "url": "https://x.com"}
         f = normalize_vuln(vuln)
         assert f.cwe == "CWE-0"
-        assert f.cvss == 5.0
+        assert f.cvss == 0.0
+        assert f.severity == "info"
+        assert f.validation_stage == "needs_triage"
+        assert f.title == "Unclassified Observation"
 
     def test_severity_override(self):
         """If the module provides a severity, it should be used."""
