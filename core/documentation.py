@@ -328,7 +328,6 @@ CLI_DOC_GROUPS = (
 
 DOC_TARGETS = {
     ROOT_DIR / "README.md": ("feature_tables", "scan_modes", "attack_profiles"),
-    ROOT_DIR / "usagewithai.md": ("scan_modes", "attack_profiles", "cli_flags"),
 }
 
 GENERATED_SECTION_RENDERERS = {
