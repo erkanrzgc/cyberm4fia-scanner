@@ -64,6 +64,22 @@ def save_sarif(findings: list, scan_dir: str):
     return sarif_file
 
 
+def save_burp_xml(findings: list, scan_dir: str, url: str = ""):
+    """Save findings as Burp Suite Issues XML (importable into Burp Pro
+    project files and DefectDojo's Burp parser)."""
+    from utils.reporters import export_burp_xml
+
+    normalized = normalize_all(findings)
+    burp_file = os.path.join(scan_dir, "issues.burp.xml")
+    export_burp_xml(
+        [f.to_dict() for f in normalized],
+        burp_file,
+        scan_url=url,
+    )
+    log_success(f"Burp XML report: {burp_file}")
+    return burp_file
+
+
 def save_jsonl_stream(finding_dict: dict, stream_file: str):
     """Append a single finding as JSON Line (streaming output)."""
     normalized = normalize_all([finding_dict])

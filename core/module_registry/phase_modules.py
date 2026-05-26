@@ -8,6 +8,7 @@ from .types import PhaseModuleSpec
 # metadata and spec definitions.
 from core.module_runners import (  # noqa: E402, F401
     _run_account_takeover,
+    _run_active_verifiers,
     _run_ai_analysis,
     _run_api_injection,
     _run_api_scan,
@@ -46,6 +47,7 @@ from core.module_runners import (  # noqa: E402, F401
     _run_osint,
     _run_param_discovery,
     _run_passive_hook,
+    _run_burp_xml_report,
     _run_payload_report,
     _run_poc_generation,
     _run_proto_pollution,
@@ -604,6 +606,15 @@ PHASE_MODULES = (
         runner=_run_deduplicate_results,
     ),
     PhaseModuleSpec(
+        id="active_verifiers",
+        option_key=None,
+        name="Active Verifiers (Header → Exploitable)",
+        phase="result_cleanup",
+        requires_forms=False,
+        collect_results=False,
+        runner=_run_active_verifiers,
+    ),
+    PhaseModuleSpec(
         id="ai_analysis",
         option_key="ai",
         name="AI Analysis",
@@ -692,6 +703,15 @@ PHASE_MODULES = (
         requires_forms=False,
         collect_results=False,
         runner=_run_sarif_report,
+    ),
+    PhaseModuleSpec(
+        id="burp_xml_report",
+        option_key=None,
+        name="Burp Suite Issues XML",
+        phase="reporting",
+        requires_forms=False,
+        collect_results=False,
+        runner=_run_burp_xml_report,
     ),
     PhaseModuleSpec(
         id="findings_json",

@@ -58,10 +58,15 @@ jobs:
 
       - name: Run Security Scan
         id: scan
+        # Capture scanner exit code so we can branch CI on severity tier.
+        # SCAN_EXIT_THRESHOLD controls which severities count as failure
+        # (critical=1 only, high=1+2, medium=1+2+3, low=any). Default: high.
+        env:
+          SCAN_EXIT_THRESHOLD: ${{ vars.SCAN_EXIT_THRESHOLD || 'high' }}
+        continue-on-error: true
         run: |
           cd ${{ env.SCANNER_DIR }}
 
-          # Determine target URL
           TARGET="${{ github.event.inputs.target_url || secrets.TARGET_URL }}"
           MODE="${{ github.event.inputs.scan_mode || '2' }}"
 
@@ -70,32 +75,49 @@ jobs:
             exit 1
           fi
 
-          echo "🔍 Scanning: $TARGET (Mode: $MODE)"
+          echo "🔍 Scanning: $TARGET (Mode: $MODE, exit-threshold: $SCAN_EXIT_THRESHOLD)"
 
-          # Run scanner with JSON output
+          set +e
           python3 scanner.py -u "$TARGET" -m "$MODE" \
             --xss --sqli --lfi --ssrf --tech \
-            --json --html --quiet \
-            || true
+            --json --html --sarif --quiet
+          SCANNER_CODE=$?
+          set -e
+          echo "scanner_exit_code=$SCANNER_CODE" >> $GITHUB_OUTPUT
+          case "$SCANNER_CODE" in
+            0)  echo "✅ Scan clean (no findings at threshold)";;
+            1)  echo "🛑 CRITICAL findings detected";;
+            2)  echo "🔴 HIGH findings detected";;
+            3)  echo "🟠 MEDIUM findings detected";;
+            4)  echo "🟡 LOW/INFO findings detected";;
+            10) echo "::error::Scanner internal error";;
+            *)  echo "Scanner exited with code $SCANNER_CODE";;
+          esac
 
-          # Check for findings
           SCAN_DIR=$(ls -td scans/*/ 2>/dev/null | head -1)
           if [ -d "$SCAN_DIR" ]; then
             echo "scan_dir=$SCAN_DIR" >> $GITHUB_OUTPUT
-
-            # Count vulnerabilities from JSON
-            if [ -f "$SCAN_DIR/scan_results.json" ]; then
-              VULN_COUNT=$(python3 -c "
-          import json
-          with open('$SCAN_DIR/scan_results.json') as f:
-              data = json.load(f)
-          vulns = data.get('vulnerabilities', [])
-          print(len(vulns))
-          " 2>/dev/null || echo "0")
+            if [ -f "$SCAN_DIR/findings.json" ]; then
+              VULN_COUNT=$(python3 -c "import json,sys; d=json.load(open('$SCAN_DIR/findings.json')); print(len(d.get('findings',[])))" 2>/dev/null || echo "0")
               echo "vuln_count=$VULN_COUNT" >> $GITHUB_OUTPUT
-              echo "📊 Found $VULN_COUNT vulnerability(ies)"
+              echo "📊 Found $VULN_COUNT finding(s)"
+            fi
+            # Make SARIF path available to the upload step
+            if [ -f "$SCAN_DIR/results.sarif" ]; then
+              echo "sarif_path=$SCAN_DIR/results.sarif" >> $GITHUB_OUTPUT
+            fi
+            if [ -f "$SCAN_DIR/issues.burp.xml" ]; then
+              echo "burp_xml_path=$SCAN_DIR/issues.burp.xml" >> $GITHUB_OUTPUT
             fi
           fi
+
+      - name: Upload SARIF to GitHub Security tab
+        if: always() && steps.scan.outputs.sarif_path != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ${{ env.SCANNER_DIR }}/${{ steps.scan.outputs.sarif_path }}
+          category: cyberm4fia-scanner
+        continue-on-error: true
 
       - name: Upload Scan Report
         if: always()
@@ -135,9 +157,15 @@ jobs:
               body: body
             });
 
-      - name: Fail on Critical Vulns
-        if: steps.scan.outputs.vuln_count != '0' && steps.scan.outputs.vuln_count != ''
+      - name: Gate build on severity
+        # Re-emit the scanner's exit code so the workflow status reflects it.
+        # The scan step is `continue-on-error: true` so artifacts/SARIF still
+        # upload even when this step fails.
         run: |
-          echo "::warning::Security vulnerabilities detected. Review the scan report."
-          # Uncomment the next line to block PRs with vulnerabilities:
-          # exit 1
+          CODE="${{ steps.scan.outputs.scanner_exit_code }}"
+          if [ -z "$CODE" ] || [ "$CODE" = "0" ]; then
+            echo "✅ No findings at configured severity threshold."
+            exit 0
+          fi
+          echo "::warning::Scanner exited $CODE — see SARIF / artifacts for details."
+          exit "$CODE"

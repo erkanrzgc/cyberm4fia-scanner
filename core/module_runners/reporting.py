@@ -131,6 +131,22 @@ def _run_sarif_report(state):
     return []
 
 
+def _run_burp_xml_report(state):
+    """Export findings as Burp Suite Issues XML alongside SARIF.
+
+    Always-on, low-cost; reuses the same findings list. Importable by
+    Burp Pro and DefectDojo's Burp parser.
+    """
+    from core.output import save_burp_xml
+
+    save_burp_xml(
+        state.get("all_vulns") or [],
+        state["scan_dir"],
+        url=state.get("url", ""),
+    )
+    return []
+
+
 def _run_findings_json(state):
     from core.output import save_findings_json
 

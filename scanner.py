@@ -665,8 +665,12 @@ def main():
 
     # Run scan for each target
     mode_override = args.mode if "mode" in provided_dests else None
-    
+
     agent_mode = str(options.get("agent_mode") or "legacy").lower()
+
+    # Accumulate findings across all targets so we can emit a single
+    # per-severity exit code at the end (consumed by CI/CD pipelines).
+    aggregated_findings: list[dict] = []
 
     # Legacy multi-agent path: only when --agent is set AND mode permits it.
     # Mode 'intent' runs the standard scan but appends the intent pipeline
@@ -737,12 +741,14 @@ def main():
             ),
         )
 
+        if isinstance(scan_result, dict):
+            aggregated_findings.extend(scan_result.get("vulnerabilities") or [])
+
         # Intent-driven LLM exploit pipeline (Strix-style Recon→Exploit→
         # Validate→Report). Runs ONLY when the user opted in via
         # --agent-mode {intent,both}; otherwise the scan ends here.
         if agent_mode in ("intent", "both"):
             try:
-                from utils.ai import init_ai
                 from utils.intent_bridge import run_intent_pipeline
 
                 ai_client = None
@@ -755,9 +761,30 @@ def main():
                     f"{type(exc).__name__}: {exc}"
                 )
 
+    # ── CI/CD per-severity exit code ────────────────────────────────────
+    # 1=Critical, 2=High, 3=Medium, 4=Low/Info, 0=clean. Override via env:
+    #   SCAN_EXIT_THRESHOLD=high  → only Critical/High fail the build.
+    if aggregated_findings:
+        from utils.severity_exit import compute_exit_code, describe
+
+        code = compute_exit_code(aggregated_findings)
+        if code:
+            log_warning(
+                f"Scanner exit code {code}: {describe(code)} "
+                f"(set SCAN_EXIT_THRESHOLD env var to gate)"
+            )
+        sys.exit(code)
+
+
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
         print(f"\n{Colors.YELLOW}[!] Interrupted{Colors.END}")
         sys.exit(0)
+    except SystemExit:
+        raise
+    except Exception as _exc:  # noqa: BLE001
+        from utils.severity_exit import CODE_INTERNAL_ERROR
+        print(f"\n{Colors.RED}[!] Scanner internal error: {_exc}{Colors.END}")
+        sys.exit(CODE_INTERNAL_ERROR)

@@ -140,6 +140,22 @@ def _run_deduplicate_results(state):
     return []
 
 
+def _run_active_verifiers(state):
+    """Promote suspected Missing_Security_Header findings to ``*_Exploitable``
+    by running live probes (header re-check, preload list, iframe render,
+    upload-endpoint heuristic, 3rd-party subresource scan)."""
+    findings = state.get("all_vulns") or []
+    if not findings:
+        return []
+    try:
+        from modules.active_verifiers import run_all_verifiers
+    except ImportError:
+        return []
+    target = state.get("url") or ""
+    state["all_vulns"] = run_all_verifiers(findings, target)
+    return []
+
+
 def _run_ai_analysis(state):
     from utils.ai import (
         analyze_vulnerability,

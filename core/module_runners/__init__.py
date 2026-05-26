@@ -62,6 +62,7 @@ from .page_hooks import (  # noqa: F401
 )
 from .post_scan import (  # noqa: F401
     _run_account_takeover,
+    _run_active_verifiers,
     _run_ai_analysis,
     _run_auth_bypass,
     _run_business_logic,
@@ -89,6 +90,7 @@ from .postprocess import (  # noqa: F401
     _run_xss_postprocess,
 )
 from .reporting import (  # noqa: F401
+    _run_burp_xml_report,
     _run_findings_json,
     _run_html_report,
     _run_json_report,
@@ -145,6 +147,7 @@ __all__ = [
     "_run_secrets_hook",
     # post_scan
     "_run_account_takeover",
+    "_run_active_verifiers",
     "_run_ai_analysis",
     "_run_auth_bypass",
     "_run_business_logic",
@@ -170,6 +173,7 @@ __all__ = [
     "_run_ssrf_postprocess",
     "_run_xss_postprocess",
     # reporting
+    "_run_burp_xml_report",
     "_run_findings_json",
     "_run_html_report",
     "_run_json_report",
