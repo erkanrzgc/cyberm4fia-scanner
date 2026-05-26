@@ -136,6 +136,21 @@ class ScanContext:
         self.session.mark_url_done(url)
         self.session.save()
 
+    def mark_phase_done(self, phase: str, *, vulns_snapshot: list | None = None):
+        """Persist a finished pipeline phase + snapshot of findings so far.
+
+        Safe to call when no session is active — it becomes a no-op.
+        """
+        if not self.session or not self.session.active:
+            return
+        self.session.mark_phase_done(phase, vulns_snapshot=vulns_snapshot)
+
+    def is_phase_done(self, phase: str) -> bool:
+        """Resume helper — True if this phase finished in a previous run."""
+        if not self.session or not self.session.active:
+            return False
+        return self.session.is_phase_done(phase)
+
     def finalize_session(self, vulnerabilities, finding_count):
         """Write final scan result back into the session file."""
         if not self.session or not self.session.active:

@@ -19,26 +19,117 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.11+-blue?style=flat-square&logo=python" alt="python">
-  <img src="https://img.shields.io/badge/modules-59+-purple?style=flat-square" alt="modules">
+  <img src="https://img.shields.io/badge/modules-90+-purple?style=flat-square" alt="modules">
+  <img src="https://img.shields.io/badge/skills-93%20AI%20methodologies-9cf?style=flat-square" alt="skills">
+  <img src="https://img.shields.io/badge/tests-1250+%20passing-brightgreen?style=flat-square" alt="tests">
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="license">
-  <img src="https://img.shields.io/badge/AI-dual%20model-orange?style=flat-square" alt="AI">
+  <img src="https://img.shields.io/badge/AI-dual%20model%20NVIDIA%20NIM-orange?style=flat-square" alt="AI">
+  <img src="https://img.shields.io/badge/output-SARIF%20%7C%20Burp%20XML%20%7C%20HTML%20%7C%20JSON-blueviolet?style=flat-square" alt="output">
+  <img src="https://img.shields.io/badge/CI%2FCD-severity%20exit%20codes-yellow?style=flat-square" alt="ci">
   <img src="https://img.shields.io/github/last-commit/erkanrzgc/cyberm4fia-scanner?style=flat-square" alt="last commit">
 </p>
 
 <p align="center">
-  <b>cyberm4fia-scanner</b> is an AI-powered autonomous penetration testing framework for web applications, APIs, networks, and cloud infrastructure.
+  <b>cyberm4fia-scanner</b> is an AI-powered autonomous penetration testing framework for web applications, APIs, networks, and cloud infrastructure.<br>
+  <i>nuclei-fast scanning, Burp-deep verification, methodology-driven exploitation, ChatGPT-grade reasoning — in one box.</i>
 </p>
 
 ---
 
 ## Why cyberm4fia-scanner
 
-- **80+ attack modules** spanning web, API, network, cloud, and OSINT — not just an `nmap` / `nuclei` wrapper.
+| What others give you | What cyberm4fia-scanner gives you |
+|---|---|
+| Template / fingerprint hits | **Verified exploits** — active verifiers (Playwright, preload list, polyglot probe) promote `Missing_*` advisories to `*_Exploitable` only when the bug is actually triggerable |
+| A flat finding list | **Attack chain detection** — Missing CSP + reflected input → Stored XSS Exfil; Insecure Cookie + XSS → Cookie Theft Chain (deterministic patterns + AI-discovered chains) |
+| 5-line CVE descriptions | **93 AI-loaded methodologies** (`core/ai_skills/`) — every offensive/defensive skill ships its own playbook the AI consults per finding |
+| One huge `index.html` | **SARIF + Burp XML + Markdown + HTML + JSON + JSONL** — drop into GitHub Code Scanning, Burp Pro, DefectDojo, Jenkins warnings-ng, GitLab SAST without glue code |
+| Hard fails / pass | **Per-severity exit codes** — `0` clean / `1` critical / `2` high / `3` medium / `4` low — gated by `SCAN_EXIT_THRESHOLD` so CI/CD pipelines pick their threshold |
+| Vendor lock | **NVIDIA NIM only** — no OpenAI / Anthropic dependency; defaults to `meta/llama-3.3-70b-instruct`, dual-model routing for cost |
+| "Re-run from scratch" on crash | **Phase-resume + URL-resume** — checkpoints persist per phase + per URL; resume continues right where you stopped |
+| "Trust the results" | **0-day machine validation gates** — every finding traverses `suspected → evidence_confirmed → verified → exploitable` and SPA / catch-all 200s are dropped by a content-fingerprint filter |
+
+### Core capabilities
+
+- **90+ attack modules** spanning web, API, network, cloud, and OSINT — not just an `nmap` / `nuclei` wrapper.
 - **Self-healing exploit agent** — the LLM writes exploit code, a sandbox runs it, and errors loop back as repair attempts until it works.
 - **Adaptive LLM orchestration** — the planner reacts to recon + findings each round and chains discoveries (e.g. `LFI` → log poisoning → `RCE`) instead of running a fixed checklist.
-- **External tool adapter layer** — battle-tested CLIs (`masscan`, `sslyze`, `wpscan`, `arjun`, `nuclei`) plug in alongside the hand-rolled modules under one `BaseTool` contract.
+- **External tool adapter layer** — battle-tested CLIs (`masscan`, `sslyze`, `wpscan`, `arjun`, `nuclei`, `gowitness`, `gitleaks`, `testssl.sh`, `smbmap`, `kube-hunter`, `CloudHunter`) plug in under one `BaseTool` contract.
 - **MITRE ATT&CK tagged findings**, scope enforcement, and a sandboxed exploit runner — built for authorized testing, not pranks.
-- **NVIDIA NIM only** — no OpenAI / Anthropic lock-in; defaults to `meta/llama-3.3-70b-instruct`.
+
+## Comparison vs other scanners
+
+|                                       | **cyberm4fia** | nuclei  | OWASP ZAP | Burp Pro | Acunetix |
+|---------------------------------------|:--------------:|:-------:|:---------:|:--------:|:--------:|
+| Template-based detection              | ✅             | ✅      | ✅        | ✅       | ✅       |
+| AI-driven exploit generation          | ✅             | ❌      | ❌        | ❌       | partial  |
+| Skill / methodology-based reasoning   | ✅ (93 skills) | ❌      | ❌        | ❌       | ❌       |
+| Multi-stage attack chain detection    | ✅ (det+AI)    | ❌      | ❌        | manual   | partial  |
+| Content-fingerprint FP filter         | ✅ (simhash)   | ❌      | partial   | ❌       | ✅       |
+| Active exploit verifiers (Playwright) | ✅             | ❌      | ❌        | ✅       | ✅       |
+| 0-day validation gates                | ✅             | ❌      | ❌        | ❌       | ❌       |
+| SARIF + Burp XML + DefectDojo         | ✅             | partial | partial   | native   | partial  |
+| Per-severity CI exit codes            | ✅             | ❌      | partial   | ❌       | partial  |
+| Phase-level scan resume               | ✅             | ❌      | ❌        | partial  | ❌       |
+| Headless / SPA crawl                  | ✅             | ❌      | ✅        | ✅       | ✅       |
+| Open source / self-hostable           | ✅             | ✅      | ✅        | ❌       | ❌       |
+
+Niche: **AI-augmented offensive scanner with verifiable exploits** — between nuclei's template velocity, Burp's manual depth, and an AI assistant's reasoning.
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  scanner.py / cyberm4fia CLI / REST API / Interactive wizard / MCP server   │
+└────────────────────────────────────────┬────────────────────────────────────┘
+                                         │
+                       ┌─────────────────┴──────────────────┐
+                       │   Phase pipeline (checkpointed)    │
+                       └─────────────────┬──────────────────┘
+                                         │
+   ┌─────────────┬─────────────┬─────────┴────────┬──────────────┬───────────┐
+   │   recon     │  discovery  │  per-URL active  │  post-scan   │  reporting│
+   │ subdomain   │   crawler   │   XSS/SQLi/LFI   │ auth bypass  │ SARIF     │
+   │ tech detect │  fuzzer     │   SSRF/CMDi/SST  │ business log │ Burp XML  │
+   │ port scan   │  param disc │   CORS/CSRF/XXE  │ race / jwt   │ HTML/MD   │
+   │ wayback     │  api spec   │   passive hooks  │ smuggle/proto│ findings  │
+   └──────┬──────┴──────┬──────┴──────────┬───────┴──────┬───────┴───────────┘
+          │             │                 │              │
+          ▼             ▼                 ▼              ▼
+   ┌─────────────────────────────────────────────────────────┐
+   │  Cross-cutting: scope enforcement · request budget ·    │
+   │  WAF auto-calibration · proxy interceptor · OOB client  │
+   └─────────────────────────────────────────────────────────┘
+                                         │
+                       ┌─────────────────┴──────────────────┐
+                       │       Finding pipeline             │
+                       └─────────────────┬──────────────────┘
+                                         │
+        ┌────────────┬──────────┬────────┴────────┬───────────────┬──────────┐
+        │ normalize  │  SPA-FP  │ active verifier │ chain detector│ AI:FP    │
+        │ +registry  │  filter  │ (CJ/HSTS/MIME/  │ (det patterns │  + remed │
+        │ +CVSS/CWE  │ (simhash)│  Referrer/Perm) │  + AI-discov) │  + skill │
+        └────────────┴──────────┴─────────────────┴───────────────┴──────────┘
+                                         │
+                       ┌─────────────────┴──────────────────┐
+                       │   Validation gates (0-day machine) │
+                       │ suspected → evidence_confirmed →   │
+                       │ verified → confirmed → exploitable │
+                       └─────────────────┬──────────────────┘
+                                         │
+                                         ▼
+                   ┌──────────────────────────────────────────┐
+                   │ scans/<target>/ : report.html, .md,      │
+                   │  results.sarif, issues.burp.xml,         │
+                   │  findings.json, scan.json, pocs/*.html   │
+                   └──────────────────────────────────────────┘
+```
+
+## What's new — last 3 sprints
+
+- **`feat(verifiers+ci+exports)`** — 5 active verifiers (Clickjacking, HSTS, MIME, Referrer, Permissions-Policy), Burp Issues XML export, per-severity CI exit codes, GitHub Code Scanning SARIF upload, auth-session audit module, `docs/INTEGRATIONS.md`.
+- **`feat(fp+headers)`** — SPA-fallback FP filter (simhash + DOM-skeleton + title hash), `Missing_Security_Header` → real exploit payload + chain promotion, 5 new offensive/defensive SKILL.md (clickjacking, hsts-downgrade, mime-confusion, referrer-policy-leak, defensive-fp-filter), 4 new chain patterns.
+- **`feat(hardening)`** — Phase-boundary checkpoints in `ScanSession` (resume skips completed phases + persists mid-pipeline findings), real-binary integration suite for all 10 external tool wrappers, AI budget enforcement, sandboxed exploit runner.
 
 ## 60-Second Quick Start
 
@@ -309,6 +400,34 @@ pip3 install sploitscan
 | `5-Custom Choice` | Ask every module prompt one by one. | `manual selection` | - |
 | `6-Web Recon + Audit` | OctoScan-style web chain: tech intel + nuclei community templates + endpoint fuzz + crawl + 7-provider asset search + passive. | `--cookie COOKIE`, `--cors`, `--crawl`, `--fuzz`, `--header-inject`, `--passive`, `--recon`, `--subdomain`, `--tech`, `Multi-Provider Asset Search (Censys/ZoomEye/FOFA/Onyphe/Netlas/FullHunt/LeakIX)`, `Nuclei Community Templates`, `csp_bypass` | `--secrets`, `git_history` |
 <!-- END GENERATED: attack_profiles -->
+
+---
+
+## CI/CD & Integrations
+
+Every scan emits **SARIF** (`results.sarif`), **Burp Issues XML** (`issues.burp.xml`), enhanced JSON, HTML, Markdown, and PoC HTMLs. Import targets:
+
+| Target | Format | One-liner |
+|---|---|---|
+| **GitHub Code Scanning** | SARIF | upload via `github/codeql-action/upload-sarif@v3` (already wired in `.github/workflows/security-scan.yml`) |
+| **Burp Suite Pro** | Burp Issues XML | *Project → Import issues → `issues.burp.xml`* |
+| **DefectDojo** | SARIF or Burp XML | API: `POST /api/v2/import-scan/` (see `docs/INTEGRATIONS.md`) |
+| **Jenkins** | SARIF | `recordIssues(tools: [sarif(pattern: 'scans/**/results.sarif')])` |
+| **GitLab Ultimate** | SARIF as SAST | `artifacts.reports.sast: scans/*/results.sarif` |
+
+### Per-severity exit codes for pipeline gating
+
+```bash
+python3 scanner.py -u https://my-app/ --xss --sqli --sarif
+# exit 0 = clean
+# exit 1 = CRITICAL findings
+# exit 2 = HIGH findings
+# exit 3 = MEDIUM findings
+# exit 4 = LOW/INFO findings
+# exit 10 = scanner internal error
+```
+
+Pick a threshold with `SCAN_EXIT_THRESHOLD=critical|high|medium|low|info|never`. Full mapping table + Burp / DefectDojo / Jenkins / GitLab examples in **[`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md)**.
 
 ---
 

@@ -37,7 +37,7 @@ class ScanSession:
         self._pending_set: set[str] = set()
         self._urls_since_save = 0
         self.data = {
-            "version": "2.0",
+            "version": "2.1",
             "created": datetime.now().isoformat(),
             "updated": datetime.now().isoformat(),
             "target": "",
@@ -48,6 +48,11 @@ class ScanSession:
             "vulnerabilities": [],
             "stats": {},
             "completed": False,
+            # Phase boundary tracking (v2.1) — every entry in this list is
+            # a phase name (e.g. "recon", "discovery_seed", "page_hooks",
+            # "post_scan", "result_cleanup", "analysis", "reporting") that
+            # finished cleanly. On resume we skip these phases entirely.
+            "phases_completed": [],
         }
 
     # ── Persistence ───────────────────────────────────────────────────────
@@ -213,6 +218,34 @@ class ScanSession:
         """Mark scan as completed."""
         self.data["completed"] = True
         self.save()
+
+    # ── Phase boundary tracking (v2.1) ────────────────────────────────────
+
+    def mark_phase_done(self, phase: str, *, vulns_snapshot: list | None = None):
+        """Record that a pipeline phase finished and flush to disk.
+
+        Optionally accepts ``vulns_snapshot`` so mid-pipeline findings are
+        persisted even before ``finalize_session`` runs — a crash during
+        the AI analysis phase no longer loses everything collected by
+        recon / active / post_scan.
+        """
+        if not phase:
+            return
+        completed = self.data.setdefault("phases_completed", [])
+        if phase not in completed:
+            completed.append(phase)
+        if vulns_snapshot:
+            self.add_vulnerabilities(vulns_snapshot)
+        if self.session_file:
+            self.save()
+
+    def is_phase_done(self, phase: str) -> bool:
+        """O(n) but n is tiny — number of phases never exceeds ~10."""
+        return phase in (self.data.get("phases_completed") or [])
+
+    @property
+    def completed_phases(self) -> list:
+        return list(self.data.get("phases_completed") or [])
 
     @property
     def active(self) -> bool:

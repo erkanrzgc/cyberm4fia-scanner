@@ -292,26 +292,49 @@ def scan_target(
             "campaign_id": campaign_id,
         }
 
-        pre_scan_vulns = run_phase_modules("pre_scan", options, phase_state)
-        phase4_vulns = run_phase_modules("phase4_target", options, phase_state)
+        # Resume: hydrate findings from the session file so phase-skip on
+        # already-completed phases doesn't drop accumulated findings.
+        if scan_ctx.is_phase_done("scan_urls"):
+            all_vulns_seed = list(scan_ctx.session.data.get("vulnerabilities") or [])
+            phase_state["all_vulns"] = list(all_vulns_seed)
+        else:
+            all_vulns_seed = []
+
+        def _checkpointed_phase(phase_name: str, state_dict: dict, *, save_vulns: bool = True) -> list:
+            """Run a registry phase with skip-on-resume + post-phase save.
+
+            * If the session already records this phase as completed, return
+              [] without re-running anything.
+            * Otherwise run the phase, persist findings + phase marker.
+            """
+            if scan_ctx.is_phase_done(phase_name):
+                log_info(f"[resume] Skipping completed phase: {phase_name}")
+                return []
+            results = run_phase_modules(phase_name, options, state_dict)
+            snapshot = state_dict.get("all_vulns") if save_vulns else None
+            scan_ctx.mark_phase_done(phase_name, vulns_snapshot=snapshot)
+            return results
+
+        pre_scan_vulns = _checkpointed_phase("pre_scan", phase_state)
+        phase4_vulns = _checkpointed_phase("phase4_target", phase_state)
 
         # Get URLs to scan
         urls_to_scan = [url]
         crawled_forms = []
         phase_state["urls_to_scan"] = urls_to_scan
         phase_state["crawled_forms"] = crawled_forms
-        run_phase_modules("discovery_seed", options, phase_state)
+        _checkpointed_phase("discovery_seed", phase_state)
         urls_to_scan = phase_state["urls_to_scan"]
-        target_check_vulns = run_phase_modules("target_checks", options, phase_state)
-        run_phase_modules("discovery_expand", options, phase_state)
+        target_check_vulns = _checkpointed_phase("target_checks", phase_state)
+        _checkpointed_phase("discovery_expand", phase_state)
         urls_to_scan = phase_state["urls_to_scan"]
         crawled_forms = phase_state["crawled_forms"]
         urls_to_scan = canonicalize_scan_urls(urls_to_scan)
 
         log_info(f"Loaded {len(XSS_FLAT_PAYLOADS)} payloads")
 
-        # Scan each URL
-        all_vulns = pre_scan_vulns + target_check_vulns + phase4_vulns
+        # Scan each URL (seed accumulator with resume-restored findings too)
+        all_vulns = list(all_vulns_seed) + pre_scan_vulns + target_check_vulns + phase4_vulns
 
         # Apply scope filter to crawled URLs
         scope = get_scope()
@@ -394,6 +417,11 @@ def scan_target(
             # Session: mark URL as done and save incrementally
             scan_ctx.mark_url_done(scan_url)
 
+        # URL scan loop is itself a logical "phase" — mark it so resume
+        # can skip the entire scan loop and jump straight to post-scan
+        # once every URL has been visited.
+        scan_ctx.mark_phase_done("scan_urls", vulns_snapshot=list(all_vulns))
+
         # Process OOB callbacks
         all_vulns.extend(scan_ctx.wait_for_oob_hits(wait_seconds=15))
 
@@ -403,12 +431,12 @@ def scan_target(
         phase_state["urls_to_scan"] = urls_to_scan
         phase_state["crawled_forms"] = crawled_forms
         phase_state["all_vulns"] = list(all_vulns)
-        all_vulns.extend(run_phase_modules("post_scan", options, phase_state))
+        all_vulns.extend(_checkpointed_phase("post_scan", phase_state))
         phase_state["all_vulns"] = list(all_vulns)
-        run_phase_modules("result_cleanup", options, phase_state)
-        run_phase_modules("analysis", options, phase_state)
+        _checkpointed_phase("result_cleanup", phase_state, save_vulns=False)
+        _checkpointed_phase("analysis", phase_state, save_vulns=False)
         all_vulns = phase_state["all_vulns"]
-        run_phase_modules("reporting", options, phase_state)
+        _checkpointed_phase("reporting", phase_state, save_vulns=False)
 
         # Session: save final state
         scan_ctx.finalize_session(

@@ -17,6 +17,7 @@ from .base import ActiveVerifier, VerificationOutcome
 from .clickjacking import ClickjackingVerifier, verify_clickjacking
 from .hsts import HSTSVerifier, verify_hsts
 from .mime import MIMEConfusionVerifier, verify_mime_confusion
+from .permissions import PermissionsPolicyVerifier, verify_permissions_policy
 from .referrer import ReferrerLeakVerifier, verify_referrer_leak
 
 __all__ = [
@@ -25,10 +26,12 @@ __all__ = [
     "ClickjackingVerifier",
     "HSTSVerifier",
     "MIMEConfusionVerifier",
+    "PermissionsPolicyVerifier",
     "ReferrerLeakVerifier",
     "verify_clickjacking",
     "verify_hsts",
     "verify_mime_confusion",
+    "verify_permissions_policy",
     "verify_referrer_leak",
     "run_all_verifiers",
 ]
@@ -44,4 +47,5 @@ def run_all_verifiers(findings: list, target_url: str) -> list:
     findings = verify_hsts(findings, target_url)
     findings = verify_mime_confusion(findings, target_url)
     findings = verify_referrer_leak(findings, target_url)
+    findings = verify_permissions_policy(findings, target_url)
     return findings
