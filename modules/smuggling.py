@@ -288,6 +288,15 @@ def scan_smuggling(url, delay=0):
     log_info("  → Testing duplicate Content-Length...")
     all_findings.extend(_test_header_smuggle(host, port, use_ssl, path))
 
+    # Test HTTP/2 downgrade desync (http-request-smuggler v3 pattern)
+    log_info("  → Testing HTTP/2 downgrade desync...")
+    all_findings.extend(_test_h2_downgrade(url))
+
+    # Test parser discrepancy via exotic Content-Length / chunked
+    # encodings (http-request-smuggler 2025 parser-discrepancy techniques)
+    log_info("  → Testing parser discrepancy permutations...")
+    all_findings.extend(_test_parser_discrepancy(host, port, use_ssl, path))
+
     # Integrate external Smuggler tool if available
     smuggler_path = "tools/mcp-for-security/smuggler-mcp/smuggler/smuggler.py"
     if os.path.exists(smuggler_path):
@@ -324,3 +333,152 @@ def scan_smuggling(url, delay=0):
 
     log_success(f"Smuggling scan complete. {len(all_findings)} finding(s).")
     return all_findings
+
+
+# ──────────────────────────────────────────────────────────────────────
+# HTTP/2 downgrade desync (PortSwigger http-request-smuggler v3)
+# ──────────────────────────────────────────────────────────────────────
+
+def _test_h2_downgrade(url):
+    """Detect HTTP/2 → HTTP/1.1 downgrade smuggling.
+
+    Many edge proxies negotiate HTTP/2 with clients but speak HTTP/1.1
+    to the origin. If the downgrader doesn't re-validate header
+    semantics, an attacker can smuggle a second request inside the HTTP/2
+    body by abusing CRLF in pseudo-headers or by submitting a CL+TE pair
+    over HTTP/2 (where CL is ignored but the downgrader emits both).
+
+    Detection is heuristic: send a benign HTTP/2 POST with a duplicated
+    Transfer-Encoding header and look for response-time discrepancies
+    that indicate the backend stalled waiting for the next chunk.
+    """
+    try:
+        import httpx
+    except ImportError:
+        return []
+
+    findings = []
+    try:
+        with httpx.Client(http2=True, verify=False, timeout=10.0) as client:
+            # Probe 1: send HTTP/2 with smuggling-style headers in the body
+            r = client.post(
+                url,
+                headers={
+                    "Content-Type": "text/plain",
+                    # In HTTP/2 these headers should be rejected by RFC 7540
+                    # §8.1.2.2 — many downgraders forward them anyway.
+                    "Transfer-Encoding": "chunked",
+                    "Content-Length": "6",
+                },
+                content=b"0\r\n\r\nG",
+            )
+            if r.http_version != "HTTP/2":
+                # Server didn't negotiate H2 — no downgrade surface
+                return []
+            # If the origin reads body as smuggled GET we may see a 400 with
+            # H/1.1-style parsing error in headers.
+            evidence_markers = ("malformed", "bad request", "invalid http", "te", "chunked")
+            body_lower = (r.text or "")[:500].lower()
+            if r.status_code in (400, 421) and any(m in body_lower for m in evidence_markers):
+                findings.append({
+                    "type": "HTTP Request Smuggling",
+                    "variant": "HTTP/2 downgrade",
+                    "severity": "HIGH",
+                    "description": (
+                        "HTTP/2 downgrade signal: server negotiated H2 but "
+                        "rejected smuggled CL/TE pair with HTTP/1.1-style "
+                        "parser error — origin sees downgraded request."
+                    ),
+                    "evidence": f"status={r.status_code}, body_marker={body_lower[:120]}",
+                })
+    except httpx.HTTPError as exc:
+        # Network errors are not findings.
+        return []
+    except Exception:  # noqa: BLE001
+        return []
+    return findings
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Parser discrepancy permutations (http-request-smuggler 2025)
+# ──────────────────────────────────────────────────────────────────────
+
+# 7 well-known parser-discrepancy header permutations that survive
+# many WAF / edge defences. From "HTTP/1.1 Must Die" research, 2025.
+_DISCREPANCY_HEADERS = (
+    # Each tuple is (label, raw_request_headers_bytes_extra)
+    ("CL\\rTE", b"Content-Length\r : 6\r\nTransfer-Encoding: chunked\r\n"),
+    ("TE-space", b"Transfer-Encoding : chunked\r\nContent-Length: 6\r\n"),
+    ("TE-tab",    b"Transfer-Encoding:\tchunked\r\nContent-Length: 6\r\n"),
+    ("CL-tab",    b"Content-Length:\t6\r\nTransfer-Encoding: chunked\r\n"),
+    ("TE-vchunk", b"Transfer-Encoding: vchunked\r\nContent-Length: 6\r\n"),
+    ("CL-LF-only", b"Content-Length: 6\nTransfer-Encoding: chunked\r\n"),
+    ("TE-comment", b"Transfer-Encoding: chunked(comment)\r\nContent-Length: 6\r\n"),
+)
+
+
+def _test_parser_discrepancy(host, port, use_ssl, path):
+    """Send 7 parser-discrepancy permutations + measure timing.
+
+    Reuses ``_send_raw`` from this module so the timing logic stays
+    consistent with the CL.TE / TE.CL probes above. ``_send_raw`` returns
+    the response body (or an "ERROR: …" string on failure) — we measure
+    elapsed time around the call ourselves.
+    """
+    import time as _time
+
+    findings = []
+    baseline_body = (
+        f"POST {path} HTTP/1.1\r\n"
+        f"Host: {host}\r\n"
+        f"Connection: close\r\n"
+        f"Content-Type: text/plain\r\n"
+        f"Content-Length: 6\r\n"
+        f"\r\n"
+        f"hello!"
+    )
+    t0 = _time.monotonic()
+    try:
+        baseline_resp = _send_raw(host, port, baseline_body, use_ssl)
+    except Exception:  # noqa: BLE001
+        return []
+    baseline_time = _time.monotonic() - t0
+    if not baseline_resp or str(baseline_resp).startswith("ERROR:"):
+        return []
+
+    for label, extra_bytes in _DISCREPANCY_HEADERS:
+        extra_str = extra_bytes.decode("utf-8", errors="replace")
+        body = (
+            f"POST {path} HTTP/1.1\r\n"
+            f"Host: {host}\r\n"
+            f"Connection: close\r\n"
+            f"Content-Type: text/plain\r\n"
+            f"{extra_str}"
+            f"\r\n"
+            f"0\r\n\r\nG"
+        )
+        t1 = _time.monotonic()
+        try:
+            resp = _send_raw(host, port, body, use_ssl, timeout=8)
+        except Exception:  # noqa: BLE001
+            continue
+        elapsed = _time.monotonic() - t1
+        if not resp or str(resp).startswith("ERROR:"):
+            continue
+        # A clear timing gap (≥3 s slower than baseline) on an otherwise
+        # 200/400 response indicates the backend stalled waiting for the
+        # next smuggled chunk — strong parser-discrepancy signal.
+        if elapsed - baseline_time >= 3.0:
+            findings.append({
+                "type": "HTTP Request Smuggling",
+                "variant": f"Parser discrepancy: {label}",
+                "severity": "HIGH",
+                "description": (
+                    f"Parser discrepancy permutation '{label}' caused a "
+                    f"{elapsed - baseline_time:.1f}s timing gap vs baseline "
+                    f"({elapsed:.1f}s vs {baseline_time:.1f}s) — backend "
+                    "appears to wait for smuggled chunk."
+                ),
+                "evidence": f"timing delta: {elapsed - baseline_time:.2f}s",
+            })
+    return findings

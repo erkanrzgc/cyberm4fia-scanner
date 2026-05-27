@@ -1,39 +1,53 @@
-# cyberm4fia-scanner dependencies (base — always required)
+# cyberm4fia-scanner dependencies (consolidated)
 #
-# Optional extras live in ``requirements-optional.txt`` and only need to
-# be installed when the matching feature is enabled (MITM proxy,
-# QR-phishing detection, brute-force module, etc.).
+# Run: pip install -r requirements.txt
+# Everything ships in one file by design — no optional/extras split.
 
-# Core HTTP Client (HTTP/2 support)
+# ── Core HTTP / parsing / async ────────────────────────────────────────
 httpx[http2]>=0.27.0
-
-# HTML Parsing
 beautifulsoup4>=4.11.0
 lxml>=4.9.0
 
-# Headless Browser
+# ── Headless browser (Playwright active verifiers + dynamic crawler) ──
 playwright>=1.40.0
 
-# CLI Dashboard
+# ── CLI / output ───────────────────────────────────────────────────────
 rich>=13.0
 
-# Crypto (OOB Interactsh)
+# ── Crypto / JWT / OOB (Interactsh) ────────────────────────────────────
 cryptography>=41.0
-
-# YAML (Template engine, GTFOBins)
-pyyaml>=6.0
-
-# DNS
-dnspython>=2.4.0
-
-# JWT
 pyjwt>=2.8.0
 
-# Environment / Secret Management
+# ── YAML (template engine, GTFOBins) ───────────────────────────────────
+pyyaml>=6.0
+
+# ── DNS recon ──────────────────────────────────────────────────────────
+dnspython>=2.4.0
+
+# ── Environment / Secret Management ────────────────────────────────────
 python-dotenv>=1.0.0
 
-# API Server (FastAPI + Uvicorn)
+# ── REST API server (--api flag) ───────────────────────────────────────
 fastapi[standard]>=0.110.0
-
-# SSL Warnings
 urllib3>=1.26.0
+
+# ── MITM proxy interceptor (--proxy-listen) ────────────────────────────
+# bcrypt is pinned <4.1 because newer bcrypt + current passlib raises
+# "ValueError: password cannot be longer than 72 bytes" at mitmproxy
+# import time. Remove the pin once passlib ships the truncation patch.
+mitmproxy>=10.0
+passlib>=1.7.4
+bcrypt>=3.2.0,<4.1
+
+# ── QR-phishing detection (Qishing module) ─────────────────────────────
+Pillow>=10.0
+pyzbar>=0.1.9
+
+# ── SSH/FTP brute-force (--spray with SSH/FTP targets) ─────────────────
+paramiko>=3.4.0
+
+# ── LLM vulnerability scanner (--llm-probe) ────────────────────────────
+# garak ships its own deps (openai SDK, jsonlines, etc.) — let pip
+# resolve. Provides probe catalog for prompt injection / jailbreak /
+# data leakage on detected LLM endpoints.
+garak>=0.10
