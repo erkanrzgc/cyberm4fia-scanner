@@ -117,46 +117,90 @@ class NvidiaApiClient:
             if not getattr(self, "quiet", False):
                 log_warning("NVIDIA API not reachable. Check your connection.")
 
+    # Retry budget for 429 / 5xx — applied per generate() call. Capped low
+    # so a single rate-limited finding can't stall the whole AI phase.
+    _RETRY_MAX_ATTEMPTS = 3
+    _RETRY_BASE_DELAY = 2.0  # seconds, exponential: 2 → 4 → 8
+
     def generate(self, prompt: str, system: str = "", temperature: float = 0.3,
                   model_role: str = "") -> str:
-        """Generate a response from NVIDIA NIM using Chat Completions API."""
+        """Generate a response from NVIDIA NIM using Chat Completions API.
+
+        Retries on HTTP 429 (rate limit) and 5xx with exponential backoff,
+        honouring the ``Retry-After`` header when the server sends one.
+        Returns "" after exhausting attempts so callers always get a string.
+        """
         if not self.available or not self.api_key:
             return ""
 
-        try:
-            messages = []
-            if system:
-                messages.append({"role": "system", "content": system})
-            messages.append({"role": "user", "content": prompt})
+        import time as _time
 
-            payload = {
-                "model": self.model,
-                "messages": messages,
-                "temperature": temperature,
-                "top_p": 1,
-                "max_tokens": 4096,
-                "stream": False
-            }
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
 
-            resp = httpx.post(
-                f"{self.base_url}/chat/completions",
-                headers={"Authorization": f"Bearer {self.api_key}"},
-                json=payload,
-                timeout=180,
-            )
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "top_p": 1,
+            "max_tokens": 4096,
+            "stream": False,
+        }
+
+        for attempt in range(self._RETRY_MAX_ATTEMPTS):
+            try:
+                resp = httpx.post(
+                    f"{self.base_url}/chat/completions",
+                    headers={"Authorization": f"Bearer {self.api_key}"},
+                    json=payload,
+                    timeout=180,
+                )
+            except httpx.TimeoutException:
+                log_warning(f"AI response timed out (180s) — attempt {attempt + 1}/{self._RETRY_MAX_ATTEMPTS}")
+                if attempt == self._RETRY_MAX_ATTEMPTS - 1:
+                    return ""
+                _time.sleep(self._RETRY_BASE_DELAY * (2 ** attempt))
+                continue
+            except Exception as e:  # noqa: BLE001
+                log_warning(f"AI error: {e}")
+                return ""
 
             if resp.status_code == 200:
-                content = resp.json()["choices"][0]["message"]["content"].strip()
-                return content
-            else:
-                log_error(f"NVIDIA API error: {resp.status_code} - {resp.text}")
-                return ""
-        except httpx.TimeoutException:
-            log_warning("AI response timed out (180s)")
+                try:
+                    return resp.json()["choices"][0]["message"]["content"].strip()
+                except (KeyError, ValueError) as e:
+                    log_warning(f"AI malformed response: {e}")
+                    return ""
+
+            # Retriable: 429 (rate limit) and 5xx
+            if resp.status_code == 429 or 500 <= resp.status_code < 600:
+                if attempt == self._RETRY_MAX_ATTEMPTS - 1:
+                    log_error(
+                        f"NVIDIA API {resp.status_code} after "
+                        f"{self._RETRY_MAX_ATTEMPTS} attempts — giving up on this call"
+                    )
+                    return ""
+                # Honour Retry-After if present, else exponential backoff.
+                retry_after = resp.headers.get("Retry-After") or resp.headers.get("retry-after")
+                try:
+                    delay = float(retry_after) if retry_after else self._RETRY_BASE_DELAY * (2 ** attempt)
+                except ValueError:
+                    delay = self._RETRY_BASE_DELAY * (2 ** attempt)
+                delay = min(delay, 30.0)  # cap so a misbehaving header can't hang us
+                log_warning(
+                    f"NVIDIA API {resp.status_code} — retry {attempt + 1}/"
+                    f"{self._RETRY_MAX_ATTEMPTS} after {delay:.1f}s"
+                )
+                _time.sleep(delay)
+                continue
+
+            # Non-retriable: 4xx other than 429
+            log_error(f"NVIDIA API error: {resp.status_code} - {resp.text[:200]}")
             return ""
-        except Exception as e:
-            log_warning(f"AI error: {e}")
-            return ""
+
+        return ""
 
 # ─── Dual-Model AI System ──────────────────────────────────────────────────
 

@@ -115,15 +115,61 @@ if ctx:
     if target:
         addons.append(Cyberm4fiaInterceptor(target))
 
+def _mitmdump_works() -> tuple[bool, str]:
+    """Return (ok, message) — runs ``mitmdump --version`` and reports.
+
+    Catches the passlib/bcrypt incompatibilities that crash mitmdump at
+    import time on modern Python environments (bcrypt>=4.1 + passlib<1.8
+    raises ``ValueError: password cannot be longer than 72 bytes``).
+    """
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["mitmdump", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except FileNotFoundError:
+        return False, "mitmdump executable not found — pip install mitmproxy"
+    except subprocess.TimeoutExpired:
+        return False, "mitmdump --version timed out"
+    except OSError as exc:  # noqa: BLE001
+        return False, f"mitmdump launch error: {exc}"
+
+    if result.returncode == 0:
+        return True, ""
+
+    # Most common: passlib/bcrypt incompatibility. Surface a one-line fix.
+    err = (result.stderr or "") + (result.stdout or "")
+    if "bcrypt" in err and ("72 bytes" in err or "has no attribute" in err):
+        return False, (
+            "mitmdump crashes on startup due to a passlib/bcrypt version "
+            "mismatch. Fix: `pip install 'bcrypt<4.1'` (or upgrade passlib "
+            "to a release that ships the bcrypt-72-byte truncation patch)."
+        )
+    snippet = err.strip().splitlines()[-1] if err.strip() else f"exit code {result.returncode}"
+    return False, f"mitmdump unavailable: {snippet}"
+
+
 def start_proxy(listen_port=8081, scope=""):
     """Launch the proxy via mitmdump in a subprocess"""
     import subprocess
     import socket
-    
+
     if not scope:
         log_error("A target scope (e.g. wisarc.com) must be provided for the proxy to avoid scanning everything.")
         return
-        
+
+    # Pre-flight: refuse to launch the proxy if mitmdump itself is broken.
+    # Without this guard, the user sees a full passlib traceback dumped into
+    # the middle of the scan output even though the proxy never starts.
+    ok, reason = _mitmdump_works()
+    if not ok:
+        log_warning(f"Proxy interceptor disabled — {reason}")
+        log_info("Scan will continue without the MITM proxy.")
+        return
+
     def is_port_in_use(port):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             return s.connect_ex(('127.0.0.1', port)) == 0
@@ -131,44 +177,51 @@ def start_proxy(listen_port=8081, scope=""):
     original_port = listen_port
     while is_port_in_use(listen_port):
         listen_port += 1
-        
+
     if listen_port != original_port:
         log_warning(f"Port {original_port} is in use. Falling back to port {listen_port}.")
 
     log_info(f"Starting mitmproxy on port {listen_port} (Scope: {scope})")
     log_warning("Configure your browser to use HTTP Proxy: 127.0.0.1:" + str(listen_port))
-    
+
     env = os.environ.copy()
     env["CYBERM4FIA_SCOPE"] = scope
-    env["PYTHONWARNINGS"] = "ignore" # Suppresses CryptographyDeprecationWarning and passlib/bcrypt AttributeErrors
-    
+    env["PYTHONWARNINGS"] = "ignore"  # Suppress CryptographyDeprecationWarning + passlib chatter
+
     try:
-        # Run mitmdump and filter stderr to swallow passlib/bcrypt tracebacks
         script_path = os.path.abspath(__file__)
         process = subprocess.Popen(
             ["mitmdump", "-s", script_path, "-p", str(listen_port), "--quiet"],
             env=env,
             stderr=subprocess.PIPE,
-            text=True
+            text=True,
         )
-        
-        # Thread to process stderr and filter out the annoying traceback
+
+        # Filter the noisy passlib/bcrypt tracebacks but surface real errors.
+        # Covers both the old AttributeError and the newer ValueError(72 bytes).
         def filter_stderr(pipe):
-            skip_traceback = False
+            in_passlib_tb = False
             for line in iter(pipe.readline, ''):
                 if line == '':
                     break
-                if "(trapped) error reading bcrypt version" in line or "Traceback (most recent call last):" in line and "passlib" in line:
-                    skip_traceback = True
-                
-                if skip_traceback:
-                    if line.startswith("AttributeError: module 'bcrypt' has no attribute"):
-                        skip_traceback = False # End of traceback
+                if "(trapped) error reading bcrypt version" in line:
                     continue
-                
-                # Print any other legitimate errors
+                if "Traceback (most recent call last):" in line:
+                    in_passlib_tb = True
+                    continue
+                if in_passlib_tb:
+                    if line.startswith(("AttributeError: module 'bcrypt'",
+                                        "ValueError: password cannot be longer than 72 bytes")):
+                        in_passlib_tb = False
+                        continue
+                    # Still inside the traceback frames — swallow.
+                    if line.lstrip().startswith(("File \"", "return ", "import ", "from ",
+                                                  "raise ", "self.", "cls.")):
+                        continue
+                    # Any other line ends the suppression window.
+                    in_passlib_tb = False
                 print(line, end='', file=sys.stderr)
-                
+
         threading.Thread(target=filter_stderr, args=(process.stderr,), daemon=True).start()
         process.wait()
     except FileNotFoundError:

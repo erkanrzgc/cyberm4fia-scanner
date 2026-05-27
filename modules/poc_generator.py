@@ -54,6 +54,17 @@ def generate_pocs(findings: list, scan_dir: str):
                 continue
             seen.add(key)
             header_jobs.append((poc_kind, f))
+        elif ftype in _PROMOTED_TYPE_TO_POC_KIND:
+            # Active verifier already upgraded this finding's type from
+            # Missing_Security_Header to its *_Exploitable form. We still
+            # want a PoC for the underlying header gap — route by the
+            # promoted-type → kind table.
+            poc_kind = _PROMOTED_TYPE_TO_POC_KIND[ftype]
+            key = (poc_kind, url)
+            if key in seen:
+                continue
+            seen.add(key)
+            header_jobs.append((poc_kind, f))
         elif ftype == "CSRF" or ftype.startswith("CSRF"):
             csrf_jobs.append(f)
         elif ftype == "Insecure_Cookie" and has_xss:
@@ -93,6 +104,20 @@ _DISPATCH = {
     "hsts_downgrade":   ("hsts_downgrade",   "_create_hsts_downgrade_poc"),
     "referrer_leak":    ("referrer_leak",    "_create_referrer_leak_poc"),
     "permissions_abuse": ("permissions_abuse", "_create_permissions_abuse_poc"),
+}
+
+# After active verifiers promote a header finding, ftype no longer reads
+# "Missing_Security_Header" — it reads e.g. "Clickjacking_Exploitable".
+# We still want to ship the matching PoC; this table reverses the lookup.
+_PROMOTED_TYPE_TO_POC_KIND = {
+    "Clickjacking_Exploitable":   "clickjacking",
+    "HSTS_Downgrade_Exploitable": "hsts_downgrade",
+    "MIME_Confusion_Exploitable": "mime_confusion",
+    "Referrer_Leak_Exploitable":  "referrer_leak",
+    "Permissions_Policy_Abuse":   "permissions_abuse",
+    # CSP_Bypass is its own emitter (modules/csp_bypass.py) but the
+    # exploitation primitive is identical — generate the XSS demo PoC.
+    "CSP_Bypass":                 "csp_xss",
 }
 
 

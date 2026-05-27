@@ -143,16 +143,23 @@ def _run_deduplicate_results(state):
 def _run_active_verifiers(state):
     """Promote suspected Missing_Security_Header findings to ``*_Exploitable``
     by running live probes (header re-check, preload list, iframe render,
-    upload-endpoint heuristic, 3rd-party subresource scan)."""
+    upload-endpoint heuristic, 3rd-party subresource scan).
+
+    Immediately after verification, collapse legacy duplicates whose root
+    cause is now represented by the richer promoted finding (e.g.
+    Clickjacking_Vulnerable → drop when Clickjacking_Exploitable exists).
+    """
     findings = state.get("all_vulns") or []
     if not findings:
         return []
     try:
         from modules.active_verifiers import run_all_verifiers
+        from utils.finding.promoted_dedup import collapse_promoted_siblings
     except ImportError:
         return []
     target = state.get("url") or ""
-    state["all_vulns"] = run_all_verifiers(findings, target)
+    findings = run_all_verifiers(findings, target)
+    state["all_vulns"] = collapse_promoted_siblings(findings)
     return []
 
 
