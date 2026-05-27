@@ -93,6 +93,26 @@ def shodan_lookup(ip, api_key=None):
 
     return result
 
+def _decode_whois_bytes(raw: bytes | str | None) -> str:
+    """Decode raw whois(1) output that may not be UTF-8.
+
+    Country-code WHOIS servers (nic.tr, nic.de, registro.br, …) often
+    serve Latin-1 / Windows-1254 / ISO-8859-9 instead of UTF-8. Try the
+    most common encodings, then fall back to UTF-8 with ``errors='replace'``
+    so a single bad byte never aborts the recon stage.
+    """
+    if raw is None:
+        return ""
+    if isinstance(raw, str):
+        return raw
+    for codec in ("utf-8", "latin-1", "cp1254", "iso-8859-9", "cp1252"):
+        try:
+            return raw.decode(codec)
+        except UnicodeDecodeError:
+            continue
+    return raw.decode("utf-8", errors="replace")
+
+
 def whois_lookup(domain):
     """Perform WHOIS lookup for a domain."""
     log_info(f"WHOIS lookup for {domain}...")
@@ -101,13 +121,16 @@ def whois_lookup(domain):
     try:
         import subprocess
 
+        # Read raw bytes — country-specific WHOIS servers (e.g. nic.tr) ship
+        # Latin-1 / Windows-1254 instead of UTF-8, and subprocess.run with
+        # text=True raises UnicodeDecodeError on Turkish characters
+        # (ü → 0xfc, ş → 0xfe). Decode defensively below.
         proc = subprocess.run(
             ["whois", domain],
             capture_output=True,
-            text=True,
             timeout=15,
         )
-        output = proc.stdout
+        output = _decode_whois_bytes(proc.stdout)
 
         if output:
             # Parse key fields

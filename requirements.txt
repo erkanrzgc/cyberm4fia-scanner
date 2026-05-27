@@ -1,4 +1,8 @@
-# Dependencies
+# cyberm4fia-scanner dependencies (base — always required)
+#
+# Optional extras live in ``requirements-optional.txt`` and only need to
+# be installed when the matching feature is enabled (MITM proxy,
+# QR-phishing detection, brute-force module, etc.).
 
 # Core HTTP Client (HTTP/2 support)
 httpx[http2]>=0.27.0

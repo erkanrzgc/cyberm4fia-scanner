@@ -1,0 +1,33 @@
+# cyberm4fia-scanner — optional dependencies
+#
+# Install these to unlock the matching features. The scanner itself runs
+# without them: the relevant modules emit a one-line warning + skip when
+# the import fails.
+#
+#   pip install -r requirements-optional.txt
+#
+# Or pick the feature you need from the sections below.
+
+# ── MITM proxy interceptor (--proxy-listen) ────────────────────────────
+# bcrypt is pinned <4.1 because newer bcrypt + the current passlib release
+# raise "ValueError: password cannot be longer than 72 bytes" at mitmproxy
+# import time. Remove the pin once passlib ships the truncation patch.
+mitmproxy>=10.0
+passlib>=1.7.4
+bcrypt>=3.2.0,<4.1
+
+# ── QR-phishing detection (Qishing module) ─────────────────────────────
+# Used by utils/qishing.py + modules/guaranteed_checks.py to scan images
+# embedded on the target page for malicious QR codes.
+Pillow>=10.0
+pyzbar>=0.1.9
+
+# ── SSH / FTP brute-force (modules/brute_force.py) ─────────────────────
+# Required when --spray runs against an SSH or FTP service.
+paramiko>=3.4.0
+
+# ── External / managed-service integrations (optional) ─────────────────
+# Shodan SDK is currently unused (utils/shodan_lookup.py talks to the
+# InternetDB endpoint directly), but listed for parity with users who
+# want to extend the lookup with the official client.
+# shodan>=1.30
