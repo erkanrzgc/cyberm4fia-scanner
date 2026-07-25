@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Privilege Escalation Scanner Module
+scanner - Privilege Escalation Scanner Module
 Automated enumeration of SUID, sudo, cron, and kernel escalation vectors.
 """
 

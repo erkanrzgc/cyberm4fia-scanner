@@ -1,4 +1,4 @@
-# cyberm4fia-scanner — common dev tasks
+# scanner — common dev tasks
 #
 # Usage:
 #   make help              # list available targets

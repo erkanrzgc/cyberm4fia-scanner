@@ -1,4 +1,4 @@
-# CSV / Formula Injection Payloads — cyberm4fia-scanner
+# CSV / Formula Injection Payloads — scanner
 # Categories: Excel/Sheets, DDE, Web Service
 
 # ─── Basic Formula Injection ───

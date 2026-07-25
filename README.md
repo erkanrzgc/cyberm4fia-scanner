@@ -1,4 +1,4 @@
-<h1 align="center">cyberm4fia-scanner</h1>
+<h1 align="center">autonomous-scanner</h1>
 
 <p align="center">
   <img src="https://img.shields.io/badge/mission-offensive%20security%20via%20AI-red?style=for-the-badge" alt="mission">
@@ -6,12 +6,12 @@
 
 <table align="center"><tr><td valign="middle">
 <pre>
- ██████╗██╗   ██╗██████╗ ███████╗██████╗ ███╗   ███╗██╗  ██╗███████╗██╗ █████╗
-██╔════╝╚██╗ ██╔╝██╔══██╗██╔════╝██╔══██╗████╗ ████║██║  ██║██╔════╝██║██╔══██╗
-██║      ╚████╔╝ ██████╔╝█████╗  ██████╔╝██╔████╔██║███████║█████╗  ██║███████║
-██║       ╚██╔╝  ██╔══██╗██╔══╝  ██╔══██╗██║╚██╔╝██║╚════██║██╔══╝  ██║██╔══██║
-╚██████╗   ██║   ██████╔╝███████╗██║  ██║██║ ╚═╝ ██║     ██║██║     ██║██║  ██║
- ╚═════╝   ╚═╝   ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
+ ██████╗  ██████╗██████╗ ███╗   ███╗███╗   ██╗███████╗██████╗ 
+██╔════╝ ██╔════╝██╔══██╗████╗ ████║████╗  ██║██╔════╝██╔══██╗
+╚█████╗  ██║     ██████╔╝██╔████╔██║██╔██╗ ██║█████╗  ██████╔╝
+ ╚═══██╗ ██║     ██╔══██╗██║╚██╔╝██║██║╚██╗██║██╔══╝  ██╔══██╗
+██████╔╝ ╚██████╗██║  ██║██║ ╚═╝ ██║██║ ╚████║███████╗██║  ██║
+╚═════╝   ╚═════╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝
 </pre>
 </td><td valign="middle">
 <img src="https://raw.githubusercontent.com/erkanrzgc/ai-house/main/resources/icons/icon_256.png" width="150">
@@ -26,19 +26,19 @@
   <img src="https://img.shields.io/badge/AI-dual%20model%20NVIDIA%20NIM-orange?style=flat-square" alt="AI">
   <img src="https://img.shields.io/badge/output-SARIF%20%7C%20Burp%20XML%20%7C%20HTML%20%7C%20JSON-blueviolet?style=flat-square" alt="output">
   <img src="https://img.shields.io/badge/CI%2FCD-severity%20exit%20codes-yellow?style=flat-square" alt="ci">
-  <img src="https://img.shields.io/github/last-commit/erkanrzgc/cyberm4fia-scanner?style=flat-square" alt="last commit">
+  <img src="https://img.shields.io/github/last-commit/erkanrzgc/autonomous-scanner?style=flat-square" alt="last commit">
 </p>
 
 <p align="center">
-  <b>cyberm4fia-scanner</b> is an AI-powered autonomous penetration testing framework for web applications, APIs, networks, and cloud infrastructure.<br>
+  <b>scanner</b> is an AI-powered autonomous penetration testing framework for web applications, APIs, networks, and cloud infrastructure.<br>
   <i>nuclei-fast scanning, Burp-deep verification, methodology-driven exploitation, ChatGPT-grade reasoning — in one box.</i>
 </p>
 
 ---
 
-## Why cyberm4fia-scanner
+## Why scanner
 
-| What others give you | What cyberm4fia-scanner gives you |
+| What others give you | What scanner gives you |
 |---|---|
 | Template / fingerprint hits | **Verified exploits** — active verifiers (Playwright, preload list, polyglot probe) promote `Missing_*` advisories to `*_Exploitable` only when the bug is actually triggerable |
 | A flat finding list | **Attack chain detection** — Missing CSP + reflected input → Stored XSS Exfil; Insecure Cookie + XSS → Cookie Theft Chain (deterministic patterns + AI-discovered chains) |
@@ -59,7 +59,7 @@
 
 ## Comparison vs other scanners
 
-|                                       | **cyberm4fia** | nuclei  | OWASP ZAP | Burp Pro | Acunetix |
+|                                       | **scanner** | nuclei  | OWASP ZAP | Burp Pro | Acunetix |
 |---------------------------------------|:--------------:|:-------:|:---------:|:--------:|:--------:|
 | Template-based detection              | ✅             | ✅      | ✅        | ✅       | ✅       |
 | AI-driven exploit generation          | ✅             | ❌      | ❌        | ❌       | partial  |
@@ -80,7 +80,7 @@ Niche: **AI-augmented offensive scanner with verifiable exploits** — between n
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  scanner.py / cyberm4fia CLI / REST API / Interactive wizard / MCP server   │
+│  scanner.py / scanner CLI / REST API / Interactive wizard / MCP server   │
 └────────────────────────────────────────┬────────────────────────────────────┘
                                          │
                        ┌─────────────────┴──────────────────┐
@@ -134,8 +134,8 @@ Niche: **AI-augmented offensive scanner with verifiable exploits** — between n
 ## 60-Second Quick Start
 
 ```bash
-git clone https://github.com/erkanrzgc/cyberm4fia-scanner.git
-cd cyberm4fia-scanner
+git clone https://github.com/erkanrzgc/autonomous-scanner.git
+cd scanner
 pip install -r requirements.txt
 
 # Full passive + active scan
@@ -229,7 +229,7 @@ The scanner now defaults to a powerful **Interactive Setup Wizard** built with `
 
 ```bash
 # Start Interactive Interface directly with a target
-cyberm4fia https://target.com
+python3 scanner.py -u https://target.com
 ```
 
 This will instantly display the banner and directly ask you for the scan modes, attack profiles, and runtime behavior!
@@ -260,7 +260,7 @@ python3 scanner.py --resume scan1.json
 
 ## 🧨 Active Exploitation Framework
 
-cyberm4fia-scanner goes beyond finding vulnerabilities—it verifies and exploits them. By selecting an attack profile that supports it, or simply passing the `--exploit` flag, the scanner activates post-exploitation modules:
+scanner goes beyond finding vulnerabilities—it verifies and exploits them. By selecting an attack profile that supports it, or simply passing the `--exploit` flag, the scanner activates post-exploitation modules:
 
 - **Interactive Shells:** Catch reverse shells automatically when Command Injection or RCE is discovered.
 - **Out-of-Band (OOB) Testing:** Spin up local HTTP listeners to detect blind/asynchronous vulnerabilities (supports auto-port fallback).
@@ -454,7 +454,7 @@ python3 scanner.py --api --port 8080
 ## Project Structure
 
 ```
-cyberm4fia-scanner/
+scanner/
 ├── scanner.py              # main orchestrator
 ├── api_server.py           # FastAPI REST API
 ├── modules/                # 40+ scanning modules

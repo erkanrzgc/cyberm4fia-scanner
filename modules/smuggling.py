@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - HTTP Request Smuggling Scanner
+scanner - HTTP Request Smuggling Scanner
 Detects CL.TE, TE.CL, and TE.TE desync vulnerabilities.
 Can bypass WAFs, poison caches, and hijack sessions.
 """
@@ -391,7 +391,7 @@ def _test_h2_downgrade(url):
                     ),
                     "evidence": f"status={r.status_code}, body_marker={body_lower[:120]}",
                 })
-    except httpx.HTTPError as exc:
+    except httpx.HTTPError:
         # Network errors are not findings.
         return []
     except Exception:  # noqa: BLE001

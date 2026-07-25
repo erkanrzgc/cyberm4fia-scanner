@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Concurrency Utilities
+scanner - Concurrency Utilities
 Provides multi-threading wrappers for payload execution to drastically speed up scans.
 """
 import concurrent.futures

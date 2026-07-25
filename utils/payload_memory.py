@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner — AI Payload Memory
+scanner — AI Payload Memory
 JSON-backed memory of successful payloads and bypass techniques.
 Learns from past scans to improve future exploitation.
 """

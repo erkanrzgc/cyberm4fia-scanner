@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Header Injection Module
+scanner - Header Injection Module
 HTTP Header injection and Host header attacks
 """
 

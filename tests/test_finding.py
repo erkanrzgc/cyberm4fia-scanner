@@ -221,7 +221,7 @@ class TestSARIF:
         sarif = generate_sarif(findings)
         assert sarif["version"] == "2.1.0"
         assert len(sarif["runs"]) == 1
-        assert sarif["runs"][0]["tool"]["driver"]["name"] == "cyberm4fia-scanner"
+        assert sarif["runs"][0]["tool"]["driver"]["name"] == "scanner"
         assert len(sarif["runs"][0]["results"]) == 1
 
     def test_sarif_multiple_findings(self):

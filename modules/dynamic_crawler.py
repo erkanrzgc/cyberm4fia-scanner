@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Dynamic Crawler Module
+scanner - Dynamic Crawler Module
 Playwright-based smart crawler for modern web apps (Next.js, React, Vue, etc.)
 """
 

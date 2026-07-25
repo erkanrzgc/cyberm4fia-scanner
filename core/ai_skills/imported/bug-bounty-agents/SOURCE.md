@@ -16,7 +16,7 @@ offensive lifecycle (recon, web/API testing, infra, exploitation, reporting).
 These are **prompts, not scanners** — they guide LLM reasoning rather than
 provide standalone tooling.
 
-## How to use in cyberm4fia-scanner
+## How to use in scanner
 
 The scanner's `ai_intent_agent`, `ai_exploit_agent`, and `agent_orchestrator`
 can load any of these prompts as a system message when delegating a task to

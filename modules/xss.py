@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - XSS Module
+scanner - XSS Module
 Cross-Site Scripting detection
 """
 

@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner Utilities
+scanner Utilities
 """
 
 from .colors import (

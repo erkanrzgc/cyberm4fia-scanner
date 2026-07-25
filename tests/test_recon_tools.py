@@ -9,8 +9,6 @@ from unittest.mock import patch
 import pytest
 
 from utils.recon_tools import (
-    FuzzHit,
-    FuzzResult,
     ReconToolResult,
     parse_ffuf_json,
     parse_gobuster_lines,

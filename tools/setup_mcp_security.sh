@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# cyberm4fia-scanner — Security MCP Servers Setup
+# scanner — Security MCP Servers Setup
 # Clones and builds cyproxio/mcp-for-security MCP servers
 # ============================================================
 
@@ -31,7 +31,7 @@ SERVERS=(
 )
 
 echo "══════════════════════════════════════════════"
-echo "  🛡️  cyberm4fia Security MCP Setup"
+echo "  🛡️  scanner Security MCP Setup"
 echo "══════════════════════════════════════════════"
 
 # Step 1: Clone repo if not present

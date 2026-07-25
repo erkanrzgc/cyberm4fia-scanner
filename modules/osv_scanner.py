@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Google OSV-Scanner Integration (SCA)
+scanner - Google OSV-Scanner Integration (SCA)
 Uses OSV.dev REST API to find vulnerabilities in detected software versions
 and exposed manifest files.
 """

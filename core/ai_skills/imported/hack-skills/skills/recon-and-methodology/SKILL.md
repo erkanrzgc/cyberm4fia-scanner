@@ -37,7 +37,7 @@ amass enum -passive -d target.com
 curl -s "https://crt.sh/?q=%.target.com&output=json" | jq -r '.[].name_value' | sort -u
 
 # SecurityTrails API, Shodan:
-# Web: https://securitytrails.com/list/apex_domain/target.com
+# Web: https://securitytrails.com/list/scanner_domain/target.com
 ```
 
 ### Active (DNS brute force + resolution)

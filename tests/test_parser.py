@@ -59,7 +59,7 @@ class TestParser:
         assert {"url", "api_scan", "api_spec", "csrf", "proxy_listen", "scope_proxy", "ai", "exploit", "max_requests", "request_timeout", "max_host_concurrency"} <= args._provided_dests
 
     def test_generated_help_contains_key_metadata_options(self):
-        parser = argparse.ArgumentParser(description="cyberm4fia-scanner")
+        parser = argparse.ArgumentParser(description="scanner")
         add_parser_arguments(parser)
 
         help_text = parser.format_help()
@@ -217,6 +217,55 @@ class TestParser:
         assert scan_calls[0]["delay"] == 0.05
         assert scan_calls[0]["options"]["proxy_url"] == "http://override:8080"
         assert scan_calls[0]["runtime_options"]["proxy_url"] == "http://override:8080"
+
+    def test_main_cli_ai_initializes_without_local_import_shadowing(self, monkeypatch):
+        init_calls = []
+        dual_init_calls = []
+        scan_calls = []
+
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "scanner.py",
+                "-u",
+                "https://example.com",
+                "--ai",
+                "--nvidia-api-key",
+                "test-key",
+                "--xss",
+            ],
+        )
+        monkeypatch.setattr(scanner, "print_gradient_banner", lambda: None)
+        monkeypatch.setattr(
+            scanner,
+            "init_ai",
+            lambda **kwargs: init_calls.append(dict(kwargs)) or object(),
+        )
+        monkeypatch.setattr(
+            scanner,
+            "init_dual_ai",
+            lambda **kwargs: dual_init_calls.append(dict(kwargs)) or object(),
+        )
+        monkeypatch.setattr(
+            scanner,
+            "scan_target",
+            lambda url, mode, delay, options, runtime_options, **kwargs: scan_calls.append(
+                {
+                    "url": url,
+                    "options": dict(options),
+                }
+            ),
+        )
+
+        scanner.main()
+
+        assert init_calls == [
+            {"model": DEFAULT_AI_MODEL, "api_key": "test-key"}
+        ]
+        assert dual_init_calls == [{"api_key": "test-key"}]
+        assert scan_calls[0]["url"] == "https://example.com"
+        assert scan_calls[0]["options"]["ai"] is True
 
     def test_main_target_list_uses_target_specific_session_files(
         self, monkeypatch, tmp_path

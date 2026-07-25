@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner — Cookie & HSTS Security Audit Module
+scanner — Cookie & HSTS Security Audit Module
 
 Deep analyzes Set-Cookie attributes and HSTS configuration
 to identify session hijacking and SSL stripping vulnerabilities.

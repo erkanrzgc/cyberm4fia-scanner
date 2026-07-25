@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Report Module
+scanner - Report Module
 HTML, JSON, and Markdown report generation with CVSS/CWE enrichment
 """
 
@@ -228,7 +228,7 @@ def generate_html_report(vulns, url, mode, scan_dir, stats=None):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>cyberm4fia-scanner Scan Report</title>
+    <title>scanner Scan Report</title>
     <style>
         :root {{
             --bg-color: #0b0f19;
@@ -303,7 +303,7 @@ def generate_html_report(vulns, url, mode, scan_dir, stats=None):
 <body>
     <div class="container">
         <div class="header">
-            <h1>cyberm4fia-scanner Report</h1>
+            <h1>scanner Report</h1>
             <p style="color: var(--text-muted);">Advanced Vulnerability Scanner</p>
         </div>
         
@@ -424,7 +424,7 @@ def generate_payload_report(scan_dir, url, vulns):
     findings = normalize_all(vulns)
 
     with open(filename, "w") as f:
-        f.write("# cyberm4fia-scanner Vulnerability Report\n")
+        f.write("# scanner Vulnerability Report\n")
         f.write(f"# Target: {url}\n")
         f.write(f"# Date: {datetime.now()}\n")
         f.write(f"# Total Vulnerabilities: {len(findings)}\n\n")
@@ -483,7 +483,7 @@ def generate_markdown_report(vulns, url, mode, scan_dir, stats=None):
     duration_seconds = report_stats.get("duration_seconds")
     duration = f"{duration_seconds}s" if duration_seconds is not None else "N/A"
 
-    md = f"""# cyberm4fia-scanner Executive Vulnerability Report
+    md = f"""# scanner Executive Vulnerability Report
 
 **Target:** `{url}`  
 **Scan Mode:** `{mode.upper()}`  

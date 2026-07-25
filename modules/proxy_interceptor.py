@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - OWASP ZAP Alternative (Proxy Interceptor Module)
+scanner - OWASP ZAP Alternative (Proxy Interceptor Module)
 Acts as a local MITM proxy to capture browser traffic and forward it to scanning modules.
 
 Requirement: pip install mitmproxy
@@ -26,7 +26,7 @@ except ImportError:
     log_warning("mitmproxy is not installed. To use the proxy module, run: pip install mitmproxy")
     ctx = None
 
-class Cyberm4fiaInterceptor:
+class ScannerInterceptor:
     def __init__(self, target_scope):
         # target_scope is a string (e.g., 'wisarc.com') used to filter traffic
         self.target_scope = target_scope
@@ -111,9 +111,9 @@ class Cyberm4fiaInterceptor:
 addons = []
 if ctx:
     # Read scope from environment variable (mitmproxy limitation on direct args)
-    target = os.environ.get("CYBERM4FIA_SCOPE", "")
+    target = os.environ.get("SCANNER_SCOPE", "")
     if target:
-        addons.append(Cyberm4fiaInterceptor(target))
+        addons.append(ScannerInterceptor(target))
 
 def _mitmdump_works() -> tuple[bool, str]:
     """Return (ok, message) — runs ``mitmdump --version`` and reports.
@@ -185,7 +185,7 @@ def start_proxy(listen_port=8081, scope=""):
     log_warning("Configure your browser to use HTTP Proxy: 127.0.0.1:" + str(listen_port))
 
     env = os.environ.copy()
-    env["CYBERM4FIA_SCOPE"] = scope
+    env["SCANNER_SCOPE"] = scope
     env["PYTHONWARNINGS"] = "ignore"  # Suppress CryptographyDeprecationWarning + passlib chatter
 
     try:

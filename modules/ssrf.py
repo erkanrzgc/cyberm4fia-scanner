@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - SSRF Module
+scanner - SSRF Module
 Server-Side Request Forgery detection (Threaded)
 """
 

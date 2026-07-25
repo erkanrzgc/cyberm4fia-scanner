@@ -5,7 +5,7 @@ round-trips real CloudHunter output. Doesn't assert specific results because
 public-bucket states change; only that the parsed shape is sane and either
 zero or more buckets came back.
 
-Requires CYBERM4FIA_INTEGRATION_NETWORK=1 to be set since this test reaches
+Requires SCANNER_INTEGRATION_NETWORK=1 to be set since this test reaches
 out to public cloud endpoints (AWS / GCP / Azure metadata). Skipped otherwise.
 """
 
@@ -18,7 +18,7 @@ from utils.external_tools.cloudhunter import CloudHunterTool
 
 pytestmark = [
     requires_binary("cloudhunter"),
-    requires_env("CYBERM4FIA_INTEGRATION_NETWORK"),
+    requires_env("SCANNER_INTEGRATION_NETWORK"),
 ]
 
 

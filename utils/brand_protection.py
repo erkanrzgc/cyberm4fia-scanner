@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Brand Protection (Typosquatting & Phishing DNS) Module
+scanner - Brand Protection (Typosquatting & Phishing DNS) Module
 """
 import socket
 from urllib.parse import urlparse

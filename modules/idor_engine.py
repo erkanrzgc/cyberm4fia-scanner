@@ -27,10 +27,9 @@ import base64
 import hashlib
 import json
 import re
-import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Optional
-from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+from urllib.parse import parse_qs, urlparse
 
 from utils.colors import log_info, log_success
 

@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner – Scan option functions.
+scanner – Scan option functions.
 Uses scan_option_specs.py for spec/prompt/profile data.
 """
 

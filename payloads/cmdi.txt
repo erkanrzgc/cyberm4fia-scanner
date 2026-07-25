@@ -1,4 +1,4 @@
-# CMDi Payloads — cyberm4fia-scanner
+# CMDi Payloads — scanner
 # Categories: Separators, Commands, Encoding, Blind, Bypass, Windows, Out-of-Band
 
 # ─── Basic Separators + Commands ───

@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - CRLF Injection Scanner
+scanner - CRLF Injection Scanner
 
 Detects HTTP response splitting / header injection where user input
 is reflected into response headers without sanitizing CR/LF bytes.
@@ -24,7 +24,7 @@ from utils.request import BlockedTargetPath, ScanExceptions, smart_request
 
 
 SENTINEL_HEADER_NAME = "X-CRLF-Probe"
-SENTINEL_HEADER_VALUE = "cyberm4fia-injected"
+SENTINEL_HEADER_VALUE = "scanner-injected"
 
 
 # Each entry is one CRLF-injection payload. Body is suffixed; the URL

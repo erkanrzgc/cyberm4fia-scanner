@@ -23,7 +23,7 @@ read-only credential validators (Postman, AWS, GitHub, Slack, …),
 secret-pattern catalogs, email-security audits (SPF/DMARC/DKIM),
 infrastructure probes (Kubernetes, CI/CD, cloud-native).
 
-## How to use in cyberm4fia-scanner
+## How to use in scanner
 
 The scanner already has its own `core/ai_skills/offensive-osint/` and
 `core/ai_skills/osint-methodology/` skills. This import is a parallel

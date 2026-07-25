@@ -34,13 +34,13 @@ def requires_env(var: str):
 def requires_service(host: str, port: int):
     """Skip if no TCP listener is reachable at ``host:port``."""
     def _reachable() -> bool:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(0.5)
-            try:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(0.5)
                 s.connect((host, port))
                 return True
-            except OSError:
-                return False
+        except OSError:
+            return False
     return pytest.mark.skipif(
         not _reachable(),
         reason=f"integration: no listener on {host}:{port}",

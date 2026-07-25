@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-cyberm4fia-scanner - REST API Server (FastAPI)
+scanner - REST API Server (FastAPI)
 Run with: python3 scanner.py --api [--port 8080]
 
 Features:
@@ -33,10 +33,9 @@ from datetime import datetime
 from typing import Optional
 
 try:
-    from fastapi import FastAPI, HTTPException, Request, Security
+    from fastapi import FastAPI, HTTPException, Request
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
-    from fastapi.security import APIKeyHeader
     from pydantic import BaseModel, Field
     import uvicorn
 except ImportError:
@@ -59,11 +58,10 @@ _API_KEY = os.environ.get("SCANNER_API_KEY", "")
 if not _API_KEY:
     _API_KEY = secrets.token_urlsafe(32)
 
-_api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
-
-def _verify_api_key(api_key: str = Security(_api_key_header)):
+def _verify_api_key(request: Request):
     """Validate the API key from the X-API-Key header."""
+    api_key = request.headers.get("X-API-Key")
     if not api_key or not hmac.compare_digest(api_key, _API_KEY):
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
     return api_key
@@ -148,7 +146,7 @@ class ScanResult(BaseModel):
 # ─── FastAPI App ───
 
 app = FastAPI(
-    title="cyberm4fia-scanner API",
+    title="scanner API",
     description="Advanced vulnerability scanner REST API with async scan execution, multi-module support, and auto-generated reports.",
     version="5.0",
     docs_url="/docs",
@@ -289,13 +287,13 @@ def _run_scan_job(scan_id: str, url: str, mode: str, options: dict):
     status_code=201,
     summary="Start a new scan",
     tags=["Scans"],
-    dependencies=[Security(_verify_api_key)],
 )
-async def start_scan(scan_req: ScanRequest):
+async def start_scan(scan_req: ScanRequest, request: Request):
     """Start a new vulnerability scan on the target URL.
 
     The scan runs in the background. Use `GET /api/scan/{id}` to check progress.
     """
+    _verify_api_key(request)
     url = scan_req.url
     if not url.startswith(("http://", "https://")):
         url = "http://" + url
@@ -350,10 +348,10 @@ async def start_scan(scan_req: ScanRequest):
     response_model=ScanResult,
     summary="Get scan status and results",
     tags=["Scans"],
-    dependencies=[Security(_verify_api_key)],
 )
-async def get_scan(scan_id: str):
+async def get_scan(scan_id: str, request: Request):
     """Retrieve detailed scan results including vulnerabilities and stats."""
+    _verify_api_key(request)
     scan = SCANS.get(scan_id)
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
@@ -379,10 +377,10 @@ async def get_scan(scan_id: str):
     response_model=dict,
     summary="List all scans",
     tags=["Scans"],
-    dependencies=[Security(_verify_api_key)],
 )
-async def list_scans():
+async def list_scans(request: Request):
     """List all scans with summary information."""
+    _verify_api_key(request)
     scans = []
     for sid, s in SCANS.items():
         scans.append(
@@ -400,10 +398,10 @@ async def list_scans():
     "/api/report/{scan_id}",
     summary="Download HTML report",
     tags=["Reports"],
-    dependencies=[Security(_verify_api_key)],
 )
-async def get_report(scan_id: str):
+async def get_report(scan_id: str, request: Request):
     """Download the generated HTML report for a completed scan."""
+    _verify_api_key(request)
     scan = SCANS.get(scan_id)
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
@@ -421,10 +419,10 @@ async def get_report(scan_id: str):
     "/api/report/{scan_id}/json",
     summary="Download JSON findings report",
     tags=["Reports"],
-    dependencies=[Security(_verify_api_key)],
 )
-async def get_json_report(scan_id: str):
+async def get_json_report(scan_id: str, request: Request):
     """Download the generated JSON findings report for a completed scan."""
+    _verify_api_key(request)
     scan = SCANS.get(scan_id)
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
@@ -446,10 +444,10 @@ async def get_json_report(scan_id: str):
     "/api/report/{scan_id}/sarif",
     summary="Download SARIF report",
     tags=["Reports"],
-    dependencies=[Security(_verify_api_key)],
 )
-async def get_sarif_report(scan_id: str):
+async def get_sarif_report(scan_id: str, request: Request):
     """Download the generated SARIF report for a completed scan."""
+    _verify_api_key(request)
     scan = SCANS.get(scan_id)
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
@@ -467,10 +465,10 @@ async def get_sarif_report(scan_id: str):
     "/api/scan/{scan_id}",
     summary="Cancel/delete a scan",
     tags=["Scans"],
-    dependencies=[Security(_verify_api_key)],
 )
-async def cancel_scan(scan_id: str):
+async def cancel_scan(scan_id: str, request: Request):
     """Cancel or delete a scan and its results."""
+    _verify_api_key(request)
     scan = SCANS.get(scan_id)
     if scan:
         if scan.get("status") in {"queued", "running", "cancelling"}:
@@ -492,10 +490,10 @@ async def cancel_scan(scan_id: str):
     "/api/scan/{scan_id}/events",
     summary="Stream scan progress events",
     tags=["Scans"],
-    dependencies=[Security(_verify_api_key)],
 )
-async def stream_scan_events(scan_id: str):
+async def stream_scan_events(scan_id: str, request: Request):
     """Stream scan status updates using Server-Sent Events (SSE)."""
+    _verify_api_key(request)
     if scan_id not in SCANS:
         raise HTTPException(status_code=404, detail="Scan not found")
 
@@ -530,7 +528,7 @@ async def stream_scan_events(scan_id: str):
 async def index():
     """API information and available endpoints."""
     return {
-        "name": "cyberm4fia-scanner API",
+        "name": "scanner API",
         "version": "5.0",
         "docs": "/docs",
         "redoc": "/redoc",

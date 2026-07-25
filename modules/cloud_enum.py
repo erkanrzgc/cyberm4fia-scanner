@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Cloud Storage Enumeration Module
+scanner - Cloud Storage Enumeration Module
 Discovers exposed AWS S3, Azure Blob, and GCP Buckets,
 container registries (Docker Hub, Quay, GHCR, ECR, GCR, ACR),
 and CI/CD platform exposures (Jenkins, GitLab, TeamCity, ArgoCD).
@@ -171,8 +171,8 @@ def check_bucket(bucket_name, provider_key, provider_info, delay):
 def try_upload(url, delay):
     """Attempt a PUT upload to check write permissions."""
     try:
-        test_content = "cyberm4fia-scanner-WRITE-TEST"
-        test_url = f"{url}/cyberm4fia-write-test.txt"
+        test_content = "scanner-WRITE-TEST"
+        test_url = f"{url}/scanner-write-test.txt"
         resp = smart_request("put", test_url, data=test_content, delay=delay, timeout=5)
         if resp.status_code in (200, 201):
             return True

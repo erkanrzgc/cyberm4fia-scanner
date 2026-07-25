@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Scan runtime context helpers.
+scanner - Scan runtime context helpers.
 """
 from utils.request import ScanExceptions
 
@@ -67,7 +67,7 @@ class ScanContext:
         color_utils.set_log_file(self.log_file)
         with open(self.log_file, "w", encoding="utf-8") as handle:
             handle.write(
-                f"--- cyberm4fia-scanner Scan: {self.target_url} at {datetime.now()} ---\n"
+                f"--- scanner Scan: {self.target_url} at {datetime.now()} ---\n"
             )
 
     def _apply_runtime_options(self):

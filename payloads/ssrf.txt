@@ -1,4 +1,4 @@
-# SSRF Payloads — cyberm4fia-scanner
+# SSRF Payloads — scanner
 # Categories: Localhost, Cloud Metadata, Protocols, Internal, Bypass, DNS Rebind
 
 # ─── Localhost Variants ───

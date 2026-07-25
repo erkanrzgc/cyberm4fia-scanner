@@ -47,7 +47,7 @@ class TestBuildDockerCmd:
         cmd = _build_docker_cmd(
             image="python:3.11-slim",
             network="bridge",
-            container_name="cyberm4fia-sandbox-test",
+            container_name="scanner-sandbox-test",
             workdir="/tmp/work",
             timeout=10,
             max_memory_mb=128,

@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Git History Secret Scanner
+scanner - Git History Secret Scanner
 
 Scans the last N commits' patch output of a local git repository for
 previously-committed secrets that remain recoverable from the .git

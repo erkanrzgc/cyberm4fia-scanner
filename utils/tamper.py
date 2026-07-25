@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner — Tamper Script Engine
+scanner — Tamper Script Engine
 
 sqlmap-style payload transformation system for WAF bypass.
 Each tamper script is a Python file with a tamper(payload) function

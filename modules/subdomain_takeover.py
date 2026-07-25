@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Subdomain Takeover Scanner
+scanner - Subdomain Takeover Scanner
 Detects dangling CNAME records pointing to unclaimed cloud services
 Inspired by Subzy, Can-I-Take-Over-XYZ
 """

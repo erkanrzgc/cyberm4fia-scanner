@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Reverse Shell Listener
+scanner - Reverse Shell Listener
 TCP listener that catches incoming reverse shell connections and provides
 an interactive PTY-like session.
 """

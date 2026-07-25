@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────
-#  cyberm4fia-scanner — Docker Compose
+#  scanner — Docker Compose
 #
 #  Usage:
 #    1) Create a .env file with NVIDIA_API_KEY=your_key_here
@@ -10,7 +10,7 @@ services:
   # ── Scanner ──
   scanner:
     build: .
-    container_name: cyberm4fia-scanner
+    container_name: scanner
     environment:
       - NVIDIA_API_KEY=${NVIDIA_API_KEY}
     entrypoint: ["python3", "scanner.py"]

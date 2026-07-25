@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Open Redirect Scanner
+scanner - Open Redirect Scanner
 Detects URL redirect vulnerabilities for phishing and auth bypass
 """
 

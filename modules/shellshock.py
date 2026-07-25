@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Shellshock (CVE-2014-6271 / 6277 / 7169) Scanner
+scanner - Shellshock (CVE-2014-6271 / 6277 / 7169) Scanner
 
 Detects bash environment-variable RCE via CGI-like endpoints. Older
 finding but still appears in legacy embedded devices, internal admin

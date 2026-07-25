@@ -170,7 +170,7 @@ def export_burp_xml(findings: Iterable[dict], output_path: str, *, scan_url: str
     ``Finding.to_dict()`` / module emit format.
     """
     issues = ET.Element("issues")
-    issues.set("burpVersion", "cyberm4fia-export-1.0")
+    issues.set("burpVersion", "scanner-export-1.0")
     issues.set("exportTime", datetime.now(timezone.utc).strftime("%a %b %d %H:%M:%S %Z %Y"))
     if scan_url:
         issues.set("scanTarget", scan_url)

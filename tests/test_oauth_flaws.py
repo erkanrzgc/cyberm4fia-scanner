@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 
 import pytest
 
 from modules.oauth_flaws import (
     OAuthEndpoint,
-    OAuthFinding,
     check_code_reuse,
     check_implicit_flow_leak,
     check_pkce_downgrade,

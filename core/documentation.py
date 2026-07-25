@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Documentation generation from scanner metadata.
+scanner - Documentation generation from scanner metadata.
 """
 
 from __future__ import annotations
@@ -351,7 +351,7 @@ REGISTRY_NAME_MAP = _build_registry_name_map()
 
 def build_parser():
     """Create a parser populated from scanner metadata."""
-    parser = argparse.ArgumentParser(description="cyberm4fia-scanner")
+    parser = argparse.ArgumentParser(description="scanner")
     add_parser_arguments(parser)
     return parser
 

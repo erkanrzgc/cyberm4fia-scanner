@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Loot Manager
+scanner - Loot Manager
 Structured storage for extracted data: SQLi dumps, stolen cookies,
 downloaded files, and credentials.
 """

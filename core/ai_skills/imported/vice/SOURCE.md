@@ -31,7 +31,7 @@ Other modules (`auth.js`, `dependencies.js`, `supabase-rls.js`,
 as **methodology references** — they overlap with our existing modules but
 take different angles worth comparing.
 
-## How to use in cyberm4fia-scanner
+## How to use in scanner
 
 This is a **reference import**, not a runtime dependency. Concrete next
 steps to extract value:

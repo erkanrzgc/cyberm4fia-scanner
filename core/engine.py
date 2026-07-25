@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner — Async Scan Engine
+scanner — Async Scan Engine
 
 Replaces ThreadPoolExecutor-based module orchestration with asyncio.
 Runs vulnerability scan modules concurrently using asyncio.to_thread()

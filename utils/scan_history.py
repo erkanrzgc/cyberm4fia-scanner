@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner — Scan History & Drift Detection
+scanner — Scan History & Drift Detection
 SQLite-backed scan result history with change detection between scans.
 """
 

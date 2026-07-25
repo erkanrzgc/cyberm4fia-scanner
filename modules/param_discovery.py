@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Hidden Parameter Discovery Engine
+scanner - Hidden Parameter Discovery Engine
 Discovers hidden GET/POST parameters on endpoints using differential analysis.
 
 Strategy:

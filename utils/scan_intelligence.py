@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner — Scan Intelligence Engine (RAG-Lite Knowledge Loop)
+scanner — Scan Intelligence Engine (RAG-Lite Knowledge Loop)
 SQLite-FTS5 backed intelligence that learns from every scan.
 """
 import hashlib

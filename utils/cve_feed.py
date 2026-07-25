@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner — SiberAdar CVE Threat Intel Feed
+scanner — SiberAdar CVE Threat Intel Feed
 
 Fetches real-time CVE data from SiberAdar (siberadar.com) API
 and enriches technology fingerprint results with known vulnerabilities.

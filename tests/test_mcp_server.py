@@ -26,7 +26,7 @@ class TestCatalog:
 
     def test_all_tool_names_namespaced(self):
         for spec in TOOLS:
-            assert spec.name.startswith("cyberm4fia."), spec.name
+            assert spec.name.startswith("scanner."), spec.name
 
     def test_list_tools_returns_mcp_shape(self):
         listing = list_tools()
@@ -37,7 +37,7 @@ class TestCatalog:
 
     def test_intent_agent_tool_requires_goal_and_target(self):
         intent_tool = next(
-            t for t in TOOLS if t.name == "cyberm4fia.run_intent_agent"
+            t for t in TOOLS if t.name == "scanner.run_intent_agent"
         )
         assert "goal" in intent_tool.input_schema["required"]
         assert "target_url" in intent_tool.input_schema["required"]
@@ -48,7 +48,7 @@ class TestCatalog:
 
 class TestDispatchParsers:
     def test_unknown_tool_returns_error(self):
-        out = dispatch("cyberm4fia.does_not_exist", {})
+        out = dispatch("scanner.does_not_exist", {})
         assert out["ok"] is False
         assert "unknown tool" in out["error"]
 
@@ -60,7 +60,7 @@ class TestDispatchParsers:
       <state state="open"/><service name="http"/>
     </port></ports></host>
 </nmaprun>"""
-        out = dispatch("cyberm4fia.parse_nmap_xml", {"xml": xml})
+        out = dispatch("scanner.parse_nmap_xml", {"xml": xml})
         assert out["ok"] is True
         result = out["result"]
         assert result["host_count"] == 1
@@ -75,7 +75,7 @@ class TestDispatchParsers:
             "matched-at": "https://t/",
             "host": "t",
         })
-        out = dispatch("cyberm4fia.parse_nuclei_jsonl", {"jsonl": jsonl})
+        out = dispatch("scanner.parse_nuclei_jsonl", {"jsonl": jsonl})
         assert out["ok"] is True
         assert out["result"]["count"] == 1
         assert out["result"]["critical_count"] == 1
@@ -89,8 +89,8 @@ class TestDispatchParsers:
                                "data": {"1": {"title": "boolean", "payload": "x"}}}],
             }
         }
-        out_str = dispatch("cyberm4fia.parse_sqlmap_json", {"json": json.dumps(payload)})
-        out_obj = dispatch("cyberm4fia.parse_sqlmap_json", {"json": payload})
+        out_str = dispatch("scanner.parse_sqlmap_json", {"json": json.dumps(payload)})
+        out_obj = dispatch("scanner.parse_sqlmap_json", {"json": payload})
         assert out_str["ok"] is True
         assert out_obj["ok"] is True
         assert out_str["result"]["vulnerable"] is True
@@ -98,7 +98,7 @@ class TestDispatchParsers:
 
     def test_handler_exception_is_caught(self):
         # Force a dispatch error by passing wrong type.
-        out = dispatch("cyberm4fia.parse_nmap_xml", {"xml": 12345})
+        out = dispatch("scanner.parse_nmap_xml", {"xml": 12345})
         # Parser tolerates this by str()-coercing; should still succeed.
         assert out["ok"] is True
 
@@ -109,7 +109,7 @@ class TestDispatchParsers:
 class TestDispatchIntentAgent:
     def test_returns_unavailable_when_no_ai_client(self):
         with patch("utils.ai_intent_agent.get_intent_agent", return_value=None):
-            out = dispatch("cyberm4fia.run_intent_agent", {
+            out = dispatch("scanner.run_intent_agent", {
                 "goal": "x", "target_url": "http://t/",
             })
         assert out["ok"] is True
@@ -135,7 +135,7 @@ class TestDispatchIntentAgent:
 
         fake = FakeAgent()
         with patch("utils.ai_intent_agent.get_intent_agent", return_value=fake):
-            out = dispatch("cyberm4fia.run_intent_agent", {
+            out = dispatch("scanner.run_intent_agent", {
                 "goal": "Confirm XSS",
                 "target_url": "http://t/",
                 "param": "q",

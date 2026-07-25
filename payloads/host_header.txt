@@ -1,4 +1,4 @@
-# Host Header Injection Payloads — cyberm4fia-scanner
+# Host Header Injection Payloads — scanner
 # Categories: Standard Headers, Dual Host, Password Reset Poisoning
 
 # ─── Core Host Headers ───

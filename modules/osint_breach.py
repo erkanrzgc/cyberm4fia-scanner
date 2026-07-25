@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - OSINT Breach Intelligence
+scanner - OSINT Breach Intelligence
 Queries HudsonRock Cavalier, HIBP, and breach corpuses for compromised
 employee credentials and infostealer log hits against target domains.
 """
@@ -148,7 +148,7 @@ def _search_hibp_domain(domain, api_key=None, delay=1.5):
     try:
         resp = smart_request(
             "get", url,
-            headers={"hibp-api-key": api_key, "user-agent": "cyberm4fia-scanner"},
+            headers={"hibp-api-key": api_key, "user-agent": "scanner"},
             delay=delay, timeout=15,
         )
         if resp.status_code == 200:

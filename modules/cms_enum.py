@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - CMS Enumeration Scanner
+scanner - CMS Enumeration Scanner
 
 Fingerprints the major CMS platforms (WordPress, Drupal, Joomla) and
 extracts their version where possible. Version-pinning enables follow-up

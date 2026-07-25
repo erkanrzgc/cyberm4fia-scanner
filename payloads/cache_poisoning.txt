@@ -1,4 +1,4 @@
-# Web Cache Poisoning Payloads — cyberm4fia-scanner
+# Web Cache Poisoning Payloads — scanner
 # Categories: Unkeyed Headers, Cache Deception, Fat GET
 
 # ─── Unkeyed Header Probe ───

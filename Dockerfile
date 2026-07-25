@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────
-#  cyberm4fia-scanner — Docker Image
+#  scanner — Docker Image
 #  AI-Driven Penetration Testing Platform
 # ─────────────────────────────────────────────────────
 

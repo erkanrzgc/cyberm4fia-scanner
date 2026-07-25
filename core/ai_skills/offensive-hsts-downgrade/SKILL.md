@@ -7,7 +7,7 @@ description: "HSTS downgrade / SSL strip methodology when Strict-Transport-Secur
 
 ## Quick Workflow
 
-1. Confirm HSTS state on every entry point (apex + every subdomain).
+1. Confirm HSTS state on every entry point (scanner + every subdomain).
 2. Check the Chromium preload list — if absent, the *first ever* navigation
    on any new device is downgradable.
 3. Set up in-path MITM (ARP spoof on LAN / rogue Wi-Fi / captive portal /
@@ -40,7 +40,7 @@ Weak / exploitable patterns:
 | Header absent | First-hit downgradable on every new device, every clear-cache event |
 | `max-age=0` | Disables HSTS — equivalent to absent |
 | `max-age < 7776000` (90 days) | Most users will lose pinning between visits |
-| `includeSubDomains` absent | Subdomains downgradable even if apex is pinned |
+| `includeSubDomains` absent | Subdomains downgradable even if scanner is pinned |
 | `preload` absent OR not submitted to hstspreload.org | First-ever connection always downgradable |
 | HTTP→HTTPS 301 without HSTS on response | The 301 itself is interceptable |
 
@@ -102,13 +102,13 @@ domain not in the preload list.
 
 ## Subdomain Scope Pitfalls
 
-Even when the apex has `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`:
+Even when the scanner has `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`:
 
 * If a new subdomain (`api2.target.tld`) was added *after* preload submission,
   the preload entry doesn't help on first-hit to that subdomain unless the
-  apex's `includeSubDomains` covers it AND the browser has visited the apex
+  scanner's `includeSubDomains` covers it AND the browser has visited the scanner
   first.
-* If `includeSubDomains` is absent on the apex, every subdomain is
+* If `includeSubDomains` is absent on the scanner, every subdomain is
   individually downgradable on first hit.
 
 Test pattern:

@@ -63,7 +63,7 @@ class TestAPIServer:
         resp = await self._request("GET", "/")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["name"] == "cyberm4fia-scanner API"
+        assert data["name"] == "scanner API"
         assert "endpoints" in data
         assert "docs" in data
 
@@ -147,7 +147,7 @@ class TestAPIServer:
         resp = await self._request("GET", "/openapi.json")
         assert resp.status_code == 200
         schema = resp.json()
-        assert schema["info"]["title"] == "cyberm4fia-scanner API"
+        assert schema["info"]["title"] == "scanner API"
         assert "paths" in schema
 
     @pytest.mark.asyncio
@@ -203,8 +203,14 @@ class TestAPIServer:
             "cancel_event": threading.Event(),
         }
 
-        json_resp = await api_server.get_json_report("scan123")
-        sarif_resp = await api_server.get_sarif_report("scan123")
+        request = type(
+            "RequestStub",
+            (),
+            {"headers": {"X-API-Key": api_server._API_KEY}},
+        )()
+
+        json_resp = await api_server.get_json_report("scan123", request)
+        sarif_resp = await api_server.get_sarif_report("scan123", request)
 
         assert json_resp.status_code == 200
         assert json_resp.media_type == "application/json"

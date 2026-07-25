@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner — SSH/FTP Brute-Force Module
+scanner — SSH/FTP Brute-Force Module
 Tests default and common credentials against SSH and FTP services.
 """
 

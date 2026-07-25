@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Guaranteed Findings Generator
+scanner - Guaranteed Findings Generator
 Deep security checks that produce actionable findings on ANY target.
 
 Unlike exploit modules that require injection points, these checks analyze

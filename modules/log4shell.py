@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Log4Shell (CVE-2021-44228) Scanner
+scanner - Log4Shell (CVE-2021-44228) Scanner
 
 Detects whether a target's logging stack interpolates JNDI lookups
 embedded in user-controlled fields. Verification requires an

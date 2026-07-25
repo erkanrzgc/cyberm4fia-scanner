@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - XML External Entity (XXE) Scanner
+scanner - XML External Entity (XXE) Scanner
 Tests for XXE injection in XML-accepting endpoints
 """
 

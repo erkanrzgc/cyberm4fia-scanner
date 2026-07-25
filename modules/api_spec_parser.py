@@ -1,10 +1,10 @@
 """
-cyberm4fia-scanner – OpenAPI / Swagger spec parsing & endpoint extraction.
+scanner – OpenAPI / Swagger spec parsing & endpoint extraction.
 Extracted from api_scanner.py to keep the scanning logic separate.
 """
 
 """
-cyberm4fia-scanner - API Security Scanner
+scanner - API Security Scanner
 Tests REST/GraphQL endpoints for OWASP API Top 10 vulnerabilities
 """
 

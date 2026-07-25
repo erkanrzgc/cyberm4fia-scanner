@@ -10,9 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from modules.idor_engine import (
-    CandidateId,
     IdorEngine,
-    IdorFinding,
     IdResolver,
     ResponseSnapshot,
     detect_idor,

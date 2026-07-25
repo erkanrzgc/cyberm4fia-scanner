@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Account Takeover Scanner
+scanner - Account Takeover Scanner
 Detects account takeover vectors: password reset flaws, registration bypass,
 session fixation, OAuth misconfiguration, and response manipulation hints.
 Based on Az0x7/vulnerability-Checklist ATO and reset password checklists.
@@ -165,7 +165,7 @@ def _test_registration_bypass(register_urls, delay=0):
                     "post", register_url,
                     json={
                         "email": email_trick,
-                        "username": "cybm4fia_test",
+                        "username": "scanner_test",
                         "password": "Test12345!",
                     },
                     headers={"Content-Type": "application/json"},
@@ -280,7 +280,7 @@ def _test_username_enumeration(login_urls, delay=0):
             # Request with nonexistent user
             resp1 = smart_request(
                 "post", login_url,
-                data={"username": "cybm4fia_nonexistent_user_xz9", "password": "wrong"},
+                data={"username": "scanner_nonexistent_user_xz9", "password": "wrong"},
                 delay=delay, timeout=5,
             )
             # Request with common user

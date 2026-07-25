@@ -1,4 +1,4 @@
-# cyberm4fia-scanner — Directory/File Fuzzer Wordlist
+# scanner — Directory/File Fuzzer Wordlist
 # Categories: Admin, Config, Backup, API, CMS, DevOps, Sensitive, Common
 
 # ─── Admin Panels ───

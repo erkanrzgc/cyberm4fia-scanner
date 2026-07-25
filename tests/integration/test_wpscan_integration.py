@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import os
 
-import pytest
 
 from tests.integration.conftest import requires_binary, requires_env, requires_service
 from utils.external_tools.wpscan import WpscanTool

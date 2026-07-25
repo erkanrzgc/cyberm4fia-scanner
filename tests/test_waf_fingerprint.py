@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 
 import pytest
 
 from modules.waf_fingerprint import (
     WAF_BLOCK_SIGNATURES,
-    WafFingerprintReport,
     _identify_waf,
     _match_signature,
     active_fingerprint,

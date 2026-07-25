@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner — Meta-Tooling Integration
+scanner — Meta-Tooling Integration
 
 .. external-entry-point::
 

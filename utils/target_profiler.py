@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner — Target Profiler & Priority Scoring
+scanner — Target Profiler & Priority Scoring
 Builds intelligence profiles for targets and scores them for scan prioritization.
 """
 from dataclasses import dataclass, field

@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Secrets & API Key Scanner
+scanner - Secrets & API Key Scanner
 Scans HTML and Javascript files for hardcoded sensitive information like AWS keys, Stripe tokens, etc.
 """
 from utils.request import ScanExceptions

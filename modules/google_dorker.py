@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Google Dorking Engine
+scanner - Google Dorking Engine
 Automated Google Dork generation & search for target reconnaissance.
 
 Generates context-aware dorks based on target domain and detected technology

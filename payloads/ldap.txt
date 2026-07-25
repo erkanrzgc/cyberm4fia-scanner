@@ -1,4 +1,4 @@
-# LDAP Injection Payloads — cyberm4fia-scanner
+# LDAP Injection Payloads — scanner
 # Categories: Auth Bypass, Blind Boolean, Extraction
 
 # ─── Auth Bypass ───

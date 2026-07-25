@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Wayback Machine URL Harvester
+scanner - Wayback Machine URL Harvester
 Discovers historical endpoints, removed pages, and hidden API paths
 from the Wayback Machine (web.archive.org) archive.
 """

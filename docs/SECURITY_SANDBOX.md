@@ -62,7 +62,7 @@ findings, env vars, or even file contents (now blocked by 2.1) to an
 attacker-controlled URL.
 
 **Mitigation:**
-- Docker mode: set `CYBERM4FIA_SANDBOX_NETWORK=none` for tasks that don't need
+- Docker mode: set `SCANNER_SANDBOX_NETWORK=none` for tasks that don't need
   network, or use a network policy that only allows the target host.
 - Caller side: the adaptive orchestrator already enforces a target-host scope
   on planner-proposed intents (see `_resolve_default_scope`), but this does
@@ -72,7 +72,7 @@ attacker-controlled URL.
 
 ### 2.3 Docker default network is `bridge` — MEDIUM
 
-`DEFAULT_NETWORK = os.environ.get("CYBERM4FIA_SANDBOX_NETWORK", "bridge")`.
+`DEFAULT_NETWORK = os.environ.get("SCANNER_SANDBOX_NETWORK", "bridge")`.
 Full internet by default is convenient for testing but couples 2.2's risk to
 "works out of the box." Operators should set the env var explicitly.
 
@@ -115,7 +115,7 @@ Network restriction (2.2) is the only complete mitigation for that class.
 
 ```bash
 # Strongest stance: Docker mode, no egress unless explicitly needed.
-export CYBERM4FIA_SANDBOX_NETWORK=none
+export SCANNER_SANDBOX_NETWORK=none
 
 # When an exploit needs to reach the target only, use a per-job custom network
 # with iptables egress restricted to the target's resolved IP(s).
@@ -140,7 +140,7 @@ should be reviewed).
 
 ## 6. Open follow-ups (tracked in this repo)
 
-- [ ] Default `CYBERM4FIA_SANDBOX_NETWORK=none` in production configs once a
+- [ ] Default `SCANNER_SANDBOX_NETWORK=none` in production configs once a
       per-target egress policy is shipped.
 - [ ] Per-target egress allow-list in Docker mode.
 - [ ] Custom seccomp profile.

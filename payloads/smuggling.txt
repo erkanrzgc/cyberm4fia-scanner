@@ -1,4 +1,4 @@
-# HTTP Request Smuggling Payloads — cyberm4fia-scanner
+# HTTP Request Smuggling Payloads — scanner
 # Categories: CL.TE, TE.CL, TE.TE, H2.CL
 
 # ─── CL.TE (frontend CL, backend TE) ───

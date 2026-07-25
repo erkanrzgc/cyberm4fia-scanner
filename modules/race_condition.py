@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Race Condition Scanner
+scanner - Race Condition Scanner
 Detects TOCTOU and concurrency bugs by sending parallel requests.
 Tests: coupon reuse, double-spend, vote manipulation, auth race.
 """

@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner — Passive Scanner Module
+scanner — Passive Scanner Module
 
 Analyzes HTTP responses WITHOUT sending additional requests.
 Detects:

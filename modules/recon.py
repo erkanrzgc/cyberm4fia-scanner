@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Recon Module
+scanner - Recon Module
 Port scanning and server reconnaissance
 """
 

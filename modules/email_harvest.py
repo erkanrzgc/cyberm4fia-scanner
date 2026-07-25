@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Email Harvester
+scanner - Email Harvester
 Collects email addresses associated with a target domain
 """
 

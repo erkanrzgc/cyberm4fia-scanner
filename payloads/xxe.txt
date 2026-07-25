@@ -1,4 +1,4 @@
-# XXE Payloads — cyberm4fia-scanner
+# XXE Payloads — scanner
 # Categories: File Read, Blind OOB, Error-Based, XInclude, SVG
 
 # ─── Basic File Read ───

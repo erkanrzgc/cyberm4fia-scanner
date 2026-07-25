@@ -1,4 +1,4 @@
-# IDOR Payloads — cyberm4fia-scanner
+# IDOR Payloads — scanner
 # Categories: ID Manipulation, Method Variation, Version Downgrade
 
 # ─── ID Manipulation ───

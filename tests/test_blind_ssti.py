@@ -3,13 +3,10 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 
 import pytest
 
 from modules.blind_ssti import (
-    ARITHMETIC_PROBES,
-    SstiFinding,
     SstiProbe,
     detect_arithmetic_echo,
     detect_oob,

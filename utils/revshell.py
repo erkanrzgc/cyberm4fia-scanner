@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Reverse Shell Generator
+scanner - Reverse Shell Generator
 Generates ready-to-use reverse shell payloads for confirmed RCE/CMDi vulnerabilities
 """
 

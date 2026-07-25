@@ -24,7 +24,7 @@ import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
-from typing import Any, Callable, Iterable, Optional
+from typing import Callable, Optional
 
 from modules.secrets_scanner import SECRET_PATTERNS
 from utils.colors import log_info, log_warning
@@ -83,7 +83,7 @@ class GithubScanReport:
 
 
 def _gh_headers() -> dict[str, str]:
-    headers = {"Accept": "application/vnd.github+json", "User-Agent": "cyberm4fia"}
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "scanner"}
     token = os.environ.get("GITHUB_TOKEN", "").strip()
     if token:
         headers["Authorization"] = f"token {token}"

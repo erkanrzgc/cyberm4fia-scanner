@@ -1,4 +1,4 @@
-# SSTI Payloads — cyberm4fia-scanner
+# SSTI Payloads — scanner
 # Categories: Jinja2, Twig, EJS, Velocity, Detection, RCE
 
 # ─── Detection (Jinja2 / Flask) ───

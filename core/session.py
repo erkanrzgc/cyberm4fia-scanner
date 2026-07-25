@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner — Session Manager
+scanner — Session Manager
 
 Save and resume scan state for long-running scans.
 

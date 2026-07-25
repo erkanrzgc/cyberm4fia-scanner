@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Credential Sprayer
+scanner - Credential Sprayer
 Default credential testing for SSH, FTP, MySQL, PostgreSQL, Redis, MongoDB
 Integrates with port scanner results
 """

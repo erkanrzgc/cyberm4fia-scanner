@@ -1,5 +1,5 @@
 """
-CLI argument parsing and basic input helpers for cyberm4fia-scanner.
+CLI argument parsing and basic input helpers for scanner.
 Extracted from scanner.py to keep the main entry-point lean.
 """
 
@@ -12,7 +12,7 @@ from core.scan_options import add_parser_arguments
 
 
 def parse_args(argv=None):
-    parser = argparse.ArgumentParser(description="cyberm4fia-scanner")
+    parser = argparse.ArgumentParser(description="scanner")
     add_parser_arguments(parser)
     effective_argv = list(sys.argv[1:] if argv is None else argv)
     args = parser.parse_args(effective_argv)

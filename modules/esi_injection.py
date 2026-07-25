@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import logging
 import random
-import re
 import string
 from typing import Iterable
 from urllib.parse import urlencode, urlparse, urlunparse, parse_qsl

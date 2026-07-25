@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner — AI/LLM Integration (NVIDIA NIM)
+scanner — AI/LLM Integration (NVIDIA NIM)
 
 NVIDIA NIM-based vulnerability analysis using high-performance Llama 3.3 70B.
 Default model: meta/llama-3.3-70b-instruct

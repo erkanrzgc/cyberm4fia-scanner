@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Insecure Deserialization Scanner
+scanner - Insecure Deserialization Scanner
 Detects serialized objects in cookies/responses and tests for exploitation.
 Targets: PHP (unserialize), Java (ObjectInputStream), Python (pickle), .NET.
 """
@@ -71,7 +71,7 @@ SIGNATURES = {
 PROBE_PAYLOADS = {
     "php": [
         # PHP serialized object that triggers __toString
-        'O:8:"stdClass":1:{s:4:"test";s:10:"cyberm4fia";}',
+        'O:8:"stdClass":1:{s:4:"test";s:10:"scanner";}',
         # Broken serialization to trigger error
         'O:9:"CYBERM4FI":0:{}',
         # Type juggling

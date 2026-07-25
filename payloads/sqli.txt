@@ -1,4 +1,4 @@
-# SQLi Payloads — cyberm4fia-scanner
+# SQLi Payloads — scanner
 # Categories: Detection, Union, Auth Bypass, Blind, WAF Bypass, DB-Specific, Stacked, Second-Order
 
 # ─── Detection / Error Triggering ───

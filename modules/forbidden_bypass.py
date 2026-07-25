@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - 403/401 Forbidden Bypass Scanner
+scanner - 403/401 Forbidden Bypass Scanner
 Detects misconfigured access controls using 100+ header, URL path, method,
 and protocol-level bypass techniques.
 Based on Az0x7/vulnerability-Checklist and real-world bug bounty research.

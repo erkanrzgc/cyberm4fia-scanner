@@ -1,10 +1,10 @@
 # Release pipeline — builds and publishes the Docker image to GHCR
 # whenever a `v*` tag is pushed (or manually via workflow_dispatch).
 #
-# Result: `ghcr.io/erkanrzgc/cyberm4fia-scanner:<tag>` + `:latest`.
+# Result: `ghcr.io/erkanrzgc/autonomous-scanner:<tag>` + `:latest`.
 # First-run UX after publish:
 #   docker run --rm -e NVIDIA_API_KEY=$KEY \
-#     ghcr.io/erkanrzgc/cyberm4fia-scanner:latest -u https://target/ --all --ai
+#     ghcr.io/erkanrzgc/autonomous-scanner:latest -u https://target/ --all --ai
 
 name: Release Docker image
 

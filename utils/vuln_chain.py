@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Vulnerability Chaining & Escalation Engine
+scanner - Vulnerability Chaining & Escalation Engine
 Analyzes findings, builds attack paths, and ACTIVELY TESTS escalations.
 
 Inspired by Revelion's "Proves It, Doesn't Just Flag It" philosophy.

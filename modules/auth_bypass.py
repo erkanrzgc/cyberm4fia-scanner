@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - 2FA Bypass & Authentication Bypass Scanner
+scanner - 2FA Bypass & Authentication Bypass Scanner
 Detects: 2FA bypass, default credentials, auth token leaks,
 login SQL injection, and session persistence flaws.
 Based on Az0x7/vulnerability-Checklist 2FA bypass and authentication checklists.
@@ -268,7 +268,7 @@ def _test_login_sqli(login_urls, delay=0):
         try:
             baseline = smart_request(
                 "post", login_url,
-                data={"username": "cybm4fia_test_user", "password": "cybm4fia_test_pass"},
+                data={"username": "scanner_test_user", "password": "scanner_test_pass"},
                 delay=delay, timeout=5,
             )
             baseline_len = len(baseline.text)

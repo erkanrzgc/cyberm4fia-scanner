@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner — CSP Bypass Engine
+scanner — CSP Bypass Engine
 
 Parses Content-Security-Policy headers to identify weak directives,
 then uses Playwright headless browser to verify exploitable XSS bypasses.

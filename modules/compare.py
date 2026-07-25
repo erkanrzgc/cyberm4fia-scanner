@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Scan Comparison Module
+scanner - Scan Comparison Module
 Compare two scan results and show differences
 """
 

@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - CeWL-Style Wordlist Generator
+scanner - CeWL-Style Wordlist Generator
 Generates site-specific wordlists by crawling and extracting words
 """
 

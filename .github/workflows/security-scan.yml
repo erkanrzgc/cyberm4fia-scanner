@@ -1,4 +1,4 @@
-# cyberm4fia-scanner Security Scan — GitHub Actions CI/CD Pipeline
+# scanner Security Scan — GitHub Actions CI/CD Pipeline
 # Place this file at: .github/workflows/security-scan.yml
 #
 # Triggers:
@@ -11,7 +11,7 @@
 #   2. Set the TARGET_URL secret in your GitHub repo settings
 #   3. Push to trigger the scan
 
-name: cyberm4fia-scanner Security Scan
+name: scanner Security Scan
 
 on:
   workflow_dispatch:
@@ -31,7 +31,7 @@ on:
           - '3'
 
 env:
-  SCANNER_DIR: cyberm4fia-scanner
+  SCANNER_DIR: scanner
 
 jobs:
   security-scan:
@@ -116,14 +116,14 @@ jobs:
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: ${{ env.SCANNER_DIR }}/${{ steps.scan.outputs.sarif_path }}
-          category: cyberm4fia-scanner
+          category: scanner
         continue-on-error: true
 
       - name: Upload Scan Report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cyberm4fia-scan-report
+          name: scanner-scan-report
           path: |
             ${{ env.SCANNER_DIR }}/scans/
           retention-days: 30
@@ -134,7 +134,7 @@ jobs:
         with:
           script: |
             const vulnCount = '${{ steps.scan.outputs.vuln_count }}';
-            const body = `## 🛡️ cyberm4fia-scanner Security Scan Results
+            const body = `## 🛡️ scanner Security Scan Results
 
             ⚠️ **${vulnCount} vulnerability(ies) detected!**
 

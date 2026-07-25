@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Proxy Rotator
+scanner - Proxy Rotator
 Thread-safe proxy pool from proxifly free proxy list with connectivity testing.
 """
 import random

@@ -1,4 +1,4 @@
-# Expression Language Injection Payloads — cyberm4fia-scanner
+# Expression Language Injection Payloads — scanner
 # Categories: SpEL, OGNL, MVEL, Thymeleaf
 
 # ─── SpEL (Spring) Detection ───

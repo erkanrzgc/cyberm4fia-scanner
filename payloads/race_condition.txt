@@ -1,4 +1,4 @@
-# Race Condition Payloads — cyberm4fia-scanner
+# Race Condition Payloads — scanner
 # Categories: Parallel Requests, Turbo Intruder, Last-Byte Sync
 
 # ─── Bash parallel requests ───

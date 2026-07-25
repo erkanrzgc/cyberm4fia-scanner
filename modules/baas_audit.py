@@ -1,4 +1,4 @@
-"""cyberm4fia-scanner — Backend-as-a-Service misconfiguration audit.
+"""scanner — Backend-as-a-Service misconfiguration audit.
 
 Targets misconfigurations that ship routinely from AI-assisted apps:
 

@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner — Scope Control
+scanner — Scope Control
 
 URL filtering system for controlling which URLs are in-scope during a scan.
 Supports inclusion patterns (--scope) and exclusion patterns (--exclude).

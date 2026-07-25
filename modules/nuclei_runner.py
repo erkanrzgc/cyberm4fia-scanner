@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Nuclei Template Runner
+scanner - Nuclei Template Runner
 
 Wraps the projectdiscovery/nuclei binary to execute community templates
 against a target, parses JSONL output, and emits Observation objects in

@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Technology Fingerprinter
+scanner - Technology Fingerprinter
 Wappalyzer-style detection of frameworks, CMS, servers, and libraries
 """
 

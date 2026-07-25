@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Advanced Crawler Module v2
+scanner - Advanced Crawler Module v2
 Web spider that extracts HTML links, forms, and hidden API endpoints from JS files.
 Returns both URLs and forms for downstream scanning modules.
 """

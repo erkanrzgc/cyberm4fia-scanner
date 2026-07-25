@@ -36,7 +36,7 @@ reporting).
 Lightweight role declarations (CTF, API security, …). Could be loaded by
 `agent_orchestrator.py` to spin up a focused subagent.
 
-## How to use in cyberm4fia-scanner
+## How to use in scanner
 
 Reference imports — load any agent markdown as a system prompt when
 delegating a task. The orchestrator-supervisor pattern in particular is

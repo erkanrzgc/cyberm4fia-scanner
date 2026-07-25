@@ -22,9 +22,8 @@ engine consumes it; the file_upload module consumes ``file_polyglot``.
 
 from __future__ import annotations
 
-import base64
 from dataclasses import dataclass
-from typing import Iterable, Optional
+from typing import Iterable
 
 
 # ── Polyglot catalogue ──────────────────────────────────────────────────────

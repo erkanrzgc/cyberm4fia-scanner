@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - DOM XSS Module
+scanner - DOM XSS Module
 DOM-based Cross-Site Scripting detection using Selenium
 """
 

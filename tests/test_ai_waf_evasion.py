@@ -8,7 +8,6 @@ from unittest.mock import MagicMock
 import pytest
 
 from utils.ai_waf_evasion import (
-    EvasionResult,
     _parse_payload_array,
     ai_evasion_chain,
 )

@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner – HAR (HTTP Archive) file analyzer.
+scanner – HAR (HTTP Archive) file analyzer.
 Extracts API endpoints, auth patterns, and undocumented endpoints from HAR files.
 """
 

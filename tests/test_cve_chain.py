@@ -7,7 +7,6 @@ from unittest.mock import MagicMock
 import pytest
 
 from utils.cve_chain import (
-    AttackPath,
     ChainRule,
     DEFAULT_CHAINS,
     chain_findings,

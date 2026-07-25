@@ -1,4 +1,4 @@
-# cyberm4fia-scanner Governance
+# scanner Governance
 
 This directory contains governance, compliance, and safety standards
 for the autonomous penetration testing framework.

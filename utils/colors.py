@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Color and Logging Utilities
+scanner - Color and Logging Utilities
 """
 
 from rich.console import Console
@@ -37,12 +37,12 @@ def print_gradient_banner():
     if QUIET_MODE:
         return
     banner = r"""
- ██████╗██╗   ██╗██████╗ ███████╗██████╗ ███╗   ███╗██╗  ██╗███████╗██╗ █████╗
-██╔════╝╚██╗ ██╔╝██╔══██╗██╔════╝██╔══██╗████╗ ████║██║  ██║██╔════╝██║██╔══██╗
-██║      ╚████╔╝ ██████╔╝█████╗  ██████╔╝██╔████╔██║███████║█████╗  ██║███████║
-██║       ╚██╔╝  ██╔══██╗██╔══╝  ██╔══██╗██║╚██╔╝██║╚════██║██╔══╝  ██║██╔══██║
-╚██████╗   ██║   ██████╔╝███████╗██║  ██║██║ ╚═╝ ██║     ██║██║     ██║██║  ██║
- ╚═════╝   ╚═╝   ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
+ ██████╗  ██████╗██████╗ ███╗   ███╗███╗   ██╗███████╗██████╗ 
+██╔════╝ ██╔════╝██╔══██╗████╗ ████║████╗  ██║██╔════╝██╔══██╗
+╚█████╗  ██║     ██████╔╝██╔████╔██║██╔██╗ ██║█████╗  ██████╔╝
+ ╚═══██╗ ██║     ██╔══██╗██║╚██╔╝██║██║╚██╗██║██╔══╝  ██╔══██╗
+██████╔╝ ╚██████╗██║  ██║██║ ╚═╝ ██║██║ ╚████║███████╗██║  ██║
+╚═════╝   ╚═════╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝
 """
     lines = banner.strip("\n").split("\n")
     start, end = (230, 230, 230), (40, 40, 40)
@@ -53,7 +53,7 @@ def print_gradient_banner():
         console.print(f"[{hex_color}]{line}[/]")
 
     description = (
-        "cyberm4fia-scanner is an AI-powered autonomous penetration testing framework\n"
+        "scanner is an AI-powered autonomous penetration testing framework\n"
         "for web applications, APIs, networks, and cloud infrastructure."
     )
     console.print(f"[dim white]{description}[/]")

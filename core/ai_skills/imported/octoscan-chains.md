@@ -16,7 +16,7 @@
 | `recon` | Reconnaissance | Subfinder → httpx → Nmap |
 | `full` | All scanners | Nmap → Nuclei → ZAP → Feroxbuster → SQLMap → Subfinder → httpx → WPScan → Hydra |
 
-## How to use in cyberm4fia-scanner
+## How to use in scanner
 
 Validates and extends our `core/scan_option_specs.py::PROFILE_PRESETS`.
 Specifically:

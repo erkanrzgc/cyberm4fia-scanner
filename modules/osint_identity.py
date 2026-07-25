@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - OSINT Identity / SSO Mapping
+scanner - OSINT Identity / SSO Mapping
 Fingerprints identity providers (Entra ID, Okta, Google Workspace, ADFS)
 and their tenant configurations for attack-surface mapping.
 """

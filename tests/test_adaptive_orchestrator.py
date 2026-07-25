@@ -216,7 +216,7 @@ class TestAdaptiveLoop:
 
     def test_default_scope_is_derived_from_target_host(self):
         # No explicit scope: planner must reject intents pointing off-host.
-        from utils.agent_orchestrator import PlannerStage, _resolve_default_scope
+        from utils.agent_orchestrator import _resolve_default_scope
         scope = _resolve_default_scope("https://app.test/sub/")
         assert scope.is_allowed("https://app.test/x") is True
         assert scope.is_allowed("https://evil.example/x") is False

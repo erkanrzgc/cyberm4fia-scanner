@@ -1,5 +1,5 @@
 """
-Interactive menu, resume/restore helpers, and preflight UI for cyberm4fia-scanner.
+Interactive menu, resume/restore helpers, and preflight UI for scanner.
 Extracted from scanner.py to keep the main entry-point lean.
 """
 

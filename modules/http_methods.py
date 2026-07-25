@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - HTTP Method Abuse Scanner
+scanner - HTTP Method Abuse Scanner
 
 Many web servers/applications enable dangerous HTTP methods by mistake:
 * TRACE  → reflected cross-site tracing (XST)
@@ -124,12 +124,12 @@ def scan_http_methods(url: str, *, delay: float = 0.0,
     # 4. PUT write probe — opt-in; uploads a small marker file.
     if attempt_write and "PUT" in accepted and accepted["PUT"] in (200, 201, 204):
         token = uuid.uuid4().hex[:12]
-        probe_path = f"/cyberm4fia-probe-{token}.txt"
+        probe_path = f"/scanner-probe-{token}.txt"
         target = urljoin(url, probe_path)
         try:
             put_resp = smart_request(
                 "put", target, delay=delay,
-                data=f"cyberm4fia probe: {token}",
+                data=f"scanner probe: {token}",
                 headers={"Content-Type": "text/plain"},
                 allow_redirects=False,
             )

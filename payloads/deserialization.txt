@@ -1,4 +1,4 @@
-# Deserialization Payloads — cyberm4fia-scanner
+# Deserialization Payloads — scanner
 # Categories: Python Pickle, PHP Unserialize, Java, Node.js, YAML
 
 # ─── Python Pickle RCE ───

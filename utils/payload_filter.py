@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Payload Filter
+scanner - Payload Filter
 Dynamically filters payload lists based on the detected technologies
 of the target application to reduce noise and WAF detections.
 """

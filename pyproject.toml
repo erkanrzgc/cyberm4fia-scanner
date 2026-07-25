@@ -1,5 +1,5 @@
 [project]
-name = "cyberm4fia-scanner"
+name = "autonomous-scanner"
 version = "2.0.0"
 description = "Context-aware web vulnerability scanner"
 requires-python = ">=3.10"

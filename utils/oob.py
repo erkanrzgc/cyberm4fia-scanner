@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - OOB (Out-of-Band) Interaction Manager
+scanner - OOB (Out-of-Band) Interaction Manager
 
 Handles external interaction tokens and polling for blind vulnerabilities.
 Supports:

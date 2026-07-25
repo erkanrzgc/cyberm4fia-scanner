@@ -1,4 +1,4 @@
-# CRLF / HTTP Header Injection Payloads — cyberm4fia-scanner
+# CRLF / HTTP Header Injection Payloads — scanner
 # Categories: Header Injection, Body Injection, Encoding Variations
 
 # ─── Core CRLF Payloads ───

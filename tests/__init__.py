@@ -1,3 +1,3 @@
 """
-cyberm4fia-scanner - Test Suite
+scanner - Test Suite
 """

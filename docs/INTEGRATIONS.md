@@ -1,6 +1,6 @@
 # Integrations
 
-cyberm4fia-scanner emits three machine-readable artefacts on every scan:
+scanner emits three machine-readable artefacts on every scan:
 
 | File | Format | Consumers |
 |---|---|---|

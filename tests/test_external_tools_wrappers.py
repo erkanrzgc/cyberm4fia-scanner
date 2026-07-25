@@ -296,7 +296,7 @@ class TestGitleaksTool:
         ])
         parsed = GitleaksTool().parse_output(out, "", 1)   # gitleaks exits 1 when leaks found
         assert parsed["count"] == 2
-        rules = {l["rule"] for l in parsed["leaks"]}
+        rules = {leak["rule"] for leak in parsed["leaks"]}
         assert rules == {"aws-access-key", "github-pat"}
 
     def test_to_findings_marks_high_severity(self):

@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner — Sandboxed Python Executor
+scanner — Sandboxed Python Executor
 
 .. external-entry-point::
 
@@ -44,7 +44,7 @@ from typing import Optional
 DEFAULT_TIMEOUT = 15
 DEFAULT_MAX_MEMORY_MB = 256
 DEFAULT_MAX_OUTPUT_BYTES = 256 * 1024
-RESULT_MARKER = "__CYBERM4FIA_RESULT__"
+RESULT_MARKER = "__SCANNER_RESULT__"
 
 # Modules the AI exploit code is allowed to import. Anything else raises ImportError
 # inside the sandbox. Keep this tight — only what payload work genuinely needs.

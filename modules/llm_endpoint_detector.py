@@ -33,7 +33,7 @@ import logging
 import re
 from dataclasses import dataclass
 from typing import Iterable
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 
 logger = logging.getLogger(__name__)
 

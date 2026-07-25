@@ -23,11 +23,9 @@ need a real OAuth server.
 
 from __future__ import annotations
 
-import re
-import secrets
-from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
-from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
+from dataclasses import dataclass
+from typing import Callable, Optional
+from urllib.parse import urlencode
 
 from utils.colors import log_info, log_success
 

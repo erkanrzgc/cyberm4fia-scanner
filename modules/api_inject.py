@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - API Body Injection Engine
+scanner - API Body Injection Engine
 Tests API endpoints discovered by the crawler with JSON/form body injection.
 
 Modern apps (React/Next.js/Vue) often have API endpoints that accept JSON

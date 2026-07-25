@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Sector-Specific OSINT Recon
+scanner - Sector-Specific OSINT Recon
 Targeted reconnaissance patterns for healthcare, finance, ICS/SCADA,
 IoT, and government sectors with protocol-specific probes.
 

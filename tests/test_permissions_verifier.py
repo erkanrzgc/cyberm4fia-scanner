@@ -7,7 +7,6 @@ import pytest
 from modules.active_verifiers import (
     PermissionsPolicyVerifier,
     run_all_verifiers,
-    verify_permissions_policy,
 )
 from modules.active_verifiers.permissions import (
     _is_directive_restrictive,

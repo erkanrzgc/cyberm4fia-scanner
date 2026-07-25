@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-cyberm4fia-scanner v4.0 (Modular Edition)
+scanner v4.0 (Modular Edition)
 Educational Purpose Only | by Erkan
 All-in-one: XSS, SQLi, LFI, Command Injection,
 DOM XSS, Port Scan, Server Recon
@@ -104,7 +104,7 @@ def print_summary(vulns, recon_data=None, stats=None):
     )
 
     table = Table(
-        title="🛡️ cyberm4fia-scanner SCAN SUMMARY 🛡️",
+        title="🛡️ scanner SCAN SUMMARY 🛡️",
         title_style="bold cyan",
         border_style="cyan",
     )

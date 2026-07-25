@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Interactive Shell Module
+scanner - Interactive Shell Module
 Pseudo-interactive shell for Command Injection vulnerabilities.
 """
 

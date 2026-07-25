@@ -1,4 +1,4 @@
-# GraphQL Payloads — cyberm4fia-scanner
+# GraphQL Payloads — scanner
 # Categories: Alias Batching, Auth Bypass, Schema Recon, Introspection
 
 # ─── Introspection Query ───

@@ -1,4 +1,4 @@
-# cyberm4fia-scanner APTS Conformance Overview
+# scanner APTS Conformance Overview
 
 ## What is APTS?
 

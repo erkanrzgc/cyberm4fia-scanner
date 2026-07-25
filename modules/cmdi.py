@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Command Injection Module
+scanner - Command Injection Module
 OS Command Injection detection (Threaded)
 """
 

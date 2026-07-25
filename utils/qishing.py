@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Qishing (QR Phishing) Detection Module
+scanner - Qishing (QR Phishing) Detection Module
 """
 import io
 from urllib.parse import urlparse

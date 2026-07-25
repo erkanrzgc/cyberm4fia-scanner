@@ -22,7 +22,7 @@ methodology and are directly readable as planning input:
 `default_keywords.yaml` is a curated dork keyword library; `external_tools`
 documents the upstream tool integrations.
 
-## How to use in cyberm4fia-scanner
+## How to use in scanner
 
 Reference for tuning our `core/scan_option_specs.py` profile presets.
 Specifically:

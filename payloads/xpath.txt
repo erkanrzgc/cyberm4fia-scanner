@@ -1,4 +1,4 @@
-# XPath Injection Payloads — cyberm4fia-scanner
+# XPath Injection Payloads — scanner
 # Categories: Auth Bypass, Blind
 
 # ─── Auth Bypass ───

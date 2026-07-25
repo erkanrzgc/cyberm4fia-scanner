@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - RFI Module (v2)
+scanner - RFI Module (v2)
 Remote File Inclusion detection (Threaded)
 
 Improvements:

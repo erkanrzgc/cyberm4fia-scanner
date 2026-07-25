@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - LFI Module
+scanner - LFI Module
 Local File Inclusion detection (Threaded)
 """
 

@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner — MCP (Model Context Protocol) Tool Surface
+scanner — MCP (Model Context Protocol) Tool Surface
 
 .. external-entry-point::
 
@@ -175,7 +175,7 @@ def _handle_run_intent_agent(args: dict) -> dict:
 
 TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec(
-        name="cyberm4fia.parse_nmap_xml",
+        name="scanner.parse_nmap_xml",
         description=(
             "Parse Nmap '-oX -' XML output into a structured host/port tree. "
             "Returns host_count, open_port_count, an AI-readable summary, and "
@@ -189,7 +189,7 @@ TOOLS: tuple[ToolSpec, ...] = (
         tags=("recon", "parser"),
     ),
     ToolSpec(
-        name="cyberm4fia.parse_nuclei_jsonl",
+        name="scanner.parse_nuclei_jsonl",
         description=(
             "Parse Nuclei '-jsonl' output into structured findings with "
             "severity, CVSS, tags, and a high/critical count."
@@ -202,7 +202,7 @@ TOOLS: tuple[ToolSpec, ...] = (
         tags=("vuln", "parser"),
     ),
     ToolSpec(
-        name="cyberm4fia.parse_sqlmap_json",
+        name="scanner.parse_sqlmap_json",
         description=(
             "Parse sqlmap API/log JSON into a SqlmapResult-style dict with "
             "the target, DB type, and per-injection details."
@@ -220,7 +220,7 @@ TOOLS: tuple[ToolSpec, ...] = (
         tags=("vuln", "parser"),
     ),
     ToolSpec(
-        name="cyberm4fia.run_intent_agent",
+        name="scanner.run_intent_agent",
         description=(
             "Run the intent-driven AI exploit agent: the LLM writes Python "
             "exploit code, executes it in a sandbox, and self-heals on errors. "
@@ -297,7 +297,7 @@ def serve_stdio() -> None:
 
     import asyncio
 
-    server = Server("cyberm4fia-scanner")
+    server = Server("scanner")
 
     @server.list_tools()
     async def _list_tools():

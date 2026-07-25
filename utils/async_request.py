@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Async HTTP Utilities
+scanner - Async HTTP Utilities
 High-performance async requests with httpx.AsyncClient
 
 Usage:

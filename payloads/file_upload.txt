@@ -1,4 +1,4 @@
-# File Upload Payloads — cyberm4fia-scanner
+# File Upload Payloads — scanner
 # Categories: Extension Bypass, Content-Type, Magic Bytes, SVG XSS, Path Traversal
 
 # ─── Extension Bypass ───

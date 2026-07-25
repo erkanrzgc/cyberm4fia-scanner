@@ -1,6 +1,6 @@
 """Planner / Summarizer system prompts used by the AI orchestrator."""
 
-PLANNER_SYSTEM = """You are an elite penetration tester AI agent controlling cyberm4fia-scanner.
+PLANNER_SYSTEM = """You are an elite penetration tester AI agent controlling scanner.
 You analyze scan results and decide the NEXT best scanning action.
 
 Available modules:

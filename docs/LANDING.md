@@ -1,5 +1,5 @@
 ---
-title: cyberm4fia-scanner
+title: scanner
 description: AI-powered autonomous penetration testing — verifiable exploits, attack-chain reasoning, native SARIF/Burp/DefectDojo integration.
 layout: default
 ---
@@ -11,7 +11,7 @@ layout: default
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="license">
 </p>
 
-<h1 align="center">cyberm4fia-scanner</h1>
+<h1 align="center">scanner</h1>
 
 <p align="center">
   <b>nuclei-fast scanning · Burp-deep verification · ChatGPT-grade reasoning · in one box.</b>
@@ -20,7 +20,7 @@ layout: default
 <p align="center">
   <a href="#quickstart"><img src="https://img.shields.io/badge/▶_quick_start-60_seconds-blue?style=for-the-badge"></a>
   &nbsp;
-  <a href="https://github.com/erkanrzgc/cyberm4fia-scanner"><img src="https://img.shields.io/badge/⭐_star_on-GitHub-181717?style=for-the-badge&logo=github"></a>
+  <a href="https://github.com/erkanrzgc/autonomous-scanner"><img src="https://img.shields.io/badge/⭐_star_on-GitHub-181717?style=for-the-badge&logo=github"></a>
   &nbsp;
   <a href="../docs/INTEGRATIONS.md"><img src="https://img.shields.io/badge/🔌_integrations-SARIF·Burp·DefectDojo-blueviolet?style=for-the-badge"></a>
 </p>
@@ -36,7 +36,7 @@ You already know what's wrong with most web scanners:
 * **Commercial scanners** (Acunetix, Netsparker) verify automatically, but they're a black box and your finding feeds aren't yours.
 * **GenAI security tools** generate words about findings, not actual exploits, and they hallucinate freely.
 
-**cyberm4fia-scanner sits in the gap.** It scans at template speed, verifies at browser-level depth (Playwright + heuristic gates + simhash false-positive filtering), reasons through 93 offensive/defensive methodologies the LLM consults per finding, and exports to every tool you already use.
+**scanner sits in the gap.** It scans at template speed, verifies at browser-level depth (Playwright + heuristic gates + simhash false-positive filtering), reasons through 93 offensive/defensive methodologies the LLM consults per finding, and exports to every tool you already use.
 
 ---
 
@@ -71,7 +71,7 @@ LFI + log poisoning                → RCE                         (CRITICAL)
 
 ### 3. Content-fingerprint FP filter
 
-The most common false positive in modern scanners: SPA / catch-all routes that return HTTP 200 + the homepage template for any unknown URL. cyberm4fia computes a **64-bit simhash + DOM-skeleton hash + title hash** of every response and drops content-dependent findings whose response matches the calibrated homepage baseline.
+The most common false positive in modern scanners: SPA / catch-all routes that return HTTP 200 + the homepage template for any unknown URL. scanner computes a **64-bit simhash + DOM-skeleton hash + title hash** of every response and drops content-dependent findings whose response matches the calibrated homepage baseline.
 
 Real result from a public Turkish e-commerce target: **38 findings → 19 dropped as SPA fallbacks → 19 real**. Without the filter, every scanner reports "phantom" admin panels and `.env` exposures that don't exist.
 
@@ -136,8 +136,8 @@ No re-running 30 minutes of recon to retry the AI step.
 ## 60-second quickstart
 
 ```bash
-git clone https://github.com/erkanrzgc/cyberm4fia-scanner.git
-cd cyberm4fia-scanner
+git clone https://github.com/erkanrzgc/autonomous-scanner.git
+cd scanner
 pip install -r requirements.txt
 
 # Full passive + active scan (no AI required)
@@ -169,7 +169,7 @@ Reports land under `scans/<target>/`:
 
 ## Built for authorized testing
 
-cyberm4fia ships a **sandboxed exploit runner** (Docker / firejail / WSL fallback), **scope enforcement** (`--scope`, `--exclude`, `--path-blacklist`), **request budget caps**, **WAF auto-calibration** (delay scaling on block), and **per-target session isolation**. The intent is clear: pentests with explicit engagement scope, CTFs, security research, and defensive testing of your own infrastructure.
+scanner ships a **sandboxed exploit runner** (Docker / firejail / WSL fallback), **scope enforcement** (`--scope`, `--exclude`, `--path-blacklist`), **request budget caps**, **WAF auto-calibration** (delay scaling on block), and **per-target session isolation**. The intent is clear: pentests with explicit engagement scope, CTFs, security research, and defensive testing of your own infrastructure.
 
 > **It is not** a "point at any URL" tool. Operators are responsible for authorization. The codebase refuses destructive operations by default, but a scanner is a force multiplier — make sure you're aiming it where you're allowed to.
 
@@ -177,7 +177,7 @@ cyberm4fia ships a **sandboxed exploit runner** (Docker / firejail / WSL fallbac
 
 ## Where it came from
 
-cyberm4fia-scanner started as a personal lab project and evolved into a methodology-driven scanner over several iterations. Recent sprints have added:
+scanner started as a personal lab project and evolved into a methodology-driven scanner over several iterations. Recent sprints have added:
 
 * **Sprint N (verifiers+ci+exports)** — 5 active verifiers, Burp XML, CI exit codes, GitHub Code Scanning SARIF upload, auth-session audit, integrations docs.
 * **Sprint N-1 (fp+headers)** — SPA-fallback simhash filter, `Missing_Security_Header → *_Exploitable` chain promotion, 5 new offensive/defensive skills, 4 new chain patterns.
@@ -189,7 +189,7 @@ Current state: **90+ modules · 93 AI skill methodologies · 1250+ tests passing
 
 ## Get involved
 
-* **Star the repo** → [github.com/erkanrzgc/cyberm4fia-scanner](https://github.com/erkanrzgc/cyberm4fia-scanner)
+* **Star the repo** → [github.com/erkanrzgc/autonomous-scanner](https://github.com/erkanrzgc/autonomous-scanner)
 * **Read [`docs/INTEGRATIONS.md`](INTEGRATIONS.md)** for the full Burp / SARIF / DefectDojo / Jenkins / GitLab cookbook.
 * **Open issues** for bugs, false positives, missing modules, integration requests.
 * **Pull requests welcome** — see [`CONTRIBUTING.md`](../CONTRIBUTING.md).

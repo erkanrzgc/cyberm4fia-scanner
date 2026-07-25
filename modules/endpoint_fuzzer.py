@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - API Fuzzer & Endpoint Hunter
+scanner - API Fuzzer & Endpoint Hunter
 High-speed asynchronous directory and API endpoint discovery tool.
 """
 
@@ -214,7 +214,7 @@ class EndpointFuzzer:
         
         headers = get_global_headers()
         if "User-Agent" not in headers:
-            headers["User-Agent"] = "cyberm4fia-fuzzer/4.0"
+            headers["User-Agent"] = "scanner-fuzzer/4.0"
             
         limits = httpx.Limits(max_connections=self.threads, max_keepalive_connections=self.threads)
         

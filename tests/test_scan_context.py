@@ -49,7 +49,7 @@ class TestScanContext:
             assert Stats.start_time is not None
 
         with open(ctx.log_file, "r", encoding="utf-8") as handle:
-            assert "cyberm4fia-scanner Scan:" in handle.read()
+            assert "scanner Scan:" in handle.read()
 
     def test_activate_restores_runtime_state(self, tmp_path):
         color_utils.set_log_file(str(tmp_path / "previous.log"))

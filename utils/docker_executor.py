@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner — Docker-Based Sandbox Executor
+scanner — Docker-Based Sandbox Executor
 
 .. external-entry-point::
 
@@ -24,7 +24,7 @@ backends without changing downstream code.
 Image
 -----
 By default uses ``python:3.11-slim``; override with ``image=`` or set
-``CYBERM4FIA_SANDBOX_IMAGE`` in the environment. The image must have
+``SCANNER_SANDBOX_IMAGE`` in the environment. The image must have
 ``python3`` on PATH and ideally ``requests`` / ``httpx`` preinstalled —
 otherwise the AI-generated payload code can't import them. A tiny custom
 image (`Dockerfile.sandbox`) is recommended for production.
@@ -54,8 +54,8 @@ from utils.code_executor import (
 )
 
 
-DEFAULT_IMAGE = os.environ.get("CYBERM4FIA_SANDBOX_IMAGE", "python:3.11-slim")
-DEFAULT_NETWORK = os.environ.get("CYBERM4FIA_SANDBOX_NETWORK", "bridge")
+DEFAULT_IMAGE = os.environ.get("SCANNER_SANDBOX_IMAGE", "python:3.11-slim")
+DEFAULT_NETWORK = os.environ.get("SCANNER_SANDBOX_NETWORK", "bridge")
 
 
 # ─── Capability discovery ────────────────────────────────────────────────────
@@ -128,8 +128,8 @@ def execute_python_docker(
 
     # Persist the AI-generated code outside the container, then bind-mount it
     # read-only at /sandbox/user.py.
-    workdir = tempfile.mkdtemp(prefix="cyberm4fia-docker-")
-    container_name = f"cyberm4fia-sandbox-{uuid.uuid4().hex[:8]}"
+    workdir = tempfile.mkdtemp(prefix="scanner-docker-")
+    container_name = f"scanner-sandbox-{uuid.uuid4().hex[:8]}"
     try:
         code_path = os.path.join(workdir, "user.py")
         with open(code_path, "w", encoding="utf-8") as fh:

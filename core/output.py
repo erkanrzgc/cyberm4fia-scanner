@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner — Output Formatter
+scanner — Output Formatter
 
 Centralized output formatting for scan results.
 Supports: plain text, JSON, SARIF, JSON Lines streaming.
@@ -25,7 +25,7 @@ def save_findings_json(
     normalized = artifacts["findings"]
 
     report = {
-        "scanner": "cyberm4fia-scanner",
+        "scanner": "scanner",
         "target": url,
         "mode": mode,
         "timestamp": datetime.now().isoformat(),

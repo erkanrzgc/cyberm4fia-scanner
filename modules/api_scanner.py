@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner – API Security Scanner
+scanner – API Security Scanner
 Uses api_spec_parser.py for OpenAPI/Swagger parsing.
 """
 from utils.request import ScanExceptions

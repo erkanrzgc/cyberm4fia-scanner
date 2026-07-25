@@ -24,7 +24,7 @@ finding list (separate function, opt-in).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable
 
 
 @dataclass(frozen=True)

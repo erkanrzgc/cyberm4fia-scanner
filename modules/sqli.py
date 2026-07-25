@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - SQLi Module
+scanner - SQLi Module
 SQL Injection detection
 """
 

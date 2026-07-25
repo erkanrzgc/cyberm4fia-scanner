@@ -32,6 +32,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Optional
 from urllib.parse import parse_qs
 
+import pytest
+
 
 class MockLoginApp:
     """Threaded HTTP server with login + protected endpoints.
@@ -74,7 +76,10 @@ class MockLoginApp:
 
     def start(self) -> None:
         handler = self._make_handler()
-        self._server = ThreadingHTTPServer((self.host, self.port), handler)
+        try:
+            self._server = ThreadingHTTPServer((self.host, self.port), handler)
+        except PermissionError:
+            pytest.skip("local TCP listener unavailable in this test sandbox")
         self.port = self._server.server_address[1]
         self._thread = threading.Thread(
             target=self._server.serve_forever, daemon=True

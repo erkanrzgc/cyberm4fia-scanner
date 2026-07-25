@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - CSRF Module
+scanner - CSRF Module
 Cross-Site Request Forgery detection
 """
 
@@ -261,7 +261,7 @@ def _generate_csrf_poc(form, action_url):
 
     poc = f"""<html>
 <body>
-<h1>CSRF PoC - cyberm4fia-scanner</h1>
+<h1>CSRF PoC - scanner</h1>
 <form action="{action_url}" method="{method}">
 {fields_html.rstrip()}
   <input type="submit" value="Click Me!" />

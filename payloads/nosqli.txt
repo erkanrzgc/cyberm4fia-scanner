@@ -1,4 +1,4 @@
-# NoSQL Injection Payloads (MongoDB) — cyberm4fia-scanner
+# NoSQL Injection Payloads (MongoDB) — scanner
 # Categories: Auth Bypass, Data Extraction, Operator Injection
 
 # ─── MongoDB Auth Bypass ───

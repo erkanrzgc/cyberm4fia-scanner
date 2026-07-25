@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - HTTP Request Utilities
+scanner - HTTP Request Utilities
 """
 
 import os

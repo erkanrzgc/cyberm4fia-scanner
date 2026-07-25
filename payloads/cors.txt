@@ -1,4 +1,4 @@
-# CORS Misconfiguration Payloads — cyberm4fia-scanner
+# CORS Misconfiguration Payloads — scanner
 # Categories: Origin Test Matrix, Credential Exfil, Null Origin
 
 # ─── Origin Test Matrix ───

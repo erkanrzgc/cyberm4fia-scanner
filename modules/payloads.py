@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Payloads and Signatures
+scanner - Payloads and Signatures
 All payloads and detection patterns in one place.
 Supports loading custom payloads from payloads/*.txt files.
 """

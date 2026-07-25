@@ -1,4 +1,4 @@
-# cyberm4fia-scanner dependencies (consolidated)
+# scanner dependencies (consolidated)
 #
 # Run: pip install -r requirements.txt
 # Everything ships in one file by design — no optional/extras split.

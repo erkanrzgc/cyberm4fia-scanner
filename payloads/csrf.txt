@@ -1,4 +1,4 @@
-# CSRF Payloads — cyberm4fia-scanner
+# CSRF Payloads — scanner
 # Categories: HTML Forms, JSON, Multipart, SameSite Bypass
 
 # ─── Classic HTML Form ───

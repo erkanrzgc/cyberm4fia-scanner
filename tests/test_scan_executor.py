@@ -5,7 +5,6 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from typing import Any, Callable
-from unittest.mock import patch
 
 import pytest
 

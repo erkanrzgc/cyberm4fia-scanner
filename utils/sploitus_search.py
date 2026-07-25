@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner — Sploitus Exploit Search
+scanner — Sploitus Exploit Search
 Searches sploitus.com for known exploits based on detected technologies.
 """
 

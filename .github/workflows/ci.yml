@@ -1,4 +1,4 @@
-name: cyberm4fia-scanner Scanner CI
+name: scanner Scanner CI
 
 on:
   push:

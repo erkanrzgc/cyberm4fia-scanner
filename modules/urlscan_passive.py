@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - URLScan.io Passive Reconnaissance
+scanner - URLScan.io Passive Reconnaissance
 Passive intelligence gathering using URLScan.io's free API.
 
 Submits targets for scanning and retrieves:

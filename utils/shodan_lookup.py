@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Shodan Integration & Whois/ASN Lookup
+scanner - Shodan Integration & Whois/ASN Lookup
 OSINT enrichment for target reconnaissance
 """
 

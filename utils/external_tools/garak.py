@@ -15,7 +15,6 @@ re-exported as ``NIM_API_KEY`` at run time. No additional credentials.
 
 from __future__ import annotations
 
-import json
 import os
 import shutil
 import subprocess
@@ -113,7 +112,7 @@ class GarakTool(ExternalTool):
     def run(self, target: str, *, timeout: float | None = None, **kwargs) -> ToolResult:
         """Run garak with NVIDIA_API_KEY → NIM_API_KEY aliasing.
 
-        garak's NIM generator looks for ``NIM_API_KEY``; cyberm4fia users
+        garak's NIM generator looks for ``NIM_API_KEY``; scanner users
         already have ``NVIDIA_API_KEY`` set. Bridge the two without
         forcing the operator to duplicate env vars.
         """
@@ -211,7 +210,7 @@ class GarakTool(ExternalTool):
         return {"rows": results, "report_jsonl": report_path}
 
     def to_findings(self, parsed: Any, *, target: str = "") -> list[dict]:
-        """Convert garak verdict rows into cyberm4fia finding dicts.
+        """Convert garak verdict rows into scanner finding dicts.
 
         Only emit findings for probes with FAIL verdict + non-zero failures —
         a 0% failure rate means the model resisted every prompt.

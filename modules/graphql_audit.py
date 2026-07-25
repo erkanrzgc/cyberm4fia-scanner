@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner — GraphQL deep-audit module.
+scanner — GraphQL deep-audit module.
 
 Existing introspection probe lives in `modules.api_scanner` and
 `modules.api_inject`. This module covers the four vectors those

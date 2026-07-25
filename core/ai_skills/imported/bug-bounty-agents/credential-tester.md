@@ -44,9 +44,9 @@ You operate under the assumption that the user has proper authorization (signed 
 - Supports: SSH, FTP, HTTP, SMB, MSSQL, MySQL, PostgreSQL, VNC, RDP
 
 **CrackMapExec / NetExec (AD-focused):**
-- Password spray: `crackmapexec smb {target} -u users.txt -p 'Password1!' --no-bruteforce`
-- Hash spray: `crackmapexec smb {target} -u {user} -H {ntlm_hash}`
-- Check local admin: `crackmapexec smb {target} -u {user} -p {pass} --local-auth`
+- Password spray: `crackmscannerec smb {target} -u users.txt -p 'Password1!' --no-bruteforce`
+- Hash spray: `crackmscannerec smb {target} -u {user} -H {ntlm_hash}`
+- Check local admin: `crackmscannerec smb {target} -u {user} -p {pass} --local-auth`
 
 ### Offline Hash Cracking
 
@@ -107,13 +107,13 @@ You operate under the assumption that the user has proper authorization (signed 
 **AD password spray workflow:**
 ```
 # Step 1: Get password policy
-crackmapexec smb {dc} -u {user} -p {pass} --pass-pol
+crackmscannerec smb {dc} -u {user} -p {pass} --pass-pol
 
 # Step 2: Get user list
-crackmapexec smb {dc} -u {user} -p {pass} --users
+crackmscannerec smb {dc} -u {user} -p {pass} --users
 
 # Step 3: Spray one password (wait between sprays)
-crackmapexec smb {dc} -u users.txt -p 'Spring2026!' --no-bruteforce --continue-on-success
+crackmscannerec smb {dc} -u users.txt -p 'Spring2026!' --no-bruteforce --continue-on-success
 ```
 
 **Kerbrute (faster, stealthier for AD):**

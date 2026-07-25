@@ -1,4 +1,4 @@
-# LFI Payloads — cyberm4fia-scanner
+# LFI Payloads — scanner
 # Categories: Linux, Windows, Encoding, PHP Wrappers, Log Poisoning, Bypass, Docker, Cloud
 
 # ─── Linux Basic Traversal ───

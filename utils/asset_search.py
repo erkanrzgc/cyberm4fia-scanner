@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Multi-Provider Asset Search
+scanner - Multi-Provider Asset Search
 
 Unified interface over 7 internet-asset search engines (Shodan parallels):
   Censys, ZoomEye, FOFA, Onyphe, Netlas, FullHunt, LeakIX.

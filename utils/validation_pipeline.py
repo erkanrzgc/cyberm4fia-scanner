@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner — Finding Validation Pipeline (Hallucination Gate System)
+scanner — Finding Validation Pipeline (Hallucination Gate System)
 7-gate validation inspired by pentest-agents' 7-Question Gate concept.
 Every finding starts as 'suspected' and must pass through gates to reach
 higher validation stages. Includes never-submit filter and mistakes awareness.

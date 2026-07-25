@@ -1,4 +1,4 @@
-# XSS Payloads — cyberm4fia-scanner
+# XSS Payloads — scanner
 # Categories: Basic, Tag-based, Event-based, Encoding, WAF Bypass, Polyglot, DOM, Mutation
 
 # ─── Basic Script Tags ───

@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner — Campaign Manager
+scanner — Campaign Manager
 Organized scan sessions with structured output, inspired by the 0-Day Machine's
 hunts/campaigns/ pattern.
 """

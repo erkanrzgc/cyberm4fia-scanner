@@ -1,4 +1,4 @@
-# OAuth Payloads — cyberm4fia-scanner
+# OAuth Payloads — scanner
 # Categories: redirect_uri Bypass, Code Leakage, PKCE Check, Client Type
 
 # ─── redirect_uri Bypass ───

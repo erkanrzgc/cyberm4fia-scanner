@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Authentication Management
+scanner - Authentication Management
 Handles Basic Auth, Bearer Tokens, and Session Cookies
 """
 

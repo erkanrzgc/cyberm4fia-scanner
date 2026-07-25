@@ -9,8 +9,8 @@ first — it'll tell you which layer your change belongs in.
 ## Dev setup
 
 ```bash
-git clone https://github.com/erkanrzgc/cyberm4fia-scanner.git
-cd cyberm4fia-scanner
+git clone https://github.com/erkanrzgc/autonomous-scanner.git
+cd scanner
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 pip install -r requirements-dev.txt        # if present; otherwise: pip install pytest pytest-cov

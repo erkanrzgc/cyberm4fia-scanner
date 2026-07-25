@@ -1,4 +1,4 @@
-# Prototype Pollution Payloads (Node.js) — cyberm4fia-scanner
+# Prototype Pollution Payloads (Node.js) — scanner
 # Categories: Detection, Escalation, EJS RCE
 
 # ─── Detection ───

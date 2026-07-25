@@ -178,7 +178,7 @@ def scan_cache_poisoning(url: str, *, max_probes: int = 25) -> list[dict]:
             "severity": severity,
             "evidence": (
                 f"header {header} reflected in body"
-                + (f"; cache layer returned poisoned token to clean client" if cache_serves_poison else "")
+                + ("; cache layer returned poisoned token to clean client" if cache_serves_poison else "")
                 + (f"; cache state: {evidence}" if evidence else "")
             ),
             "module": "cache_poisoning",

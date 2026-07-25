@@ -1,4 +1,4 @@
-# Log4Shell / JNDI Injection Payloads — cyberm4fia-scanner
+# Log4Shell / JNDI Injection Payloads — scanner
 # Categories: Core Payloads, Obfuscation, Common Injection Points
 
 # ─── Core Payloads ───

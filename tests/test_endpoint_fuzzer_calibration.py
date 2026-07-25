@@ -8,7 +8,6 @@ new fingerprint-aware calibration must mark all such hits as soft-404.
 from __future__ import annotations
 
 import asyncio
-import tempfile
 
 import pytest
 

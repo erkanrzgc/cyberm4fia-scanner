@@ -1,4 +1,4 @@
-# JWT Attack Payloads — cyberm4fia-scanner
+# JWT Attack Payloads — scanner
 # Categories: alg:none, Key Confusion, Injection, Brute Force
 
 # ─── alg:none ───

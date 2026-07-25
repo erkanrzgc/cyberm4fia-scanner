@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - WAF Fingerprinting
+scanner - WAF Fingerprinting
 Detects Web Application Firewalls and applies evasion delays
 Supports 20+ WAF vendors with header, cookie, and body text signatures
 """

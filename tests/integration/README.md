@@ -65,7 +65,7 @@ docker compose -f docker-compose.integration.yml down -v
 | `gowitness` | `gowitness` + chromium | `http-target` service (port 8081) |
 | `wpscan` | `wpscan` | `wordpress` service (port 8080) + `WPSCAN_API_TOKEN` env |
 | `kube-hunter` | `kube-hunter` | A reachable Kubernetes API on `127.0.0.1:6443` (e.g. `kind`) |
-| `cloudhunter` | `cloudhunter` | `CYBERM4FIA_INTEGRATION_NETWORK=1` (outbound to public cloud endpoints) |
+| `cloudhunter` | `cloudhunter` | `SCANNER_INTEGRATION_NETWORK=1` (outbound to public cloud endpoints) |
 
 ## Why not in CI by default
 

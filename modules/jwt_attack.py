@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - JWT Attack Suite
+scanner - JWT Attack Suite
 Full JWT exploitation: algorithm confusion, none bypass, brute force,
 claim tampering, expiry manipulation, kid injection.
 """

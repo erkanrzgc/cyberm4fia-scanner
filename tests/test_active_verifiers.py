@@ -25,9 +25,6 @@ from modules.active_verifiers import (
     ReferrerLeakVerifier,
     run_all_verifiers,
     verify_clickjacking,
-    verify_hsts,
-    verify_mime_confusion,
-    verify_referrer_leak,
 )
 from modules.active_verifiers.base import (
     VerificationOutcome,

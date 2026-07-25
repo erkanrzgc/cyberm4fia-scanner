@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Advanced WAF Evasion Module
+scanner - Advanced WAF Evasion Module
 Implements Protocol & Transport Level WAF Bypass Techniques
 """
 

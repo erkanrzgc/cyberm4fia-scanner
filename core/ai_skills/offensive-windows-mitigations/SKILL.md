@@ -10777,7 +10777,7 @@ def main():
     if os.name != "nt":
         print("\n  [!] Run this script on Windows for live checks.")
         print("  [*] For remote probing from Linux, use:")
-        print("      crackmapexec smb <target> -u user -p pass --lsa")
+        print("      crackmscannerec smb <target> -u user -p pass --lsa")
         print("      (will fail if Credential Guard is active)")
         print("\n  Expected Credential Guard behavior:")
         print("    CG ON:  mimikatz -> NTLM: (null)")

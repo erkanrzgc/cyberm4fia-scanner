@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner — Multi-Agent Orchestration
+scanner — Multi-Agent Orchestration
 
 .. external-entry-point::
 

@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - LDAP Injection Scanner
+scanner - LDAP Injection Scanner
 
 Detects LDAP filter injection where user input is concatenated into an
 LDAP query without proper escaping. Common impact: authentication bypass

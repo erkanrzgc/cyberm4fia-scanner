@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner Modules - Complete Package
+scanner Modules - Complete Package
 """
 
 from .payloads import (

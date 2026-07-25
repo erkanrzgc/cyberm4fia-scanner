@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Server-Side Template Injection (SSTI) Scanner
+scanner - Server-Side Template Injection (SSTI) Scanner
 Detects Jinja2, Twig, Mako, Smarty, Freemarker, Pebble template injection
 """
 

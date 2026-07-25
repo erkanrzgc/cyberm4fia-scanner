@@ -1,4 +1,4 @@
-"""cyberm4fia-scanner — core package.
+"""scanner — core package.
 
 This package is intentionally minimal at the top level. Public surface
 lives in its sub-packages:

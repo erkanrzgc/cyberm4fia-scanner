@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Automated PoC (Proof of Concept) Generator
+scanner - Automated PoC (Proof of Concept) Generator
 
 Generates self-contained HTML PoC files for each missing-security-header
 exploit primitive (clickjacking, MIME confusion, HSTS strip, referrer leak,

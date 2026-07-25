@@ -12,8 +12,6 @@ module as session-aware, exempt, or a gap. We verify:
 
 from __future__ import annotations
 
-import os
-import textwrap
 
 import pytest
 

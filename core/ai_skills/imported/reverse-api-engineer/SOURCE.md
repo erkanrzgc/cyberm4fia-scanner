@@ -24,7 +24,7 @@ This repo goes further:
 
 This is a real capability gap in our scanner.
 
-## How to use in cyberm4fia-scanner
+## How to use in scanner
 
 Reference imports — design inputs for these planned extensions:
 

@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - CORS Misconfiguration Module
+scanner - CORS Misconfiguration Module
 Detects overly permissive CORS configurations
 """
 

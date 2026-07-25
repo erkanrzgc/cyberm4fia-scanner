@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Enhanced Nuclei-Style Template Engine
+scanner - Enhanced Nuclei-Style Template Engine
 Production-grade YAML template scanner with multi-step, extractors,
 variable interpolation, and severity/tag filtering.
 """
@@ -41,7 +41,7 @@ def _get_builtin_templates():
             "id": "cve-2021-41773",
             "info": {
                 "name": "Apache 2.4.49 - Path Traversal (CVE-2021-41773)",
-                "author": "cyberm4fia",
+                "author": "scanner",
                 "severity": "critical",
                 "tags": ["cve", "apache", "lfi", "rce"],
                 "description": "Path traversal and file disclosure in Apache HTTP Server 2.4.49.",
@@ -59,7 +59,7 @@ def _get_builtin_templates():
             "id": "cve-2021-44228",
             "info": {
                 "name": "Log4Shell RCE (CVE-2021-44228)",
-                "author": "cyberm4fia",
+                "author": "scanner",
                 "severity": "critical",
                 "tags": ["cve", "log4j", "rce", "jndi"],
                 "description": "Apache Log4j2 Remote Code Execution.",
@@ -80,7 +80,7 @@ def _get_builtin_templates():
             "id": "cve-2022-22965",
             "info": {
                 "name": "Spring4Shell RCE (CVE-2022-22965)",
-                "author": "cyberm4fia",
+                "author": "scanner",
                 "severity": "critical",
                 "tags": ["cve", "spring", "rce"],
                 "description": "Spring Framework RCE via Data Binding on JDK 9+.",
@@ -97,7 +97,7 @@ def _get_builtin_templates():
             "id": "cve-2023-22515",
             "info": {
                 "name": "Atlassian Confluence - Broken Access Control (CVE-2023-22515)",
-                "author": "cyberm4fia",
+                "author": "scanner",
                 "severity": "critical",
                 "tags": ["cve", "confluence", "auth-bypass"],
                 "description": "Privilege escalation in Confluence Data Center and Server.",
@@ -115,7 +115,7 @@ def _get_builtin_templates():
             "id": "cve-2023-46747",
             "info": {
                 "name": "F5 BIG-IP - Authentication Bypass (CVE-2023-46747)",
-                "author": "cyberm4fia",
+                "author": "scanner",
                 "severity": "critical",
                 "tags": ["cve", "f5", "bigip", "auth-bypass"],
                 "description": "Unauthenticated RCE via request smuggling in F5 BIG-IP.",
@@ -133,7 +133,7 @@ def _get_builtin_templates():
             "id": "exposed-git-config",
             "info": {
                 "name": "Exposed .git/config",
-                "author": "cyberm4fia",
+                "author": "scanner",
                 "severity": "medium",
                 "tags": ["exposure", "git", "config"],
                 "description": "Git repository configuration file is publicly accessible.",
@@ -151,7 +151,7 @@ def _get_builtin_templates():
             "id": "exposed-env-file",
             "info": {
                 "name": "Exposed .env File",
-                "author": "cyberm4fia",
+                "author": "scanner",
                 "severity": "high",
                 "tags": ["exposure", "env", "credentials"],
                 "description": "Environment file with credentials is publicly accessible.",
@@ -169,7 +169,7 @@ def _get_builtin_templates():
             "id": "exposed-phpinfo",
             "info": {
                 "name": "Exposed phpinfo()",
-                "author": "cyberm4fia",
+                "author": "scanner",
                 "severity": "low",
                 "tags": ["exposure", "php", "info"],
                 "description": "PHP info page is publicly accessible.",
@@ -187,7 +187,7 @@ def _get_builtin_templates():
             "id": "exposed-debug-endpoints",
             "info": {
                 "name": "Exposed Debug/Admin Endpoints",
-                "author": "cyberm4fia",
+                "author": "scanner",
                 "severity": "high",
                 "tags": ["exposure", "debug", "admin"],
                 "description": "Debug or admin endpoints are publicly accessible.",
@@ -208,7 +208,7 @@ def _get_builtin_templates():
             "id": "wordpress-xmlrpc",
             "info": {
                 "name": "WordPress XML-RPC Enabled",
-                "author": "cyberm4fia",
+                "author": "scanner",
                 "severity": "medium",
                 "tags": ["wordpress", "xmlrpc", "bruteforce"],
                 "description": "WordPress XML-RPC interface is enabled, allowing brute-force attacks.",
@@ -228,7 +228,7 @@ def _get_builtin_templates():
             "id": "server-status-exposed",
             "info": {
                 "name": "Apache Server-Status Exposed",
-                "author": "cyberm4fia",
+                "author": "scanner",
                 "severity": "medium",
                 "tags": ["exposure", "apache", "status"],
                 "description": "Apache server-status page is publicly accessible.",
@@ -246,7 +246,7 @@ def _get_builtin_templates():
             "id": "backup-files",
             "info": {
                 "name": "Backup Files Detected",
-                "author": "cyberm4fia",
+                "author": "scanner",
                 "severity": "medium",
                 "tags": ["exposure", "backup"],
                 "description": "Backup files are publicly accessible.",

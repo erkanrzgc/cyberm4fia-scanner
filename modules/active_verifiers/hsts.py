@@ -154,7 +154,7 @@ class HSTSVerifier:
             return ""
         # Redirect exists — does it also carry HSTS?
         if not r.headers.get("strict-transport-security"):
-            return f"HTTP→HTTPS redirect carries no HSTS (strippable on first hit)"
+            return "HTTP→HTTPS redirect carries no HSTS (strippable on first hit)"
         return ""
 
 

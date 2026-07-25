@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner — MITRE ATT&CK Technique Mapping for Findings
+scanner — MITRE ATT&CK Technique Mapping for Findings
 
 Inspired by Azure-Sentinel detection rules: every vulnerability finding gets
 tagged with the MITRE ATT&CK techniques it enables, so report consumers

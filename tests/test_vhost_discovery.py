@@ -167,7 +167,7 @@ def test_empty_findings_when_no_hits():
     def fake_get(url, headers, timeout):
         return _resp(200, "always the same wildcard")
 
-    report = discover_vhosts(
+    discover_vhosts(
         "10.0.0.1",
         ["a.t.com"],
         http_get=fake_get,

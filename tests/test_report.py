@@ -62,7 +62,7 @@ def test_html_report_generation(mock_vulns, temp_scan_dir):
         html = f.read()
 
     # Verify formatting and execution summary presence
-    assert "cyberm4fia-scanner Report" in html
+    assert "scanner Report" in html
     assert "100" in html  # Requests count
     assert "5" in html  # WAF block count
 

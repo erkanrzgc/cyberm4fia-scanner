@@ -76,7 +76,7 @@ class ClickjackingVerifier:
     def _fetch_headers(url: str) -> dict | None:
         """Cheap HEAD/GET fetch to read enforcement headers."""
         try:
-            from utils.request import smart_request, ScanExceptions
+            from utils.request import smart_request
         except ImportError:
             return None
         try:

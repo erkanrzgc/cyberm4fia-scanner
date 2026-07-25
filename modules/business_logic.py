@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner - Business Logic Scanner
+scanner - Business Logic Scanner
 Detects logic flaws: price manipulation, quantity abuse, role escalation,
 duplicate actions, negative values, and parameter tampering.
 """

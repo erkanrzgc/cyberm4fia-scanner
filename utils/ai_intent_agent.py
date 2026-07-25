@@ -1,5 +1,5 @@
 """
-cyberm4fia-scanner — Intent-Driven AI Agent (with Self-Healing Loop)
+scanner — Intent-Driven AI Agent (with Self-Healing Loop)
 
 .. external-entry-point::
 
